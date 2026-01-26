@@ -66,5 +66,5 @@ if [ -d "$HOME/.opencode/bin" ]; then
     export PATH=$HOME/.opencode/bin:$PATH
 fi
 
-# Custom prompt - Modern style
-export PS1='\[\033[01;32m\]➜  \[\033[01;34m\]\W\[\033[00m\] '
+# Custom prompt - Modern style with hostname and window title
+export PS1='\[\e]0;\h\a\]\[\033[01;32m\]\h ➜  \[\033[01;34m\]\W\[\033[00m\] '
