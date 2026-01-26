@@ -51,6 +51,7 @@ link_file "$DOTFILES_DIR/bash/bashrc" "$HOME/.bashrc"
 link_file "$DOTFILES_DIR/git/gitconfig" "$HOME/.gitconfig"
 
 echo -e "${BLUE}Instalação concluída!${NC}"
+echo -e "${GREEN}Para aplicar as mudanças no bash agora, execute: ${YELLOW}source ~/.bashrc${NC}"
 if [ -d "$BACKUP_DIR" ]; then
     echo -e "${YELLOW}Seus arquivos antigos foram salvos em: $BACKUP_DIR${NC}"
 fi
