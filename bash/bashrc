@@ -23,38 +23,48 @@ if [ -d ~/.bashrc.d ]; then
     done
 fi
 unset rc
-export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-
-# ---- CUDA 12.9 ------------------------------------
-export CUDA_HOME=/usr/local/cuda
-export PATH=$CUDA_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
-# Força o nvcc a usar o GCC 13
-export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-13"
-
+# ---- CUDA -----------------------------------------
+if [ -d "/usr/local/cuda" ]; then
+    export CUDA_HOME=/usr/local/cuda
+    export PATH=$CUDA_HOME/bin:$PATH
+    export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+    # Força o nvcc a usar o GCC 13 se existir
+    if [ -f "/usr/bin/g++-13" ]; then
+        export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-13"
+    fi
+fi
 
 # >>> conda initialize >>>
 # !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/home/freitaspinhe/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/freitaspinhe/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/home/freitaspinhe/miniconda3/etc/profile.d/conda.sh"
+if [ -d "$HOME/miniconda3" ]; then
+    __conda_setup="$('$HOME/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+        eval "$__conda_setup"
     else
-        export PATH="/home/freitaspinhe/miniconda3/bin:$PATH"
+        if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+            . "$HOME/miniconda3/etc/profile.d/conda.sh"
+        else
+            export PATH="$HOME/miniconda3/bin:$PATH"
+        fi
     fi
+    unset __conda_setup
 fi
-unset __conda_setup
 # <<< conda initialize <<<
 
-. "$HOME/.cargo/env"
-export PATH=$PATH:$HOME/.dotnet/tools
+if [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
+if [ -d "$HOME/.dotnet/tools" ]; then
+    export PATH=$PATH:$HOME/.dotnet/tools
+fi
+
 export PATH="$HOME/bin:$PATH"
 
 # opencode
-export PATH=/home/freitaspinhe/.opencode/bin:$PATH
+if [ -d "$HOME/.opencode/bin" ]; then
+    export PATH=$HOME/.opencode/bin:$PATH
+fi
 
 # Custom prompt - Modern style
 export PS1='\[\033[01;32m\]➜  \[\033[01;34m\]\W\[\033[00m\] '
