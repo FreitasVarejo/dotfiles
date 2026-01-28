@@ -68,3 +68,10 @@ fi
 
 # Custom prompt - Modern style with hostname and window title
 export PS1='\[\e]0;\h\a\]\[\033[01;32m\]\h ➜  \[\033[01;34m\]\W\[\033[00m\] '
+
+# Aliases para ls com cores e atalhos úteis
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'

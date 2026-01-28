@@ -3,3 +3,16 @@
 	email = gabrielpinheiro2003@gmail.com
 [credential]
 	helper = store
+[safe]
+	directory = /home/saul/jiujitsu-unicamp/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/jiujitsu-unicamp/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
+	directory = /home/saul/actions-runner/_work/jiujitsu-unicamp/jiujitsu-unicamp
