@@ -67,7 +67,7 @@ if [ -d "$HOME/.opencode/bin" ]; then
 fi
 
 # Custom prompt - Modern style with hostname and window title
-export PS1='\[\e]0;\h\a\]\[\033[01;32m\]\h ➜  \[\033[01;34m\]\W\[\033[00m\] '
+# export PS1='\[\e]0;\h\a\]\[\033[01;32m\]\h ➜  \[\033[01;34m\]\W\[\033[00m\] '
 
 # Aliases para ls com cores e atalhos úteis
 alias ls='ls --color=auto'
@@ -75,3 +75,38 @@ alias grep='grep --color=auto'
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
+
+
+# --- MODERN DOTFILES CONFIG ---
+# Added by opencode on 2026-01-30
+
+# User Binaries
+export PATH="$HOME/.local/bin:$PATH"
+
+# Starship Prompt
+if command -v starship &> /dev/null; then
+    eval "$(starship init bash)"
+fi
+
+# Zoxide (Better cd)
+if command -v zoxide &> /dev/null; then
+    eval "$(zoxide init bash)"
+fi
+
+# FZF (Fuzzy Finder)
+if command -v fzf &> /dev/null; then
+    eval "$(fzf --bash)"
+fi
+
+# Aliases for Modern Tools
+if command -v bat &> /dev/null; then
+    alias cat='bat'
+fi
+
+if command -v delta &> /dev/null; then
+    alias diff='delta'
+fi
+
+if command -v lazygit &> /dev/null; then
+    alias lg='lazygit'
+fi
