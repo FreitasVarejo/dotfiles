@@ -1,5 +1,6 @@
 .DS_Store
 tmux/plugins/
+tmux/.config/tmux/plugins/
 raycast
 fzf
 history.txt
