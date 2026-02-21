@@ -53,7 +53,7 @@ check_cmd "tmux" "sudo apt install tmux"
 check_cmd "rg" "sudo apt install ripgrep"
 check_cmd "fd" "sudo apt isntall fd-find (depois linkar fdfind -> fd)" "fd"
 check_cmd "bat" "sudo apt install bat (depois linkar batcat->bat)" "batcat"
-check_cmd "fzf" "git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install"
+check_cmd "fzf" "git clone --depth 1 https://github.com/junegunn/fzf.git ~/.config/fzf && ~/.config/fzf/install"
 check_cmd "zoxide" "curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
 check_cmd "starship" "curl -sS https://starship.rs/install.sh | sh"
 
@@ -81,11 +81,11 @@ fi
 echo ""
 
 log_info "--- Tmux Plugin Manager (TPM) ---"
-if [ -d "$HOME/.tmux/plugins/tpm" ]; then
+if [ -d "$HOME/.config/tmux/plugins/tpm" ]; then
   log_success "TPM encontrado."
 else
   log_warn "TPM não encontrado."
-  echo "    -> Executar: git clone https://github.com/tmux-plugins/tpm ~/.tmux/plugins/tpm"
+  echo "    -> Executar: git clone https://github.com/tmux-plugins/tpm ~/.config/tmux/plugins/tpm"
   ALL_GOOD=false
 fi
 
