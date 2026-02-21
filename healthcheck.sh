@@ -91,6 +91,26 @@ fi
 
 echo ""
 
+log_info "--- Git Identity ---"
+git_name=$(git config --global user.name 2>/dev/null)
+git_email=$(git config --global user.email 2>/dev/null)
+
+if [ -n "$git_name" ] && [ -n "$git_email" ]; then
+  log_success "Git identity configurada: $git_name <$git_email>"
+else
+  log_warn "Git identity não configurada (user.name / user.email ausentes)."
+  echo ""
+  echo "    Digite seu nome completo (sem acentos ou caracteres especiais, ex: sem 'ç'):"
+  read -r full_name
+  echo "    Digite seu email (o mesmo da sua conta GitHub):"
+  read -r email
+  git config --global user.name "$full_name"
+  git config --global user.email "$email"
+  log_success "Git identity configurada: $full_name <$email>"
+fi
+
+echo ""
+
 if [ "$ALL_GOOD" = true ]; then
   echo -e "${GREEN} Tudo parece estar correto! Você pode rodar ./setup.sh agora.${NC}"
 else
