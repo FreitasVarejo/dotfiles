@@ -1,5 +1,6 @@
 [user]
-	name = freitaspinhe
+	name = Gabriel Freitas Pinheiro
+	email = gabrielpinheiro2003@gmail.com
 	# email is set per-machine via: git config --global user.email "you@example.com"
 
 [credential]
