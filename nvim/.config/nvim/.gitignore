@@ -5,3 +5,9 @@ nvim
 
 spell/
 lazy-lock.json
+
+# Build artifacts
+node_modules/
+package.json
+package-lock.json
+health_*.txt

@@ -59,8 +59,6 @@ if [ -d "$HOME/.dotnet/tools" ]; then
     export PATH=$PATH:$HOME/.dotnet/tools
 fi
 
-export PATH="$HOME/bin:$PATH"
-
 # opencode
 if [ -d "$HOME/.opencode/bin" ]; then
     export PATH=$HOME/.opencode/bin:$PATH
@@ -79,9 +77,6 @@ alias l='ls -CF'
 
 # --- MODERN DOTFILES CONFIG ---
 # Added by opencode on 2026-01-30
-
-# User Binaries
-export PATH="$HOME/.local/bin:$PATH"
 
 # Starship Prompt
 if command -v starship &> /dev/null; then

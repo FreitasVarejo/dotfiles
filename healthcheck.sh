@@ -27,7 +27,7 @@ check_cmd() {
     log_success "$cmd_name encontrado: $(command -v "$cmd_name")"
   else
     log_warn "$cmd_name não encontrado."
-    for i in "{alternatives[@]}"; do
+    for alt in "${alternatives[@]}"; do
       if command -v "$alt" &>/dev/null; then
         log_info "  -> Nota: O programa está instalado como '$alt' (considere criar um alias ou link simbólico)."
       fi
@@ -51,7 +51,7 @@ echo ""
 log_info "--- Ferramentas CLI ---"
 check_cmd "tmux" "sudo apt install tmux"
 check_cmd "rg" "sudo apt install ripgrep"
-check_cmd "fd" "sudo apt isntall fd-find (depois linkar fdfind -> fd)" "fd"
+check_cmd "fd" "sudo apt install fd-find (depois linkar fdfind -> fd)" "fdfind"
 check_cmd "bat" "sudo apt install bat (depois linkar batcat->bat)" "batcat"
 check_cmd "fzf" "git clone --depth 1 https://github.com/junegunn/fzf.git ~/.config/fzf && ~/.config/fzf/install"
 check_cmd "zoxide" "curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
@@ -67,7 +67,7 @@ if command -v nvim &>/dev/null; then
   MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
   MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
 
-  if [ "$MAJOR" -gt 0 ] || ([ "$MAJOR" -eq 0 ] && [ "$MINOR" -ge 9 ]); then
+  if [ "$MAJOR" -gt 0 ] || { [ "$MAJOR" -eq 0 ] && [ "$MINOR" -ge 9 ]; }; then
     log_success "Neovim encontrado ($NVIM_VER)"
   else
     log_warn "Neovim encontrado, mas versão antiga ($NVIM_VER). Recomendado v0.9+"
