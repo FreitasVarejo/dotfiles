@@ -31,14 +31,20 @@ dotfiles/
 ./healthcheck.sh                    # Check dependencies before installation
 ./setup.sh                          # Apply configs (creates symlinks via stow)
 
-# Linting (optional)
-shellcheck healthcheck.sh setup.sh  # Lint shell scripts
-nvim --headless "+q"                # Verify Neovim config loads
+# Linting (required before commits)
+shellcheck healthcheck.sh setup.sh  # Lint shell scripts (must pass)
+nvim --headless "+checkhealth" +qa  # Verify Neovim config loads
 tmux source-file ~/.config/tmux/tmux.conf  # Check tmux syntax
+
+# Docker validation (recommended for major changes)
+docker run --rm -v "$PWD/nvim/.config/nvim:/root/.config/nvim:ro" \
+  ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq neovim git && nvim --headless +qa"
 ```
 
 **No formal test suite** - this is a config repository. Validation is done via
 `healthcheck.sh` which checks for required dependencies.
+
+**Important:** All shell scripts MUST pass `shellcheck` before being committed.
 
 ## Code Style Guidelines
 
@@ -69,6 +75,7 @@ fi
 - Check command existence before use
 - Use `exit 1` for fatal errors with helpful messages
 - Comments: Portuguese or English both acceptable
+- **CRITICAL:** Loop over arrays with `for var in "${array[@]}"`, never `for i in "{array[@]}"`
 
 ### Neovim Lua (LazyVim)
 
