@@ -5,6 +5,10 @@ if [ -f /etc/bashrc ]; then
     . /etc/bashrc
 fi
 
+# Force UTF-8 locale (using C.UTF-8 for better compatibility)
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
 # User specific environment
 if ! [[ "$PATH" =~ "$HOME/.local/bin:$HOME/bin:" ]]; then
     PATH="$HOME/.local/bin:$HOME/bin:$PATH"
@@ -73,6 +77,7 @@ alias grep='grep --color=auto'
 alias ll='ls -alF'
 alias la='ls -A'
 alias l='ls -CF'
+alias tmux='tmux -u'  # Force UTF-8 in tmux
 
 
 # --- MODERN DOTFILES CONFIG ---
