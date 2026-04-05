@@ -29,3 +29,14 @@ vim.keymap.set("n", "<leader>uw", function()
     vim.opt_local.spell = true
   end
 end, { desc = "Toggle Writing Mode (Zen + Wrap + Spell)" })
+
+-- C++ Linting em tempo real com clang-tidy
+vim.api.nvim_create_autocmd({ "BufWritePost", "InsertLeave" }, {
+  pattern = { "*.cpp", "*.c", "*.cc", "*.cxx", "*.h", "*.hpp", "*.hxx" },
+  callback = function()
+    if pcall(require, "lint") then
+      require("lint").try_lint()
+    end
+  end,
+  desc = "Trigger linting for C++ files",
+})
