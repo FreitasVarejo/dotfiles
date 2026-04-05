@@ -30,10 +30,10 @@ return {
     optional = true,
     opts = {
       linters_by_ft = {
-        cpp = { "clang_tidy" },
-        c = { "clang_tidy" },
-        cc = { "clang_tidy" },
-        cxx = { "clang_tidy" },
+        cpp = { "clangtidy" },
+        c = { "clangtidy" },
+        cc = { "clangtidy" },
+        cxx = { "clangtidy" },
       },
     },
   },
