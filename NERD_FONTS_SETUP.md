@@ -173,21 +173,30 @@ fc-list | grep -i jetbrain
 
 **Causa:** Wide character rendering - alguns símbolos ocupam 2 colunas em vez de 1
 
-**Solução:**
-1. Tente a variante **Mono** da fonte:
-   - `JetBrainsMonoNL Nerd Font Mono`
-   - `JetBrainsMonoNL NFM`
+**Solução Automática:**
+```bash
+./fix-yazi-omega.sh
+```
 
-2. Verifique se ligaduras estão desabilitadas:
-   ```bash
-   dconf write /org/gnome/Ptyxis/Profiles/UUID/enable-ligatures "false"
-   ```
+**Solução Manual (em ordem de preferência):**
 
-3. Se ainda quebrar, use a fonte alternativa instalada:
+1. **Usar variante Mono (RECOMENDADO):**
    ```bash
-   fc-list | grep -i hack
+   dconf write /org/gnome/Ptyxis/Profiles/d698cc16d079f80d757fb42d68594767/monospace-font-name "'JetBrainsMonoNL Nerd Font Mono 12'"
+   dconf write /org/gnome/Ptyxis/Profiles/d698cc16d079f80d757fb42d68594767/enable-ligatures "false"
    ```
-   E alterne para Hack Nerd Font (mais compatível, menos ícones)
+   - Feche e reabra o terminal
+   - Teste no Yazi: `yazi`
+
+2. **Aumentar line spacing (workaround visual):**
+   - Preferences (⚙️) → Appearance
+   - Aumentar "Line Spacing" para 1.2 ou 1.5
+
+3. **Usar Hack Nerd Font (alternativa estável):**
+   ```bash
+   dconf write /org/gnome/Ptyxis/Profiles/d698cc16d079f80d757fb42d68594767/monospace-font-name "'Hack Nerd Font 12'"
+   ```
+   - Menos ícones mas renderização muito mais estável
 
 ### Font não aparece em Preferences
 

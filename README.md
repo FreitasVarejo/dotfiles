@@ -48,11 +48,17 @@ chmod +x setup-ptyxis-font.sh
 ./setup-ptyxis-font.sh
 ```
 
-Este script:
-- ✅ Verifica se as Nerd Fonts estão instaladas
-- ✅ Configura JetBrains Mono Nerd Font no GNOME Ptyxis
-- ✅ Desabilita ligaduras (que causam problemas de renderização)
-- ✅ Testa os símbolos do Nerd Font
+### Problemas com Yazi (Omega character ao selecionar)
+
+Se você vê um "Ω" (Omega) atrás dos símbolos quando ficam com cores invertidas no Yazi:
+
+```bash
+chmod +x fix-yazi-omega.sh diagnose-wide-chars.sh
+./diagnose-wide-chars.sh    # Diagnosticar
+./fix-yazi-omega.sh         # Aplicar fix automático
+```
+
+O fix muda para a variante **Mono** da fonte que tem melhor suporte a wide characters.
 
 ### Configuração Manual por Terminal
 
