@@ -1,50 +1,24 @@
 # AGENTS.md - Dotfiles Repository Guide
 
-This document provides guidelines for AI agents working in this dotfiles repository.
+Personal dotfiles using **GNU Stow** for symlink management. Each top-level directory
+(bash, git, nvim, tmux, conda) is a "stow package" that mirrors `$HOME` structure.
 
-## Repository Overview
-
-Personal dotfiles repository using **GNU Stow** for symlink management. Each
-top-level directory (bash, git, nvim, tmux, conda) is a "stow package" that
-mirrors the target structure from `$HOME`.
-
-### Directory Structure
-
-```
-dotfiles/
-├── bash/.bashrc                    # → ~/.bashrc
-├── conda/.condarc                  # → ~/.condarc
-├── git/.config/git/config          # → ~/.config/git/config
-├── nvim/.config/nvim/              # → ~/.config/nvim/
-│   ├── init.lua
-│   └── lua/{config,plugins}/
-├── tmux/.config/tmux/tmux.conf     # → ~/.config/tmux/tmux.conf
-├── healthcheck.sh                  # Dependency checker
-└── setup.sh                        # Installation script
-```
-
-## Commands
-
-### Setup & Validation
+## Quick Reference
 
 ```bash
-./healthcheck.sh                    # Check dependencies before installation
-./setup.sh                          # Apply configs (creates symlinks via stow)
+./healthcheck.sh                    # Check dependencies
+./setup.sh                          # Apply configs via stow (creates backups if needed)
 
-# Linting (required before commits)
-shellcheck healthcheck.sh setup.sh  # Lint shell scripts (must pass)
-nvim --headless "+checkhealth" +qa  # Verify Neovim config loads
-tmux source-file ~/.config/tmux/tmux.conf  # Check tmux syntax
-
-# Docker validation (recommended for major changes)
-docker run --rm -v "$PWD/nvim/.config/nvim:/root/.config/nvim:ro" \
-  ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq neovim git && nvim --headless +qa"
+# Pre-commit validation (REQUIRED before any commit)
+shellcheck healthcheck.sh setup.sh  # Must pass
+nvim --headless "+checkhealth" +qa  # Must load without errors
+tmux source-file ~/.config/tmux/tmux.conf  # Syntax check
 ```
 
-**No formal test suite** - this is a config repository. Validation is done via
-`healthcheck.sh` which checks for required dependencies.
+**No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
+at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
 
-**Important:** All shell scripts MUST pass `shellcheck` before being committed.
+
 
 ## Code Style Guidelines
 
@@ -76,6 +50,7 @@ fi
 - Use `exit 1` for fatal errors with helpful messages
 - Comments: Portuguese or English both acceptable
 - **CRITICAL:** Loop over arrays with `for var in "${array[@]}"`, never `for i in "{array[@]}"`
+
 
 ### Neovim Lua (LazyVim)
 
@@ -118,6 +93,8 @@ vim.api.nvim_create_autocmd("FileType", {
 - `lua/config/autocmds.lua` - Autocommands
 - `lua/config/lazy.lua` - Plugin manager bootstrap
 - `lua/plugins/*.lua` - Plugin specifications
+
+
 
 ### Tmux Configuration
 
