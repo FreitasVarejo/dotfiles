@@ -1,0 +1,103 @@
+# Catppuccin Mocha theme for Yazi
+# Sincronizado com o tema do Tmux para consistência visual
+
+[colors]
+# Catppuccin Mocha palette
+rosewater = "#f5e0dc"
+flamingo  = "#f2cdcd"
+pink      = "#f5c2e7"
+mauve     = "#cba6f7"
+red       = "#f38ba8"
+maroon    = "#eba0ac"
+peach     = "#fab387"
+yellow    = "#f9e2af"
+green     = "#a6e3a1"
+teal      = "#94e2d5"
+sky       = "#89dceb"
+sapphire  = "#74c7ec"
+blue      = "#89b4fa"
+lavender  = "#b4befe"
+text      = "#cdd6f4"
+subtext1  = "#bac2de"
+subtext0  = "#a6adc8"
+overlay2  = "#9399b2"
+overlay1  = "#7f849c"
+overlay0  = "#6c7086"
+surface2  = "#585b70"
+surface1  = "#45475a"
+surface0  = "#313244"
+base      = "#1e1e2e"
+mantle    = "#181825"
+crust     = "#11111b"
+
+[style]
+text = { fg = "text", bg = "base" }
+border = { fg = "surface2" }
+title = { fg = "pink", bg = "base", bold = true }
+hovered = { fg = "base", bg = "blue" }
+preview = { fg = "text", bg = "base" }
+ui = { fg = "text", bg = "base" }
+selected = { fg = "base", bg = "lavender", bold = true }
+found = { fg = "base", bg = "yellow" }
+status = { fg = "text", bg = "surface0" }
+bar_preview = { fg = "text", bg = "surface0" }
+bar_folder = { fg = "blue", bg = "surface0" }
+bar_padding = { fg = "text", bg = "surface0" }
+
+[filetype]
+# Diretórios
+"inode/directory" = { fg = "blue" }
+
+# Arquivos específicos - por extensão
+"*.rs" = { fg = "peach" }
+"*.py" = { fg = "blue" }
+"*.js" = { fg = "yellow" }
+"*.ts" = { fg = "blue" }
+"*.tsx" = { fg = "blue" }
+"*.jsx" = { fg = "yellow" }
+"*.sh" = { fg = "green" }
+"*.bash" = { fg = "green" }
+"*.zsh" = { fg = "green" }
+"*.fish" = { fg = "green" }
+"*.lua" = { fg = "blue" }
+"*.vim" = { fg = "green" }
+"*.json" = { fg = "yellow" }
+"*.yaml" = { fg = "yellow" }
+"*.yml" = { fg = "yellow" }
+"*.toml" = { fg = "yellow" }
+"*.xml" = { fg = "yellow" }
+"*.html" = { fg = "peach" }
+"*.css" = { fg = "sapphire" }
+"*.go" = { fg = "teal" }
+"*.c" = { fg = "lavender" }
+"*.h" = { fg = "lavender" }
+"*.cpp" = { fg = "lavender" }
+"*.hpp" = { fg = "lavender" }
+"*.java" = { fg = "red" }
+"*.gradle" = { fg = "text" }
+"*.md" = { fg = "teal" }
+"*.txt" = { fg = "text" }
+"*.pdf" = { fg = "red" }
+"*.zip" = { fg = "mauve" }
+"*.tar" = { fg = "mauve" }
+"*.gz" = { fg = "mauve" }
+"*.7z" = { fg = "mauve" }
+"*.rar" = { fg = "mauve" }
+".git" = { fg = "red" }
+".gitignore" = { fg = "red" }
+".env" = { fg = "pink" }
+".env.local" = { fg = "pink" }
+"Makefile" = { fg = "yellow" }
+"Dockerfile" = { fg = "sky" }
+"docker-compose.yml" = { fg = "sky" }
+"docker-compose.yaml" = { fg = "sky" }
+
+# Por tipo MIME
+"text/*" = { fg = "text" }
+"image/*" = { fg = "pink" }
+"video/*" = { fg = "maroon" }
+"audio/*" = { fg = "mauve" }
+"application/json" = { fg = "yellow" }
+"application/zip" = { fg = "mauve" }
+"application/gzip" = { fg = "mauve" }
+"application/x-tar" = { fg = "mauve" }

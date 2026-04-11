@@ -1,0 +1,13 @@
+# Node modules
+node_modules/
+
+# Dependencies
+package-lock.json
+yarn.lock
+bun.lock
+
+# Sensível data (não commitar API keys!)
+.env
+.env.local
+*.key
+*.secret
