@@ -1,0 +1,5 @@
+[manager]
+prepend_keymap = [
+  { on = [ "q" ], run = "quit --no-cwd-file", desc = "Sair sem mudar de diretório" },
+  { on = [ "Q" ], run = "quit", desc = "Sair e mudar para o diretório atual" }
+]

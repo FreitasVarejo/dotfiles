@@ -56,6 +56,7 @@ check_cmd "bat" "sudo apt install bat (depois linkar batcat->bat)" "batcat"
 check_cmd "fzf" "git clone --depth 1 https://github.com/junegunn/fzf.git ~/.config/fzf && ~/.config/fzf/install"
 check_cmd "zoxide" "curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
 check_cmd "starship" "curl -sS https://starship.rs/install.sh | sh"
+check_cmd "yazi" "curl -sS https://yazi-rs.github.io/install.sh | bash (ou via gerenciador de pacotes)"
 
 echo ""
 

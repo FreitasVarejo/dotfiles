@@ -111,6 +111,18 @@ if command -v lazygit &> /dev/null; then
     alias lg='lazygit'
 fi
 
+# Yazi: Wrapper para mudar de diretório ao sair
+if command -v yazi &> /dev/null; then
+    function y() {
+        local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+        yazi "$@" --cwd-file="$tmp"
+        if cwd="$(cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+            builtin cd -- "$cwd"
+        fi
+        rm -f -- "$tmp"
+    }
+fi
+
 # --- VIM MODE ---
 # Enable vi-style line editing
 set -o vi
