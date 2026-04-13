@@ -1,5 +1,4 @@
-# Catppuccin Mocha theme for Yazi
-# Sincronizado com o tema do Tmux para consistência visual
+# Catppuccin Mocha flavor for Yazi
 
 [colors]
 # Catppuccin Mocha palette
@@ -45,10 +44,7 @@ bar_folder = { fg = "blue", bg = "surface1", bold = true }
 bar_padding = { fg = "text", bg = "surface1" }
 
 [filetype]
-# Diretórios
 "inode/directory" = { fg = "blue" }
-
-# Arquivos específicos - por extensão
 "*.rs" = { fg = "peach" }
 "*.py" = { fg = "blue" }
 "*.js" = { fg = "yellow" }
@@ -92,7 +88,6 @@ bar_padding = { fg = "text", bg = "surface1" }
 "docker-compose.yml" = { fg = "sky" }
 "docker-compose.yaml" = { fg = "sky" }
 
-# Por tipo MIME
 "text/*" = { fg = "text" }
 "image/*" = { fg = "pink" }
 "video/*" = { fg = "maroon" }

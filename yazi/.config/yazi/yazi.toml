@@ -1,0 +1,26 @@
+[manager]
+ratio = [1, 4, 3]
+sort_by = "alphabetical"
+sort_sensitive = false
+sort_reverse = false
+linemode = "permissions"
+show_hidden = false
+scrolloff = 5
+
+[preview]
+tab_size = 2
+max_height = 30
+
+[opener]
+edit = [
+  { run = "nvim \"$@\"", desc = "Edit", block = true },
+]
+open = [
+  { run = "xdg-open \"$@\"", desc = "Open", block = false },
+]
+reveal = [
+  { run = "xdg-open \"$1\" --reveal", desc = "Reveal", block = false },
+]
+
+[flavor]
+use_flavor = true

@@ -1,0 +1,80 @@
+snippet rfc "React Functional Component with TypeScript"
+import React from 'react';
+
+interface ${1:ComponentName}Props {
+  $2
+}
+
+export const ${1:ComponentName}: React.FC<${1:ComponentName}Props> = ({ $3 }) => {
+  return (
+    <div>
+      $0
+    </div>
+  );
+};
+
+endsnippet
+
+snippet uh "useHook"
+const [$1, set${1/./\u$0/}] = React.useState($2);
+endsnippet
+
+snippet uef "useEffect"
+React.useEffect(() => {
+  $0
+}, []);
+endsnippet
+
+snippet uctx "useContext"
+const $1 = React.useContext($2Context);
+endsnippet
+
+snippet ucb "useCallback"
+const $1 = React.useCallback(($2) => {
+  $0
+}, [$3]);
+endsnippet
+
+snippet rcc "React Class Component"
+import React from 'react';
+
+interface ${1:ComponentName}Props {
+  $2
+}
+
+interface ${1:ComponentName}State {
+  $3
+}
+
+export class ${1:ComponentName} extends React.Component<${1:ComponentName}Props, ${1:ComponentName}State> {
+  constructor(props: ${1:ComponentName}Props) {
+    super(props);
+    this.state = {
+      $4
+    };
+  }
+
+  render() {
+    return (
+      <div>
+        $0
+      </div>
+    );
+  }
+}
+
+endsnippet
+
+snippet uref "useRef"
+const ${1:ref} = React.useRef<${2:HTMLDivElement}>(null);
+endsnippet
+
+snippet umemo "useMemo"
+const ${1:memoized} = React.useMemo(() => {
+  return $0;
+}, [$2]);
+endsnippet
+
+snippet ureducer "useReducer"
+const [${1:state}, ${2:dispatch}] = React.useReducer(${3:reducer}, ${4:initialState});
+endsnippet

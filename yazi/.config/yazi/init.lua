@@ -1,0 +1,2 @@
+-- Yazi init configuration
+-- Force theme loading

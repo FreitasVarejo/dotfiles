@@ -1,0 +1,240 @@
+snippet imp "import"
+import ${1:name} from '${2:module}'
+endsnippet
+
+snippet indef "import default"
+import ${1:name} from '${2:./module}'
+endsnippet
+
+snippet imn "import named"
+import { ${1:name} } from '${2:module}'
+endsnippet
+
+snippet imns "import named with alias"
+import { ${1:originalName} as ${2:aliasName} } from '${3:module}'
+endsnippet
+
+snippet exp "export default"
+export default ${1:name}
+endsnippet
+
+snippet exn "export named"
+export { ${1:name} }
+endsnippet
+
+snippet exf "export function"
+export function ${1:functionName}(${2:params}) {
+  $0
+}
+endsnippet
+
+snippet conl "console.log"
+console.log(${1:'message'}, $0)
+endsnippet
+
+snippet coner "console.error"
+console.error(${1:'error'}, $0)
+endsnippet
+
+snippet conw "console.warn"
+console.warn(${1:'warning'}, $0)
+endsnippet
+
+snippet conti "console.time"
+console.time('${1:label}')
+$0
+console.timeEnd('${1:label}')
+endsnippet
+
+snippet trycatch "try catch"
+try {
+  $0
+} catch (error) {
+  console.error('Error:', error)
+}
+endsnippet
+
+snippet asyncfn "async function"
+async function ${1:functionName}(${2:params}) {
+  try {
+    $0
+  } catch (error) {
+    console.error('Error:', error)
+  }
+}
+endsnippet
+
+snippet awaiter "async arrow function"
+const ${1:functionName} = async (${2:params}) => {
+  try {
+    $0
+  } catch (error) {
+    console.error('Error:', error)
+  }
+}
+endsnippet
+
+snippet arrowfn "arrow function"
+const ${1:functionName} = (${2:params}) => {
+  $0
+}
+endsnippet
+
+snippet arrow "shorter arrow function"
+(${1:params}) => ${0:expression}
+endsnippet
+
+snippet forof "for of loop"
+for (const ${1:item} of ${2:iterable}) {
+  $0
+}
+endsnippet
+
+snippet forin "for in loop"
+for (const ${1:key} in ${2:object}) {
+  $0
+}
+endsnippet
+
+snippet foreach "forEach"
+${1:array}.forEach((${2:item}) => {
+  $0
+})
+endsnippet
+
+snippet map "array map"
+${1:array}.map((${2:item}) => ${0:item})
+endsnippet
+
+snippet filter "array filter"
+${1:array}.filter((${2:item}) => ${0:condition})
+endsnippet
+
+snippet reduce "array reduce"
+${1:array}.reduce((${2:acc}, ${3:item}) => {
+  return acc
+}, ${4:initialValue})
+endsnippet
+
+snippet ifelse "if else"
+if (${1:condition}) {
+  $2
+} else {
+  $0
+}
+endsnippet
+
+snippet ternary "ternary operator"
+${1:condition} ? ${2:truthy} : ${0:falsy}
+endsnippet
+
+snippet switchcase "switch case"
+switch (${1:value}) {
+  case ${2:case1}:
+    $3
+    break
+  case ${4:case2}:
+    $5
+    break
+  default:
+    $0
+}
+endsnippet
+
+snippet typeof "typeof check"
+typeof ${1:value} === '${2:type}'
+endsnippet
+
+snippet instanceof "instanceof check"
+${1:value} instanceof ${2:Class}
+endsnippet
+
+snippet objdes "object destructuring"
+const { ${1:prop1}, ${2:prop2} } = ${0:object}
+endsnippet
+
+snippet arrdes "array destructuring"
+const [${1:item1}, ${2:item2}] = ${0:array}
+endsnippet
+
+snippet spread "spread operator"
+...${0:iterable}
+endsnippet
+
+snippet rest "rest parameters"
+...${1:args}
+endsnippet
+
+snippet promise "Promise"
+new Promise((${1:resolve}, ${2:reject}) => {
+  $0
+})
+endsnippet
+
+snippet thenCatch "Promise then catch"
+${1:promise}
+  .then((${2:result}) => {
+    $3
+  })
+  .catch((${4:error}) => {
+    console.error('Error:', ${4:error})
+  })
+endsnippet
+
+snippet classbase "class basic"
+class ${1:ClassName} {
+  constructor(${2:params}) {
+    $3
+  }
+
+  ${4:methodName}() {
+    $0
+  }
+}
+endsnippet
+
+snippet classext "class extends"
+class ${1:ClassName} extends ${2:ParentClass} {
+  constructor(${3:params}) {
+    super(${4:args})
+    $5
+  }
+
+  ${6:methodName}() {
+    $0
+  }
+}
+endsnippet
+
+snippet interfaces "TypeScript interface"
+interface ${1:InterfaceName} {
+  ${2:property}: ${3:type}
+  ${4:method}(${5:params}): ${0:returnType}
+}
+endsnippet
+
+snippet type "TypeScript type"
+type ${1:TypeName} = ${0:typeDefinition}
+endsnippet
+
+snippet generic "TypeScript generic function"
+function ${1:functionName}<${2:T}>(${3:param}: ${2:T}): ${0:T} {
+  $4
+}
+endsnippet
+
+snippet uniontype "TypeScript union type"
+type ${1:TypeName} = ${2:type1} | ${0:type2}
+endsnippet
+
+snippet intersection "TypeScript intersection"
+type ${1:TypeName} = ${2:Type1} & ${0:Type2}
+endsnippet
+
+snippet partial "TypeScript Partial"
+Partial<${0:Type}>
+endsnippet
+
+snippet record "TypeScript Record"
+Record<${1:Key}, ${0:Value}>
+endsnippet

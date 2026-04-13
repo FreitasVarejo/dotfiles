@@ -1,12 +1,12 @@
 return {
-  -- add dracula
-  { "Mofiqul/dracula.nvim" },
+  -- add catppuccin
+  { "catppuccin/nvim", name = "catppuccin" },
 
-  -- Configure LazyVim to load dracula
+  -- Configure LazyVim to load catppuccin
   {
     "LazyVim/LazyVim",
     opts = {
-      colorscheme = "dracula",
+      colorscheme = "catppuccin",
     },
   },
 }
