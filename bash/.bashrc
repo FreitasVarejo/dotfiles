@@ -128,3 +128,4 @@ fi
 set -o vi
 # Show vi mode in prompt (optional: shows [vi] when entering normal mode)
 export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}echo -ne '\033]0;${USER}@${HOSTNAME}\007'"
+alias luacheck="/home/freitaspinhe/.luarocks/bin/luacheck"
