@@ -1,6 +1,2 @@
-return {
-  {
-    "nvim-neo-tree/neo-tree.nvim",
-    enabled = false,
-  },
-}
+-- Disabled in lua/config/lazy.lua
+return {}
