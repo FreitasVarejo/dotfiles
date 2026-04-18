@@ -2,7 +2,7 @@
 -- Default keymaps that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/keymaps.lua
 -- Add any additional keymaps here
 
-local status_ok, discipline = pcall(require, "craftzdog.discipline")
+local status_ok, discipline = pcall(require, "config.discipline")
 if status_ok then
   discipline.cowboy()
 end
