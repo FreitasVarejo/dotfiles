@@ -20,7 +20,7 @@ require("lazy").setup({
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
     -- Disable neo-tree before importing extras
     { "nvim-neo-tree/neo-tree.nvim", enabled = false },
-    { "echasnovski/mini.files", enabled = false },
+    { "nvim-mini/mini.files", enabled = false },
     -- import LazyVim extras
     { import = "lazyvim.plugins.extras.lang.typescript" },
     { import = "lazyvim.plugins.extras.lang.tailwind" },
