@@ -13,3 +13,6 @@ vim.keymap.set({ "n", "v" }, "<leader>fm", "<cmd>FormatBuffer<cr>", { desc = "Fo
 
 -- ESLint fix
 vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })
+
+-- Disable neo-tree explorer keymap (using yazi instead)
+vim.keymap.del("n", "<leader>e")
