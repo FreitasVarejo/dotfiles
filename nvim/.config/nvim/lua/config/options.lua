@@ -5,9 +5,9 @@
 -- Habilita corretor para Inglês e Português
 vim.opt.spelllang = { "en", "pt_br" }
 
--- Numeração absoluta (começa no 1)
+-- Numeração relativa
 vim.opt.number = true
-vim.opt.relativenumber = false
+vim.opt.relativenumber = true
 
 -- Desativa o corretor ortográfico globalmente
 vim.opt.spell = false
