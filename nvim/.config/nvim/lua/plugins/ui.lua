@@ -10,6 +10,12 @@ return {
       }
     end,
   },
+  {
+    "LazyVim/LazyVim",
+    opts = {
+      colorscheme = "solarized-osaka",
+    },
+  },
 
   -- File Explorer (Yazi)
   {
