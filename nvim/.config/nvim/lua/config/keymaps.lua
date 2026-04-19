@@ -12,8 +12,15 @@ vim.keymap.set("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease window 
 vim.keymap.set("n", "<C-Left>", "<cmd>vertical resize -2<cr>", { desc = "Decrease window width" })
 vim.keymap.set("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increase window width" })
 
--- Prettier format
-vim.keymap.set({ "n", "v" }, "<leader>fm", "<cmd>FormatBuffer<cr>", { desc = "Format (Prettier)" })
+-- Prettier format (using built-in vim.lsp.buf.format with prettier)
+vim.keymap.set(
+  { "n", "v" },
+  "<leader>fm",
+  function()
+    vim.lsp.buf.format({ async = true })
+  end,
+  { desc = "Format (Prettier)" }
+)
 
 -- ESLint fix
 vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })

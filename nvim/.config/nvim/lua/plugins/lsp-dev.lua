@@ -45,6 +45,7 @@ return {
       local nls = require("null-ls")
       opts.sources = opts.sources or {}
       table.insert(opts.sources, nls.builtins.formatting.clang_format)
+      table.insert(opts.sources, nls.builtins.formatting.prettier)
     end,
   },
 }
