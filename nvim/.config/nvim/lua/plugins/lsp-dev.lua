@@ -21,6 +21,16 @@ return {
             offsetEncoding = "utf-16",
           },
         },
+        vtsls = {
+          settings = {
+            typescript = {
+              updateImportsOnFileMove = { enabled = "always" },
+            },
+            javascript = {
+              updateImportsOnFileMove = { enabled = "always" },
+            },
+          },
+        },
       },
     },
   },
