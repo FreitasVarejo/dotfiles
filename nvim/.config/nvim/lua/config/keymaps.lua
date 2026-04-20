@@ -6,6 +6,17 @@ local status_ok, discipline = pcall(require, "config.discipline")
 if status_ok then
   discipline.cowboy()
 end
+
+-- Disable neo-tree explorer keymaps (using yazi instead)
+vim.keymap.del("n", "<leader>e")
+vim.keymap.del("n", "<leader>E")
+
+-- Pair Coding Mode Toggle
+local pairmode = require("config.pairmode")
+vim.keymap.set("n", "<leader>ee", function()
+  pairmode.toggle()
+end, { desc = "Toggle Pair Coding Mode" })
+
 -- Resize splits with keyboard
 vim.keymap.set("n", "<C-Up>", "<cmd>resize +2<cr>", { desc = "Increase window height" })
 vim.keymap.set("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease window height" })
@@ -25,5 +36,3 @@ vim.keymap.set(
 -- ESLint fix
 vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })
 
--- Disable neo-tree explorer keymap (using yazi instead)
-vim.keymap.del("n", "<leader>e")

@@ -2,11 +2,18 @@ local M = {}
 
 function M.cowboy()
   local ok = true
+  local pairmode = require("config.pairmode")
+
   for _, key in ipairs({ "h", "j", "k", "l", "+", "-" }) do
     local count = 0
     local timer = assert(vim.uv.new_timer())
     local map = key
     vim.keymap.set("n", key, function()
+      -- Se pair mode está ativado, não ativa o discipline
+      if pairmode.enabled then
+        return map
+      end
+
       if vim.v.count > 0 then
         count = 0
       end
