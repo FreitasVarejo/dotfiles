@@ -14,33 +14,25 @@ return {
     keys = {
       {
         "<leader>re",
-        function()
-          require("refactoring").refactor("Extract Function")
-        end,
+        ":Refactor extract<CR>",
         mode = "x",
         desc = "Extrair Função",
       },
       {
         "<leader>rf",
-        function()
-          require("refactoring").refactor("Extract Function To File")
-        end,
+        ":Refactor extract_to_file<CR>",
         mode = "x",
         desc = "Extrair Função para Ficheiro",
       },
       {
         "<leader>rv",
-        function()
-          require("refactoring").refactor("Extract Variable")
-        end,
+        ":Refactor extract_var<CR>",
         mode = "x",
         desc = "Extrair Variável",
       },
       {
         "<leader>ri",
-        function()
-          require("refactoring").refactor("Inline Variable")
-        end,
+        ":Refactor inline_var<CR>",
         mode = { "n", "x" },
         desc = "Inline Variável",
       },

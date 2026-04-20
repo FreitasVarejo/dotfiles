@@ -4,3 +4,5 @@ tmux/.config/tmux/plugins/
 raycast
 fzf
 history.txt
+.mcp-ssh.lock
+mcp-ssh.lock
