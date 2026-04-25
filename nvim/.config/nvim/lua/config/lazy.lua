@@ -59,3 +59,6 @@ require("lazy").setup({
     },
   },
 })
+
+-- Carregar configs adicionais
+require("config.barrel-exports")

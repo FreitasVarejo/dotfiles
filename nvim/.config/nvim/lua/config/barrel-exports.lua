@@ -47,5 +47,3 @@ end
 
 vim.api.nvim_create_user_command("GenerateExports", generate_barrel_exports, {})
 vim.keymap.set("n", "<leader>cx", generate_barrel_exports, { desc = "Generate Barrel Exports (export *)" })
-
-return {}
