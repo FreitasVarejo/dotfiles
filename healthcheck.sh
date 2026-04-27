@@ -92,6 +92,12 @@ fi
 
 echo ""
 
+log_info "--- .NET Development ---"
+check_cmd "dotnet" "curl -L https://dot.net/v1/dotnet-install.sh | bash (or: sudo apt install dotnet-sdk-X.Y)"
+check_cmd "netcoredbg" "dotnet tool install --global NetCoreDbg"
+
+echo ""
+
 log_info "--- Git Identity ---"
 git_name=$(git config --global user.name 2>/dev/null)
 git_email=$(git config --global user.email 2>/dev/null)
