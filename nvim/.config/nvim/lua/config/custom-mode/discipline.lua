@@ -2,7 +2,7 @@ local M = {}
 
 function M.cowboy()
   local ok = true
-  local pairmode = require("config.pairmode")
+  local pairmode = require("config.custom-mode.pairmode")
 
   for _, key in ipairs({ "h", "j", "k", "l", "+", "-" }) do
     local count = 0
