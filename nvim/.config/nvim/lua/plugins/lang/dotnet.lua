@@ -1,9 +1,17 @@
 return {
-  -- TreeSitter support for C#
+  -- TreeSitter support for C#, Razor, and related languages
   {
     "nvim-treesitter/nvim-treesitter",
     opts = {
-      ensure_installed = { "c_sharp" },
+      ensure_installed = {
+        "c_sharp",     -- C# language
+        "html",        -- HTML (for Razor)
+        "css",         -- CSS (for Blazor/Razor)
+        "javascript",  -- JavaScript (for ASP.NET Core)
+        "json",        -- JSON (appsettings.json)
+        "yaml",        -- YAML (docker-compose, CI/CD)
+        "xml",         -- XML (csproj files)
+      },
     },
   },
 
@@ -24,7 +32,8 @@ return {
     "neovim/nvim-lspconfig",
     opts = {
       servers = {
-        roslyn_ls = {
+        roslyn = {
+          filetypes = { "cs", "csproj", "cshtml" }, -- C#, project files, Razor
           settings = {
             -- Inlay hints configuration
             ["csharp|inlay_hints"] = {
@@ -46,10 +55,25 @@ return {
               dotnet_enable_references_code_lens = true,
               dotnet_enable_tests_code_lens = true,
             },
+            -- Enable semantic highlighting
+            ["csharp|background_analysis"] = {
+              dotnet_analyzer_diagnostics_scope = "fullSolution",
+              dotnet_compiler_diagnostics_scope = "fullSolution",
+            },
+            -- ASP.NET Core specific
+            ["razor"] = {
+              enable = true,
+            },
           },
         },
       },
     },
+  },
+
+  -- EditorConfig support (respects .editorconfig files)
+  {
+    "gpanders/editorconfig.nvim",
+    event = "BufReadPre",
   },
 
   -- Debug Adapter Protocol (DAP) for .NET with netcoredbg
@@ -102,5 +126,37 @@ return {
         },
       },
     },
+  },
+
+  -- Formatting with conform.nvim - format on save for C#
+  {
+    "stevearc/conform.nvim",
+    optional = true,
+    opts = {
+      formatters_by_ft = {
+        cs = { "csharpier" },
+        cshtml = { "csharpier" }, -- Razor files
+      },
+      format_on_save = {
+        timeout_ms = 3000,
+        lsp_fallback = true,
+      },
+    },
+  },
+
+  -- ASP.NET Core snippets
+  {
+    "rafamadriz/friendly-snippets",
+    opts = function()
+      require("luasnip.loaders.from_vscode").lazy_load({
+        paths = { vim.fn.stdpath("data") .. "/lazy/friendly-snippets" },
+      })
+    end,
+  },
+
+  -- File type detection for Razor
+  {
+    "jlcrochet/vim-razor",
+    ft = { "cshtml", "razor" },
   },
 }

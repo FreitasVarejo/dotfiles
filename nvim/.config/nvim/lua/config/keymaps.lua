@@ -29,3 +29,23 @@ vim.keymap.set({ "n", "v" }, "<leader>fm", function() end, { desc = "Format (Pre
 
 -- ESLint fix
 vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })
+
+-- C# / .NET specific keymaps
+vim.keymap.set("n", "<leader>cs", function()
+  vim.cmd("!dotnet build")
+end, { desc = "C# Build Solution" })
+
+vim.keymap.set("n", "<leader>cr", function()
+  vim.cmd("!dotnet run")
+end, { desc = "C# Run Project" })
+
+vim.keymap.set("n", "<leader>ct", function()
+  vim.cmd("!dotnet test")
+end, { desc = "C# Run Tests" })
+
+vim.keymap.set("n", "<leader>cc", function()
+  vim.cmd("!dotnet clean")
+end, { desc = "C# Clean Solution" })
+
+-- Show LSP status (Neovim 0.12+) - replacement for deprecated :LspInfo
+vim.keymap.set("n", "<leader>ls", "<cmd>LspStatus<cr>", { desc = "Show LSP Status" })
