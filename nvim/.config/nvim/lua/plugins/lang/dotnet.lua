@@ -15,24 +15,13 @@ return {
     },
   },
 
-  -- Mason packages for .NET development
-  {
-    "mason-org/mason.nvim",
-    opts = {
-      ensure_installed = {
-        "roslyn",     -- Roslyn LSP (C# language server)
-        "csharpier",  -- C# code formatter
-        "netcoredbg", -- .NET debugger
-      },
-    },
-  },
-
-  -- LSP Configuration for Roslyn
+  -- LSP Configuration for Roslyn (Mason packages configured in lua/plugins/mason.lua)
   {
     "neovim/nvim-lspconfig",
     opts = {
       servers = {
         roslyn = {
+          cmd = { vim.fn.exepath("roslyn") }, -- Path to Roslyn executable from Mason
           filetypes = { "cs", "csproj", "cshtml" }, -- C#, project files, Razor
           settings = {
             -- Inlay hints configuration
