@@ -25,12 +25,15 @@ return {
       "csharpier",       -- C# code formatter
       "netcoredbg",      -- .NET debugger
 
-      -- Linting
-      "eslint-lsp",      -- ESLint language server
-      "eslint_d",        -- Fast eslint runner
+       -- Linting
+       "eslint-lsp",      -- ESLint language server
+       "eslint_d",        -- Fast eslint runner
+       "shellcheck",      -- Shell script linter
+       "shfmt",           -- Shell script formatter
 
-      -- Other
-      "stylua",          -- Lua formatter
+       -- Other
+       "stylua",          -- Lua formatter
+       "bash-language-server",  -- Bash language server
     },
   },
 }
