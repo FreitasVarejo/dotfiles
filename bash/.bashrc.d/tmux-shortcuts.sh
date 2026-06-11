@@ -3,12 +3,19 @@
 # Usage: t [command] [args...]
 # Examples:
 #   t                    - list sessions
+#   t ls / t l           - list sessions (alias)
 #   t a session-name     - attach to session
 #   t n session-name     - create new session
 #   t k session-name     - kill session
 #   t kall               - kill all sessions
 #   t rename old new     - rename session
 #   t send cmd           - send command to active pane
+#   t sp                 - split window horizontally
+#   t vs                 - split window vertically
+#   t sn window-name     - new window
+#   t c                  - detach from session
+#   t p                  - switch to previous session
+#   t j                  - switch to next session
 
 t() {
   local cmd="${1:-}"
@@ -57,7 +64,7 @@ t() {
       ;;
     
     # List sessions (alias for default behavior)
-    ls|list)
+    ls|l|list)
       tmux -u list-sessions 2>/dev/null || echo "No tmux sessions running"
       ;;
     
@@ -78,6 +85,42 @@ t() {
       tmux -u rename-session -t "$old_name" "$new_name" && echo "Session renamed: $old_name → $new_name"
       ;;
     
+    # Split window horizontally
+    sp|split)
+      tmux -u split-window -h
+      ;;
+    
+    # Split window vertically
+    vs|vsplit)
+      tmux -u split-window -v
+      ;;
+    
+    # New window in current session
+    sn|new-window)
+      local window_name="${2:-}"
+      if [[ -n "$window_name" ]]; then
+        tmux -u new-window -n "$window_name"
+      else
+        tmux -u new-window
+      fi
+      ;;
+    
+    # Detach from session
+    c|detach)
+      tmux -u detach-client
+      echo "Detached from session"
+      ;;
+    
+    # Previous session
+    p|prev)
+      tmux -u switch-client -p
+      ;;
+    
+    # Next session
+    j|next)
+      tmux -u switch-client -n
+      ;;
+    
     # Send command to active pane
     send)
       shift  # Remove 'send'
@@ -91,25 +134,41 @@ Tmux shortcuts - Quick reference
 
 Usage: t [command] [args...]
 
-Commands:
+SESSÕES:
   (no args)         List all sessions
+  ls / l            List all sessions
   a <session>       Attach to session
   n <session>       Create new session
   k <session>       Kill session
   kall              Kill all sessions
-  ls                List sessions
-  lw [session]      List windows in session
   rename <old> <new> Rename session
+  p                 Switch to previous session
+  j                 Switch to next session
+  c                 Detach from current session
+
+JANELAS:
+  lw [session]      List windows in session
+  sn [name]         Create new window (with optional name)
+  sp                Split window horizontally
+  vs                Split window vertically
+
+OUTROS:
   send <cmd>        Send command to active pane
   h, help           Show this help
 
-Examples:
+EXEMPLOS:
   t                       # List sessions
+  t ls / t l              # List sessions
   t a dev                 # Attach to 'dev' session
   t n my-project          # Create new session 'my-project'
   t k old-session         # Kill 'old-session'
   t rename dev development # Rename 'dev' to 'development'
-  t lw dev                # List windows in 'dev' session
+  t sp                    # Split window horizontally
+  t vs                    # Split window vertically
+  t sn work               # Create new window named 'work'
+  t p                     # Go to previous session
+  t j                     # Go to next session
+  t c                     # Detach from current session
 EOF
       ;;
     
