@@ -11,3 +11,6 @@ vim.opt.relativenumber = true
 
 -- Desativa o corretor ortográfico globalmente
 vim.opt.spell = false
+
+-- Mapeia blocos de código ```shell para usar o parser de bash
+vim.treesitter.language.register("bash", "shell")
