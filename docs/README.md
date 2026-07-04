@@ -106,4 +106,4 @@ Se os símbolos não renderizam corretamente:
 4. **Tente a variante Mono:** Se JetBrainsMono não funcionar, use `JetBrainsMono Nerd Font Mono`
 5. **Desabilite ligaduras** no seu terminal (se tiver opção)
 
-Para mais detalhes, veja [NERD_FONTS_FEDORA41.md](NERD_FONTS_FEDORA41.md).
+Para mais detalhes, consulte a documentação em `docs/`.
