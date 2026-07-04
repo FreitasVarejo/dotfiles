@@ -3,7 +3,7 @@ test.sh
 .luarc.json
 nvim
 
-spell/
+spell/*.spl
 lazy-lock.json
 
 # Build artifacts

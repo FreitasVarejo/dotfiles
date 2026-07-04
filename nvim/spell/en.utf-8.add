@@ -1,0 +1,17 @@
+# English custom dictionary for Neovim spell check
+# Add words with :zg in normal mode, or edit this file manually
+# Lines starting with # are comments
+# Words starting with / are compounds
+
+# Tech/programming terms
+Neovim
+Lua
+LazyVim
+Mason
+Treesitter
+LSP
+Markdown
+TypeScript
+JavaScript
+dotnet
+Roslyn

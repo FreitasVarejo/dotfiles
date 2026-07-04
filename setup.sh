@@ -89,7 +89,7 @@ backup_xdg_package() {
 log_info "Starting dotfiles deployment..."
 
 for pkg_name in "${!STOW_TARGETS[@]}"; do
-    local local_target="${STOW_TARGETS[$pkg_name]}"
+    local_target="${STOW_TARGETS[$pkg_name]}"
 
     log_info "Processing package: $pkg_name -> $local_target"
 

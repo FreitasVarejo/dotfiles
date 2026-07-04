@@ -128,14 +128,15 @@ fi
 
 echo ""
 
-log_info "--- .NET / Roslyn ---"
+log_info "--- .NET SDK ---"
 if [ -d "$HOME/.dotnet" ]; then
     log_success ".NET SDK encontrado em ~/.dotnet"
-    if command -v roslyn &>/dev/null || command -v roslyn-language-server &>/dev/null; then
-        log_success "Roslyn LSP disponível"
+    if command -v csharp-ls &>/dev/null; then
+        log_success "C# Language Server disponível"
     else
-        log_warn "Roslyn LSP não encontrado (necessário para C# no Neovim)."
-        echo "    -> Execute: dotnet tool install --global Microsoft.CodeAnalysis.Roslyn"
+        log_warn "C# Language Server não encontrado (necessário para C# no Neovim)."
+        echo "    -> Execute: dotnet tool install --global csharp-ls"
+        echo "    -> Ou use Roslyn padrão do Mason (requer custom registry)"
     fi
 else
     log_warn ".NET SDK não encontrado."
@@ -150,8 +151,8 @@ if command -v tree-sitter &>/dev/null; then
     log_success "Tree-sitter CLI encontrado: $TS_VER"
 else
     log_warn "tree-sitter CLI não encontrado."
-    echo "    -> Instalar: cargo install tree-sitter-cli"
-    echo "    -> Ou baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
+    echo "    -> Baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
+    echo "    -> Ou execute: cargo install tree-sitter-cli"
 fi
 
 echo ""

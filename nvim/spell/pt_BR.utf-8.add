@@ -1,0 +1,16 @@
+# Dicionário personalizado em Português do Brasil para Neovim spell check
+# Adicione palavras com :zg no modo normal, ou edite este arquivo manualmente
+# Linhas começando com # são comentários
+# Palavras começando com / são compostas
+
+# Termos técnicos/programação
+Neovim
+Lua
+LazyVim
+Mason
+Treesitter
+LSP
+TypeScript
+JavaScript
+dotnet
+Roslyn
