@@ -21,8 +21,8 @@ return {
       "prettier",        -- Code formatter
 
       -- C# / .NET
-      "roslyn",          -- Roslyn C# language server
-      "csharpier",       -- C# code formatter
+      -- tree-sitter-cli: install via cargo or ~/.local/bin, not Mason prebuilt
+      "roslyn",          -- Roslyn C# language server (also handles formatting)
       "netcoredbg",      -- .NET debugger
 
        -- Linting

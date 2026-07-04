@@ -62,7 +62,11 @@ return {
 
   {
     "folke/snacks.nvim",
+    lazy = false,
+    priority = 1000,
     opts = {
+      input = { enabled = true },
+      image = { enabled = false },
       dashboard = {
         preset = {
           -- Arte ASCII profissional para "BTG PACTUAL"

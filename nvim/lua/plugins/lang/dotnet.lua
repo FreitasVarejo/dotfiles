@@ -1,90 +1,80 @@
 return {
-  -- TreeSitter support for C#, Razor, and related languages
   {
     "nvim-treesitter/nvim-treesitter",
     opts = {
       ensure_installed = {
-        "c_sharp",     -- C# language
-        "html",        -- HTML (for Razor)
-        "css",         -- CSS (for Blazor/Razor)
-        "javascript",  -- JavaScript (for ASP.NET Core)
-        "json",        -- JSON (appsettings.json)
-        "yaml",        -- YAML (docker-compose, CI/CD)
-        "xml",         -- XML (csproj files)
+        "c_sharp",
+        "html",
+        "css",
+        "javascript",
+        "json",
+        "yaml",
+        "xml",
       },
     },
   },
 
-  -- LSP Configuration for Roslyn (Mason packages configured in lua/plugins/mason.lua)
   {
     "neovim/nvim-lspconfig",
-    opts = {
-      servers = {
-        roslyn = {
-          cmd = { vim.fn.exepath("roslyn") }, -- Path to Roslyn executable from Mason
-          filetypes = { "cs", "csproj", "cshtml" }, -- C#, project files, Razor
-          settings = {
-            -- Inlay hints configuration
-            ["csharp|inlay_hints"] = {
-              csharp_enable_inlay_hints_for_implicit_object_creation = true,
-              csharp_enable_inlay_hints_for_implicit_variable_types = true,
-              csharp_enable_inlay_hints_for_lambda_parameter_types = true,
-              csharp_enable_inlay_hints_for_types = true,
-              dotnet_enable_inlay_hints_for_indexer_parameters = true,
-              dotnet_enable_inlay_hints_for_literal_parameters = true,
-              dotnet_enable_inlay_hints_for_object_creation_parameters = true,
-              dotnet_enable_inlay_hints_for_other_parameters = true,
-              dotnet_enable_inlay_hints_for_parameters = true,
-              dotnet_suppress_inlay_hints_for_parameters_that_differ_only_by_suffix = true,
-              dotnet_suppress_inlay_hints_for_parameters_that_match_argument_name = true,
-              dotnet_suppress_inlay_hints_for_parameters_that_match_method_intent = true,
-            },
-            -- Code lens configuration
-            ["csharp|code_lens"] = {
-              dotnet_enable_references_code_lens = true,
-              dotnet_enable_tests_code_lens = true,
-            },
-            -- Enable semantic highlighting
-            ["csharp|background_analysis"] = {
-              dotnet_analyzer_diagnostics_scope = "fullSolution",
-              dotnet_compiler_diagnostics_scope = "fullSolution",
-            },
-            -- ASP.NET Core specific
-            ["razor"] = {
-              enable = true,
-            },
+    opts = function(_, opts)
+      opts.servers.roslyn_ls = {
+        mason = false,
+        cmd = (function()
+          local cmd = vim.fn.exepath("roslyn")
+          if cmd == "" then
+            cmd = vim.fn.exepath("roslyn-language-server")
+          end
+          return { cmd, "--stdio" }
+        end)(),
+        filetypes = { "cs" },
+        settings = {
+          ["csharp|inlay_hints"] = {
+            csharp_enable_inlay_hints_for_implicit_object_creation = true,
+            csharp_enable_inlay_hints_for_implicit_variable_types = true,
+            csharp_enable_inlay_hints_for_lambda_parameter_types = true,
+            csharp_enable_inlay_hints_for_types = true,
+            dotnet_enable_inlay_hints_for_indexer_parameters = true,
+            dotnet_enable_inlay_hints_for_literal_parameters = true,
+            dotnet_enable_inlay_hints_for_object_creation_parameters = true,
+            dotnet_enable_inlay_hints_for_other_parameters = true,
+            dotnet_enable_inlay_hints_for_parameters = true,
+            dotnet_suppress_inlay_hints_for_parameters_that_differ_only_by_suffix = true,
+            dotnet_suppress_inlay_hints_for_parameters_that_match_argument_name = true,
+            dotnet_suppress_inlay_hints_for_parameters_that_match_method_intent = true,
+          },
+          ["csharp|code_lens"] = {
+            dotnet_enable_references_code_lens = true,
+            dotnet_enable_tests_code_lens = true,
+          },
+          ["csharp|background_analysis"] = {
+            dotnet_analyzer_diagnostics_scope = "fullSolution",
+            dotnet_compiler_diagnostics_scope = "fullSolution",
           },
         },
-      },
-    },
+        lsp_format = "prefer",
+      }
+      return opts
+    end,
   },
 
-  -- EditorConfig support (respects .editorconfig files)
   {
     "gpanders/editorconfig.nvim",
     event = "BufReadPre",
   },
 
-  -- Debug Adapter Protocol (DAP) for .NET with netcoredbg
   {
     "mfussenegger/nvim-dap",
     optional = true,
     opts = function()
       local dap = require("dap")
-
-      -- Configure netcoredbg adapter
       if not dap.adapters["netcoredbg"] then
         dap.adapters["netcoredbg"] = {
           type = "executable",
           command = vim.fn.exepath("netcoredbg"),
           args = { "--interpreter=vscode" },
-          options = {
-            detached = false,
-          },
+          options = { detached = false },
         }
       end
-
-      -- Configure debug configurations for C#
       if not dap.configurations["cs"] then
         dap.configurations["cs"] = {
           {
@@ -101,39 +91,19 @@ return {
     end,
   },
 
-  -- Testing support with neotest and neotest-vstest
   {
     "nvim-neotest/neotest",
     optional = true,
     dependencies = {
-      "Issafalcon/neotest-vstest",
+      "Nsidorenco/neotest-vstest",
     },
     opts = {
       adapters = {
-        ["neotest-vstest"] = {
-          -- Configuration for neotest-vstest
-        },
+        ["neotest-vstest"] = {},
       },
     },
   },
 
-  -- Formatting with conform.nvim - format on save for C#
-  {
-    "stevearc/conform.nvim",
-    optional = true,
-    opts = {
-      formatters_by_ft = {
-        cs = { "csharpier" },
-        cshtml = { "csharpier" }, -- Razor files
-      },
-      format_on_save = {
-        timeout_ms = 3000,
-        lsp_fallback = true,
-      },
-    },
-  },
-
-  -- ASP.NET Core snippets
   {
     "rafamadriz/friendly-snippets",
     opts = function()
@@ -143,7 +113,6 @@ return {
     end,
   },
 
-  -- File type detection for Razor
   {
     "jlcrochet/vim-razor",
     ft = { "cshtml", "razor" },
