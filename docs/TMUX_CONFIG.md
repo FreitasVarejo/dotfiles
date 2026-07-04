@@ -3,12 +3,12 @@
 ## Arquivos de Configuração
 
 ```
-.config/tmux/
+tmux/
 ├── tmux.conf          # 🎯 Configuração principal
 ├── colors.conf        # 🎨 Paleta de cores centralizada
 ├── theme.conf         # 🎭 Tema e estilos globais
 ├── statusline.conf    # 📊 Barra de status
-├── utility.conf       # ⚙️  Bindings utilitários
+├── bindings.conf      # ⌨️  Bindings de navegação e edição
 └── plugins/
     └── tpm/           # Tmux Plugin Manager
 ```
@@ -44,10 +44,8 @@ Configura a barra de status com cores Solarized. Inclui:
 
 **Usa cores hex diretas com comentários explicativos.**
 
-### `utility.conf`
-Bindings e utilitários:
-- `<prefix>-g`: Abre lazygit em popup (80% tamanho)
-- `<prefix>-y`: Abre Claude Code em sessão separada
+### `bindings.conf`
+Bindings de navegação, edição de texto e gerenciamento de janelas/painéis.
 
 ### `tmux.conf`
 Configuração principal que:

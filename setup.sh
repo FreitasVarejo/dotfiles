@@ -1,117 +1,118 @@
 #!/bin/bash
 
-# --- Configuração ---
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 BACKUP_DIR="$HOME/dotfiles_backup_$(date +%Y%m%d_%H%M%S)"
 HAS_BACKUP=false
 
-# Cria diretório de backup apenas se necessário depois
-# (mas precisamos do path agora)
-
-# Cores
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 log_info() { echo -e "${BLUE}[INFO] $1${NC}"; }
 log_success() { echo -e "${GREEN}[OK] $1${NC}"; }
 log_warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
+log_error() { echo -e "${RED}[ERROR] $1${NC}"; }
 
-# --- Função de Backup ---
-backup_file() {
-  local rel_path="$1"
-  local target="$HOME/$rel_path"
+declare -A STOW_TARGETS
+STOW_TARGETS=(
+    [bash]="$HOME"
+    [conda]="$HOME"
+    [tmux]="$HOME/.config/tmux"
+    [nvim]="$HOME/.config/nvim"
+    [git]="$HOME/.config/git"
+    [yazi]="$HOME/.config/yazi"
+    [opencode]="$HOME/.config/opencode"
+)
 
-  # Se o arquivo/pasta alvo existe ou é um link quebrado
-  if [ -e "$target" ] || [ -h "$target" ]; then
-
-    # Verifica se já é um symlink apontando para ONDE DEVERIA (nosso dotfiles)
-    # Isso evita backup desnecessário se rodar o script 2x
-    local current_link_target
-    if [ -h "$target" ]; then
-      current_link_target=$(readlink -f "$target")
-      local my_repo_path
-      my_repo_path=$(pwd)
-
-      if [[ "$current_link_target" == "$my_repo_path"* ]]; then
-        # Já está linkado corretamente para este repo
-        return
-      fi
-    fi
-
-    # Se chegamos aqui, existe conflito. Backup!
-    if [ "$HAS_BACKUP" = false ]; then
-      mkdir -p "$BACKUP_DIR"
-      HAS_BACKUP=true
-    fi
-
-    log_warn "Conflito detectado em ~/$rel_path. Movendo para backup..."
-
-    # Cria a estrutura de pastas no backup (ex: .config/)
-    mkdir -p "$BACKUP_DIR/$(dirname "$rel_path")"
-    mv "$target" "$BACKUP_DIR/$rel_path"
-  fi
-}
-
-# --- Check Inicial ---
 if ! command -v stow &>/dev/null; then
-  echo "Erro: Stow não está instalado."
-  exit 1
+    log_error "Stow is not installed."
+    exit 1
 fi
 
-log_info "Iniciando configuração dos dotfiles..."
+backup_path() {
+    local target="$1"
+    local label="${2:-backup}"
 
-# --- Loop pelos pacotes ---
-for package in */; do
-  pkg_name="${package%/}"
+    if [[ -e "$target" || -h "$target" ]]; then
+        if [[ -h "$target" ]]; then
+            local current_target
+            current_target=$(readlink -f "$target")
+            if [[ "$current_target" == "$SCRIPT_DIR"* ]]; then
+                return
+            fi
+        fi
 
-  # Ignora arquivos/pastas que não são pacotes stow
-  [[ "$pkg_name" == "healthcheck.sh" ]] && continue
-  [[ "$pkg_name" == "install_tools.sh" ]] && continue
-  [[ "$pkg_name" == "README.md" ]] && continue
-  [[ "$pkg_name" == "setup.sh" ]] && continue
-  [[ "$pkg_name" == "nvim-linux64.tar.gz" ]] && continue
-  [[ "$pkg_name" == "."* ]] && continue # Ignora .git, etc
-  [[ "$pkg_name" == "_"* ]] && continue
+        if [[ "$HAS_BACKUP" == false ]]; then
+            mkdir -p "$BACKUP_DIR"
+            HAS_BACKUP=true
+        fi
 
-  log_info "Processando pacote: $pkg_name"
+        log_warn "Conflict detected at $label. Moving to backup..."
+        mkdir -p "$BACKUP_DIR/$(dirname "$target" | sed "s|^$HOME/||")"
+        mv "$target" "$BACKUP_DIR/${target#$HOME/}"
+    fi
+}
 
-  # 1. Estratégia para pastas .config/APP (Link da pasta inteira é preferível)
-  if [ -d "$pkg_name/.config" ]; then
-    for config_app in "$pkg_name/.config"/*; do
-      if [ -e "$config_app" ]; then
-        app_name=$(basename "$config_app")
-        backup_file ".config/$app_name"
-      fi
+backup_home_package() {
+    local pkg_name="$1"
+    local pkg_path="$SCRIPT_DIR/$pkg_name"
+
+    for item in "$pkg_path"/* "$pkg_path"/.*; do
+        [[ "$(basename "$item")" == "." ]] && continue
+        [[ "$(basename "$item")" == ".." ]] && continue
+        [[ "$(basename "$item")" == "*" ]] && continue
+
+        [[ -e "$item" ]] || continue
+        local rel_path
+        rel_path=$(basename "$item")
+        backup_path "$HOME/$rel_path" "~$rel_path"
     done
-  fi
+}
 
-  # 2. Estratégia para arquivos na raiz do pacote (ex: .bashrc, .zshrc)
-  # Itera ocultos e não ocultos
-  for item in "$pkg_name"/* "$pkg_name"/.*; do
-    base_name=$(basename "$item")
+backup_xdg_package() {
+    local pkg_name="$1"
+    local local_target="${STOW_TARGETS[$pkg_name]}"
+    local pkg_path="$SCRIPT_DIR/$pkg_name"
 
-    # Filtros de exclusão
-    [[ "$base_name" == "." ]] && continue
-    [[ "$base_name" == ".." ]] && continue
-    [[ "$base_name" == ".git" ]] && continue
-    [[ "$base_name" == ".config" ]] && continue # Já tratado acima
-    [[ "$base_name" == "*" ]] && continue       # Glob vazio
+    while IFS= read -r -d '' file; do
+        local rel_path="${file#$pkg_path/}"
+        backup_path "$local_target/$rel_path" "$local_target/$rel_path"
+    done < <(find "$pkg_path" -type f -print0 2>/dev/null | grep -vzE '\.md$')
+}
 
-    [ -e "$item" ] || continue # Garante que arquivo existe
+log_info "Starting dotfiles deployment..."
 
-    backup_file "$base_name"
-  done
+for pkg_name in "${!STOW_TARGETS[@]}"; do
+    local local_target="${STOW_TARGETS[$pkg_name]}"
 
-  # Executa o Stow
-  # -v: verbose, -R: restow (prune old links + stow new)
-  stow -R "$pkg_name" 2>/dev/null || stow "$pkg_name"
+    log_info "Processing package: $pkg_name -> $local_target"
+
+    if [[ "$local_target" == "$HOME" ]]; then
+        backup_home_package "$pkg_name"
+    else
+        backup_xdg_package "$pkg_name"
+        mkdir -p "$local_target"
+    fi
+
+    if stow -R -t "$local_target" "$pkg_name" 2>/dev/null; then
+        log_success "Stowed $pkg_name"
+    elif stow -t "$local_target" "$pkg_name" 2>/dev/null; then
+        log_success "Stowed $pkg_name"
+    else
+        log_warn "Failed to stow $pkg_name"
+    fi
 done
 
 echo ""
-if [ "$HAS_BACKUP" = true ]; then
-  log_success "Instalação concluída com backups!"
-  echo "Arquivos antigos foram movidos para: $BACKUP_DIR"
+if [[ "$HAS_BACKUP" == true ]]; then
+    log_success "Deployment complete with backups!"
+    echo "Old files moved to: $BACKUP_DIR"
 else
-  log_success "Instalação concluída (sem conflitos encontrados)."
+    log_success "Deployment complete (no conflicts)."
 fi

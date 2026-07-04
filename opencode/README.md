@@ -19,7 +19,7 @@ Execute o `setup.sh` na raiz do dotfiles para criar symlinks:
 ./setup.sh
 ```
 
-Isso criará symlinks em `~/.config/opencode/` apontando para os arquivos aqui.
+Isso criará symlinks em `~/.config/opencode/` apontando para os arquivos em `~/dotfiles/opencode/`.
 
 ## Variáveis de Ambiente
 

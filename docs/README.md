@@ -27,7 +27,7 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-Aviso: O script `setup.sh` criará backups automáticos de suas configurações atuais em uma pasta `~/dotfiles_old_...` antes de criar os links simbólicos.
+Aviso: O script `setup.sh` criará backups automáticos de suas configurações atuais em uma pasta `~/dotfiles_backup_...` antes de criar os links simbólicos.
 
 ---
 
