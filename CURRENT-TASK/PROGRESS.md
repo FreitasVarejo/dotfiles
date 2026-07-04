@@ -30,9 +30,9 @@
 - [x] allow-passthrough docs
 
 ## Fase F - Yazi
-- [ ] Flavor oficial catppuccin-mocha
-- [ ] package.toml + theme.toml
-- [ ] Yazi config updated
+- [x] Flavor oficial catppuccin-mocha
+- [x] package.toml + theme.toml
+- [x] Yazi config updated
 
 ## Fase G - Git e Opencode
 - [ ] .stow-local-ignore opencode
