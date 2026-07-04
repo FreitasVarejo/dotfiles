@@ -19,14 +19,15 @@
 - [x] dotnet.lua: roslyn_ls + lsp_format = "prefer"
 
 ## Fase C - Bash Node Toolchain
-- [ ] node-toolchain.sh criado
-- [ ] aliases copilot no bashrc
+- [x] node-toolchain.sh criado
+- [x] aliases copilot no bashrc
 
 ## Fase D - Healthcheck Expandido
-- [ ] healthcheck.sh completo
+- [x] healthcheck.sh completo
 
 ## Fase E - Tmux
-- [ ] allow-passthrough docs
+- [x] allow-passthrough no tmux.conf
+- [x] allow-passthrough docs
 
 ## Fase F - Yazi
 - [ ] Flavor oficial catppuccin-mocha

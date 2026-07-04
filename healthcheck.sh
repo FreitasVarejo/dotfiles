@@ -112,6 +112,60 @@ fi
 
 echo ""
 
+log_info "--- Node.js / NVM ---"
+if [ -d "$HOME/.nvm" ]; then
+    if command -v node &>/dev/null; then
+        NODE_VER=$(node --version)
+        log_success "Node.js encontrado: $NODE_VER via NVM"
+    else
+        log_warn "NVM instalado mas Node.js não encontrado."
+        echo "    -> Execute: nvm use default"
+    fi
+else
+    log_warn "NVM não encontrado."
+    echo "    -> Instalar: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
+fi
+
+echo ""
+
+log_info "--- .NET / Roslyn ---"
+if [ -d "$HOME/.dotnet" ]; then
+    log_success ".NET SDK encontrado em ~/.dotnet"
+    if command -v roslyn &>/dev/null || command -v roslyn-language-server &>/dev/null; then
+        log_success "Roslyn LSP disponível"
+    else
+        log_warn "Roslyn LSP não encontrado (necessário para C# no Neovim)."
+        echo "    -> Execute: dotnet tool install --global Microsoft.CodeAnalysis.Roslyn"
+    fi
+else
+    log_warn ".NET SDK não encontrado."
+    echo "    -> Instalar: https://dotnet.microsoft.com/download"
+fi
+
+echo ""
+
+log_info "--- Tree-sitter CLI ---"
+if command -v tree-sitter &>/dev/null; then
+    TS_VER=$(tree-sitter --version 2>&1 | head -n1)
+    log_success "Tree-sitter CLI encontrado: $TS_VER"
+else
+    log_warn "tree-sitter CLI não encontrado."
+    echo "    -> Instalar: cargo install tree-sitter-cli"
+    echo "    -> Ou baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
+fi
+
+echo ""
+
+log_info "--- Yazi Flavor ---"
+if [ -d "$HOME/.config/yazi/flavors/catppuccin-mocha.yazi" ]; then
+    log_success "Flavor catppuccin-mocha instalado"
+else
+    log_warn "Flavor catppuccin-mocha não encontrado."
+    echo "    -> Execute: cd ~/dotfiles/yazi && ya pkg install"
+fi
+
+echo ""
+
 if [ "$ALL_GOOD" = true ]; then
   echo -e "${GREEN} Tudo parece estar correto! Você pode rodar ./setup.sh agora.${NC}"
 else

@@ -111,6 +111,10 @@ if command -v lazygit &> /dev/null; then
     alias lg='lazygit'
 fi
 
+if command -v opencode &> /dev/null; then
+    alias copilot='opencode --provider copilot'
+fi
+
 # Yazi: Wrapper para mudar de diretório ao sair
 if command -v yazi &> /dev/null; then
     function y() {

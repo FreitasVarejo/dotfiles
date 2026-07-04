@@ -54,6 +54,14 @@ Configuração principal que:
 3. Carrega sub-arquivos em ordem correta
 4. Carrega plugins (TPM)
 
+#### `allow-passthrough on`
+Esta opção permite que sequências de escape do terminal (como códigos de cores ANSI) passem através do tmux para o terminal subjacente. É necessário para:
+- Statusline do Neovim com caracteres especiais
+- Plugins que emitem escape sequences
+- Alias `copilot` no bash com prefix tmux
+
+**Importante:** Quando ativo, o prefix tmux (`C-s`) não consegue enviar `\e` para aplicativos que o requerem (ex: Neovim no modo normal após `i`). O prefix foi alterado para `C-s` para minimizar conflitos, mas alguns bindings do Neovim podem ser afetados.
+
 ## Como usar
 
 ### Adicionar/modificar cores
