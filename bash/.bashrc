@@ -1,3 +1,6 @@
+#!/bin/bash
+# shellcheck shell=bash
+
 # .bashrc
 
 # Source global definitions
@@ -10,7 +13,7 @@ export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
 # User specific environment
-if ! [[ "$PATH" =~ "$HOME/.local/bin:$HOME/bin:" ]]; then
+if ! [[ "$PATH" =~ $HOME/.local/bin:$HOME/bin: ]]; then
     PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 fi
 export PATH
@@ -123,23 +126,30 @@ if command -v lazygit &> /dev/null; then
     alias lg='lazygit'
 fi
 
-# Copilot CLI shortcuts (fallback para opencode --provider copilot)
+# Copilot CLI shortcuts (fallback para opencode --provider copilot).
+# '!?' é expansão de histórico do bash; usamos eval para que o parser não
+# tente validar '??' / '!?' como nomes em tempo de parse (algumas versões
+# do bash falham em --rcfile com esses nomes).
 if command -v github-copilot-cli &>/dev/null; then
-    alias ??='github-copilot-cli suggest'
-    alias !?='github-copilot-cli explain'
+    set +H
+    eval '??() { github-copilot-cli suggest "$@"; }'
+    eval '!?() { github-copilot-cli explain "$@"; }'
+    set -H
 elif command -v copilot &>/dev/null; then
-    alias ??='copilot suggest'
-    alias !?='copilot explain'
+    set +H
+    eval '??() { copilot suggest "$@"; }'
+    eval '!?() { copilot explain "$@"; }'
+    set -H
 fi
 
 # Yazi: Wrapper para mudar de diretório ao sair
 if command -v yazi &> /dev/null; then
     function y() {
-        local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+        local tmp
+        tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
         yazi "$@" --cwd-file="$tmp"
-        if cwd="$(cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
-            builtin cd -- "$cwd"
-        fi
+        local cwd
+        cwd="$(cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ] && builtin cd -- "$cwd" || return
         rm -f -- "$tmp"
     }
 fi
@@ -152,7 +162,7 @@ export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}echo -ne '\033]0;$
 
 # Luacheck portável: respeita PATH se já existe, senão cai para ~/.luarocks/bin.
 if command -v luacheck &>/dev/null; then
-    alias luacheck='luacheck'
+    luacheck() { command luacheck "$@"; }
 elif [ -x "$HOME/.luarocks/bin/luacheck" ]; then
-    alias luacheck="$HOME/.luarocks/bin/luacheck"
+    luacheck() { "$HOME/.luarocks/bin/luacheck" "$@"; }
 fi
