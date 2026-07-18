@@ -1,7 +1,8 @@
 # AGENTS.md - Dotfiles Repository Guide
 
 Personal dotfiles using **GNU Stow** for symlink management. Each top-level directory
-(bash, git, nvim, tmux, conda) is a "stow package" that mirrors `$HOME` structure.
+(bash, git, nvim, tmux, conda, opencode, yazi) is a "stow package" that mirrors
+`$HOME` structure.
 
 ## Quick Reference
 
@@ -13,6 +14,7 @@ Personal dotfiles using **GNU Stow** for symlink management. Each top-level dire
 shellcheck healthcheck.sh setup.sh  # Must pass
 nvim --headless "+checkhealth" +qa  # Must load without errors
 tmux source-file ~/.config/tmux/tmux.conf  # Syntax check
+luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
 ```
 
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
@@ -50,6 +52,8 @@ fi
 - Use `exit 1` for fatal errors with helpful messages
 - Comments: Portuguese or English both acceptable
 - **CRITICAL:** Loop over arrays with `for var in "${array[@]}"`, never `for i in "{array[@]}"`
+- **NOTE:** Avoid bare-function syntax like `??()` / `!?()` in files sourced via
+  `bash --rcfile` — bash 5.2 parser quirk in 2026.0+ requires `eval` if needed.
 
 
 ### Neovim Lua (LazyVim)
@@ -83,6 +87,17 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = { "markdown" },
   callback = function()
     vim.opt_local.wrap = true
+  end,
+})
+
+-- Lazy extras that re-register default keys (e.g. editor.snacks_picker binds
+-- <leader>e / <leader>E) can't be overridden in keymaps.lua because both load
+-- on VeryLazy in undefined order. Hook LazyDone and delete them after the fact.
+vim.api.nvim_create_autocmd("User", {
+  pattern = "LazyDone",
+  callback = function()
+    pcall(vim.keymap.del, "n", "<leader>e")
+    pcall(vim.keymap.del, "n", "<leader>E")
   end,
 })
 ```
@@ -145,6 +160,9 @@ set -g @plugin_option 'value'
 
 Required tools (checked by `healthcheck.sh`):
 - **System:** git, stow, curl, make, gcc
-- **CLI:** tmux, rg (ripgrep), fd, bat, fzf, zoxide, starship
+- **CLI:** tmux, rg (ripgrep), fd (>= 8.4 for Snacks picker), bat, fzf, zoxide, starship
 - **Editor:** nvim (v0.9+)
 - **Tmux:** TPM (Tmux Plugin Manager)
+- **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
+- **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
+  requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
