@@ -1,18 +1,30 @@
 #!/bin/bash
 
-# Node.js toolchain via NVM
+# Node.js toolchain via NVM com lazy-load.
+# O startup do nvm.sh custa ~300ms; só pagamos quando o usuário
+# invoca nvm, node, npm, npx, pnpm ou corepack pela primeira vez.
 
-if [ -d "$HOME/.nvm" ]; then
-    export NVM_DIR="$HOME/.nvm"
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
-    if [ -s "$NVM_DIR/nvm.sh" ]; then
-        . "$NVM_DIR/nvm.sh"
+_nvm_lazy_load() {
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+    if command -v nvm &>/dev/null; then
+        nvm use default 2>/dev/null || nvm use 22 2>/dev/null || true
+        corepack enable 2>/dev/null || true
     fi
+    for _cmd in nvm node npm npx pnpm corepack; do
+        unfunction "$_cmd" 2>/dev/null || unset -f "$_cmd"
+    done
+    unset -f _nvm_lazy_load
+}
 
-    if command -v node &>/dev/null; then
-        NODE_BIN=$(dirname "$(command -v node)")
-        if [ -d "$NODE_BIN" ]; then
-            export PATH="$NODE_BIN:$PATH"
-        fi
-    fi
-fi
+_nvm_wrap() {
+    _nvm_lazy_load
+    command "$@"
+}
+
+for _cmd in nvm node npm npx pnpm corepack; do
+    eval "$_cmd() { _nvm_wrap $_cmd \"\$@\"; }"
+done
+unset _cmd

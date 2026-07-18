@@ -38,22 +38,17 @@ if [ -d "/usr/local/cuda" ]; then
     fi
 fi
 
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-if [ -d "$HOME/miniconda3" ]; then
-    __conda_setup="$('$HOME/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-    if [ $? -eq 0 ]; then
-        eval "$__conda_setup"
-    else
-        if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
-            . "$HOME/miniconda3/etc/profile.d/conda.sh"
-        else
-            export PATH="$HOME/miniconda3/bin:$PATH"
-        fi
+# Lazy conda: carrega conda.sh na primeira chamada de `conda`,
+# evitando o custo de inicialização (~150ms) em shells onde nunca é usado.
+conda() {
+    unfunction conda 2>/dev/null || unset -f conda
+    if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "$HOME/miniconda3/etc/profile.d/conda.sh"
+    elif [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+        . "/opt/conda/etc/profile.d/conda.sh"
     fi
-    unset __conda_setup
-fi
-# <<< conda initialize <<<
+    command conda "$@"
+}
 
 if [ -f "$HOME/.cargo/env" ]; then
     . "$HOME/.cargo/env"
@@ -93,9 +88,26 @@ if command -v zoxide &> /dev/null; then
     eval "$(zoxide init bash --cmd z)"
 fi
 
-# FZF (Fuzzy Finder)
-if command -v fzf &> /dev/null; then
-    eval "$(fzf --bash)"
+# FZF (Fuzzy Finder): tenta o helper nativo primeiro, com fallback para
+# paths comuns quando fzf --bash não existe (Ubuntu/Debian, Git for Windows, brew).
+if command -v fzf &>/dev/null; then
+    if ! eval "$(fzf --bash 2>/dev/null)"; then
+        for _fzf_completion in \
+            /usr/share/fzf/completion.bash \
+            /usr/local/share/fzf/completion.bash \
+            "$(brew --prefix 2>/dev/null)/opt/fzf/shell/completion.bash" \
+            "$HOME/.fzf/shell/completion.bash"; do
+            [ -f "$_fzf_completion" ] && . "$_fzf_completion" && break
+        done
+        for _fzf_keybind in \
+            /usr/share/fzf/key-bindings.bash \
+            /usr/local/share/fzf/key-bindings.bash \
+            "$(brew --prefix 2>/dev/null)/opt/fzf/shell/key-bindings.bash" \
+            "$HOME/.fzf/shell/key-bindings.bash"; do
+            [ -f "$_fzf_keybind" ] && . "$_fzf_keybind" && break
+        done
+        unset _fzf_completion _fzf_keybind
+    fi
 fi
 
 # Aliases for Modern Tools
@@ -111,8 +123,13 @@ if command -v lazygit &> /dev/null; then
     alias lg='lazygit'
 fi
 
-if command -v opencode &> /dev/null; then
-    alias copilot='opencode --provider copilot'
+# Copilot CLI shortcuts (fallback para opencode --provider copilot)
+if command -v github-copilot-cli &>/dev/null; then
+    alias ??='github-copilot-cli suggest'
+    alias !?='github-copilot-cli explain'
+elif command -v copilot &>/dev/null; then
+    alias ??='copilot suggest'
+    alias !?='copilot explain'
 fi
 
 # Yazi: Wrapper para mudar de diretório ao sair
@@ -132,8 +149,10 @@ fi
 set -o vi
 # Show vi mode in prompt (optional: shows [vi] when entering normal mode)
 export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}echo -ne '\033]0;${USER}@${HOSTNAME}\007'"
-alias luacheck="/home/freitaspinhe/.luarocks/bin/luacheck"
 
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
-[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+# Luacheck portável: respeita PATH se já existe, senão cai para ~/.luarocks/bin.
+if command -v luacheck &>/dev/null; then
+    alias luacheck='luacheck'
+elif [ -x "$HOME/.luarocks/bin/luacheck" ]; then
+    alias luacheck="$HOME/.luarocks/bin/luacheck"
+fi
