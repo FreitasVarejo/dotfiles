@@ -8,8 +8,10 @@ NC='\033[0m' # No Color
 
 log_info() { echo -e "${BLUE}[INFO] $1${NC}"; }
 log_success() { echo -e "${GREEN}[OK] $1${NC}"; }
-log_warn() { echo -e "${YELLOW}[MISSING] $1${NC}"; }
+log_warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
+log_missing() { echo -e "${YELLOW}[MISSING] $1${NC}"; }
 log_error() { echo -e "${RED}[ERROR] $1${NC}"; }
+log_optional() { echo -e "${BLUE}[OPTIONAL] $1${NC}"; }
 
 echo "=== Dotfiles Healthcheck ==="
 echo "Verificando se as ferramentas necessárias estão instaladas..."
@@ -20,13 +22,18 @@ ALL_GOOD=true
 check_cmd() {
   local cmd_name=$1
   local install_hint=$2
-  shift 2
+  local optional="${3:-no}"
+  shift 3 2>/dev/null || shift 2
   local alternatives=("$@")
 
   if command -v "$cmd_name" &>/dev/null; then
     log_success "$cmd_name encontrado: $(command -v "$cmd_name")"
   else
-    log_warn "$cmd_name não encontrado."
+    if [ "$optional" = "optional" ]; then
+      log_optional "$cmd_name não encontrado (opcional)."
+    else
+      log_missing "$cmd_name não encontrado."
+    fi
     for alt in "${alternatives[@]}"; do
       if command -v "$alt" &>/dev/null; then
         log_info "  -> Nota: O programa está instalado como '$alt' (considere criar um alias ou link simbólico)."
@@ -35,7 +42,9 @@ check_cmd() {
     if [ -n "$install_hint" ]; then
       echo "    -> Sugestão: $install_hint"
     fi
-    ALL_GOOD=false
+    if [ "$optional" != "optional" ]; then
+      ALL_GOOD=false
+    fi
   fi
 }
 
@@ -51,7 +60,26 @@ echo ""
 log_info "--- Ferramentas CLI ---"
 check_cmd "tmux" "sudo apt install tmux"
 check_cmd "rg" "sudo apt install ripgrep"
-check_cmd "fd" "sudo apt install fd-find (depois linkar fdfind -> fd)" "fdfind"
+
+# fd com checagem de versão (Snacks picker exige >= 8.4 para novos sintaxes).
+if command -v fd &>/dev/null; then
+    FD_VER=$(fd --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    if [ -n "$FD_VER" ]; then
+        FD_MAJOR=$(echo "$FD_VER" | cut -d. -f1)
+        FD_MINOR=$(echo "$FD_VER" | cut -d. -f2)
+        if [ "$FD_MAJOR" -lt 8 ] || { [ "$FD_MAJOR" -eq 8 ] && [ "$FD_MINOR" -lt 4 ]; }; then
+            log_warn "fd encontrado ($FD_VER) mas versão < 8.4 — Snacks picker pode falhar."
+            echo "    -> Atualizar fd: sudo apt install fd-find (Ubuntu 22.04+) ou compile from source."
+        else
+            log_success "fd encontrado: $FD_VER ($(command -v fd))"
+        fi
+    else
+        log_success "fd encontrado: $(command -v fd)"
+    fi
+else
+    check_cmd "fd" "sudo apt install fd-find (depois linkar fdfind -> fd)" "fdfind"
+fi
+
 check_cmd "bat" "sudo apt install bat (depois linkar batcat->bat)" "batcat"
 check_cmd "fzf" "git clone --depth 1 https://github.com/junegunn/fzf.git ~/.config/fzf && ~/.config/fzf/install"
 check_cmd "zoxide" "curl -sS https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
@@ -74,7 +102,7 @@ if command -v nvim &>/dev/null; then
     log_warn "Neovim encontrado, mas versão antiga ($NVIM_VER). Recomendado v0.9+"
   fi
 else
-  log_warn "Neovim não encontrado."
+  log_missing "Neovim não encontrado."
   echo "    -> Sugestão: Baixar a release mais recente do Github (v0.9+)"
   ALL_GOOD=false
 fi
@@ -119,7 +147,7 @@ if [ -d "$HOME/.nvm" ]; then
         log_success "Node.js encontrado: $NODE_VER via NVM"
     else
         log_warn "NVM instalado mas Node.js não encontrado."
-        echo "    -> Execute: nvm use default"
+        echo "    -> Execute: nvm use default (o lazy-load no .bashrc vai carregar nvm na primeira chamada)"
     fi
 else
     log_warn "NVM não encontrado."
@@ -164,6 +192,36 @@ else
     log_warn "Flavor catppuccin-mocha não encontrado."
     echo "    -> Execute: cd ~/dotfiles/yazi && ya pkg install"
 fi
+
+echo ""
+
+log_info "--- Neovim smoke (LazyVim/Mason/Snacks warmup) ---"
+if command -v nvim &>/dev/null; then
+    if timeout 90 nvim --headless \
+        -c 'lua require("lazy").load({ plugins = { "folke/snacks.nvim" } })' \
+        -c 'lua local ok, snacks = pcall(require, "snacks"); if ok then pcall(function() snacks.picker.smart() end) end' \
+        -c 'qa' >/tmp/nvim-smoke.log 2>&1; then
+        log_success "Smoke test do Neovim completou sem timeout."
+        if grep -qiE 'E5113|fd < 8\.4|fd.*not found' /tmp/nvim-smoke.log; then
+            log_warn "Possível incompatibilidade de fd com Snacks picker detectada (ver /tmp/nvim-smoke.log)."
+        fi
+    else
+        log_warn "Smoke test excedeu timeout (90s). Pode ser primeira execução do Mason."
+        echo "    -> Tente novamente após: nvim --headless '+Mason' +qa"
+    fi
+    rm -f /tmp/nvim-smoke.log
+else
+    log_info "Smoke pulado (nvim ausente)."
+fi
+
+echo ""
+
+log_info "--- Snacks.image optionals (preview de imagens inline) ---"
+log_optional "Estes são opcionais; o picker e dashboard funcionam sem eles."
+check_cmd "magick" "sudo apt install imagemagick" "optional"
+check_cmd "gs" "sudo apt install ghostscript" "optional"
+check_cmd "tectonic" "cargo install tectonic" "optional"
+check_cmd "mndc" "cargo install mandown" "optional"
 
 echo ""
 
