@@ -3,10 +3,17 @@ vim.g.maplocalleader = "\\"
 
 do
   local function prepend_path(p)
-    if vim.fn.isdirectory(p) == 1 then
-      vim.opt.path:prepend(p)
-      vim.env.PATH = p .. ":" .. (vim.env.PATH or "")
+    if vim.fn.isdirectory(p) ~= 1 then
+      return
     end
+    local sep = ":"
+    local current = vim.env.PATH or ""
+    for segment in string.gmatch(current, "([^" .. sep .. "]+)") do
+      if segment == p then
+        return
+      end
+    end
+    vim.env.PATH = p .. sep .. current
   end
 
   prepend_path(vim.env.HOME .. "/.dotnet")
@@ -16,21 +23,23 @@ do
     vim.env.DOTNET_ROOT = vim.env.HOME .. "/.dotnet"
   end
 
-  local nvm_alias = vim.env.HOME .. "/.nvm/alias/default"
+  vim.env.NVM_DIR = vim.env.NVM_DIR or (vim.env.HOME .. "/.nvm")
+  local nvm_alias = vim.env.NVM_DIR .. "/alias/default"
   if vim.fn.filereadable(nvm_alias) == 1 then
     local ver = vim.fn.trim(vim.fn.readfile(nvm_alias)[1])
-    local nvm_dir = string.match(ver, "^v(.+)")
-    if nvm_dir then
-      local latest = nil
-      local latest_path = nil
-      for _, dir in ipairs(vim.fn.glob(vim.env.HOME .. "/.nvm/versions/node/v" .. nvm_dir .. "*", false, true)) do
-        if not latest or dir > latest then
-          latest = dir
-          latest_path = dir .. "/bin"
-        end
+    local major_minor = string.match(ver, "^v(%d+%.%d+)")
+    if major_minor then
+      local candidates = vim.fn.glob(vim.env.NVM_DIR .. "/versions/node/v" .. major_minor .. ".*", false, true)
+      local function key(s)
+        return s:gsub("v?(%d+)%.(%d+)%.(%d+)", function(a, b, c)
+          return string.format("%03d.%03d.%03d", tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0)
+        end)
       end
-      if latest_path then
-        prepend_path(latest_path)
+      table.sort(candidates, function(a, b)
+        return key(a) < key(b)
+      end)
+      if #candidates > 0 then
+        prepend_path(candidates[#candidates] .. "/bin")
       end
     end
   end

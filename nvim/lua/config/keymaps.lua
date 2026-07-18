@@ -7,10 +7,8 @@ if status_ok then
   discipline.cowboy()
 end
 
--- Disable neo-tree explorer keymaps (using yazi instead)
--- TODO: desativar o lugin do neo-tree todo
--- vim.keymap.del("n", "<leader>e")
--- vim.keymap.del("n", "<leader>E")
+pcall(vim.keymap.del, "n", "<leader>e")
+pcall(vim.keymap.del, "n", "<leader>E")
 
 -- Pair Coding Mode Toggle
 local pairmode = require("config.custom-mode.pairmode")
@@ -24,8 +22,13 @@ vim.keymap.set("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease window 
 vim.keymap.set("n", "<C-Left>", "<cmd>vertical resize -2<cr>", { desc = "Decrease window width" })
 vim.keymap.set("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increase window width" })
 
--- Prettier format (using built-in vim.lsp.buf.format with prettier)
-vim.keymap.set({ "n", "v" }, "<leader>fm", function() end, { desc = "Format (Prettier)" })
+-- Toggle LSP inlay hints (Neovim 0.10+)
+vim.keymap.set("n", "<leader>uh", function()
+  if vim.lsp.inlay_hint and vim.lsp.inlay_hint.is_enabled then
+    local enabled = vim.lsp.inlay_hint.is_enabled({ bufnr = 0 })
+    vim.lsp.inlay_hint.enable(not enabled, { bufnr = 0 })
+  end
+end, { desc = "Toggle Inlay Hints" })
 
 -- ESLint fix
 vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })
