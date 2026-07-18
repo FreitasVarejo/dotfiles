@@ -159,12 +159,24 @@ echo ""
 log_info "--- .NET SDK ---"
 if [ -d "$HOME/.dotnet" ]; then
     log_success ".NET SDK encontrado em ~/.dotnet"
-    if command -v csharp-ls &>/dev/null; then
-        log_success "C# Language Server disponível"
+    ROSLYN_BIN=""
+    for cand in \
+        "$HOME/.local/share/nvim/mason/bin/roslyn" \
+        "$HOME/.local/share/nvim/mason/bin/roslyn-language-server"; do
+        if [ -x "$cand" ]; then
+            ROSLYN_BIN="$cand"
+            break
+        fi
+    done
+    if [ -z "$ROSLYN_BIN" ]; then
+        ROSLYN_BIN=$(command -v roslyn 2>/dev/null || command -v roslyn-language-server 2>/dev/null || true)
+    fi
+    if [ -n "$ROSLYN_BIN" ]; then
+        log_success "Roslyn LSP disponível: $ROSLYN_BIN"
     else
-        log_warn "C# Language Server não encontrado (necessário para C# no Neovim)."
-        echo "    -> Execute: dotnet tool install --global csharp-ls"
-        echo "    -> Ou use Roslyn padrão do Mason (requer custom registry)"
+        log_warn "Roslyn não encontrado (C# no Neovim ficará sem LSP)."
+        echo "    -> Instalar via Mason: nvim --headless '+MasonInstall roslyn' +qa"
+        echo "    -> Ou dotnet tool install --global csharp-ls"
     fi
 else
     log_warn ".NET SDK não encontrado."
