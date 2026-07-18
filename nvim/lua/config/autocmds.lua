@@ -21,3 +21,11 @@ vim.api.nvim_create_autocmd("FileType", {
     }, { scope = "local" })
   end,
 })
+
+vim.api.nvim_create_autocmd("User", {
+  pattern = "LazyDone",
+  callback = function()
+    pcall(vim.keymap.del, "n", "<leader>e")
+    pcall(vim.keymap.del, "n", "<leader>E")
+  end,
+})
