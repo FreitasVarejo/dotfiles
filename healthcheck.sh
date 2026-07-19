@@ -110,10 +110,10 @@ fi
 echo ""
 
 log_info "--- Tmux Plugin Manager (TPM) ---"
-if [ -d "$HOME/.config/tmux/plugins/tpm" ]; then
-  log_success "TPM encontrado."
+if [ -x "$HOME/.config/tmux/plugins/tpm/tpm" ]; then
+  log_success "TPM encontrado e executável: $HOME/.config/tmux/plugins/tpm/tpm"
 else
-  log_warn "TPM não encontrado."
+  log_warn "TPM ausente ou sem executável em ~/.config/tmux/plugins/tpm/tpm."
   echo "    -> Executar: git clone https://github.com/tmux-plugins/tpm ~/.config/tmux/plugins/tpm"
   ALL_GOOD=false
 fi
@@ -193,6 +193,17 @@ else
     log_warn "tree-sitter CLI não encontrado."
     echo "    -> Baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
     echo "    -> Ou execute: cargo install tree-sitter-cli"
+fi
+
+echo ""
+
+log_info "--- OpenCode ---"
+if command -v opencode &>/dev/null; then
+    OC_VER=$(opencode --version 2>&1 | head -n1)
+    log_success "OpenCode encontrado: $OC_VER ($(command -v opencode))"
+else
+    log_warn "OpenCode não encontrado (config em ~/.config/opencode não será usada)."
+    echo "    -> Instalar: curl -fsSL https://opencode.ai/install | bash"
 fi
 
 echo ""
