@@ -16,5 +16,5 @@ vim.opt.spell = false
 vim.treesitter.language.register("bash", "shell")
 
 vim.opt.swapfile = false
-vim.opt.timeoutlen = 500
-vim.opt.ttimeoutlen = 500
+vim.opt.timeoutlen = 300
+vim.opt.ttimeoutlen = 100

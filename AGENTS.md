@@ -109,6 +109,15 @@ vim.api.nvim_create_autocmd("User", {
 - `lua/config/lazy.lua` - Plugin manager bootstrap
 - `lua/plugins/*.lua` - Plugin specifications
 
+**Notable non-default options** (`lua/config/options.lua`):
+- `timeoutlen = 300` — wait time (ms) for a mapped key sequence to complete; lower
+  than the default 1000 for snappier `<leader>`-prefixed keymaps.
+- `ttimeoutlen = 100` — wait time (ms) for terminal/keyboard codes (e.g. ESC in
+  insert mode); low value makes `<Esc>` feel instantaneous when it isn't part of
+  a mapping, while still leaving 100 ms for arrow-key / function-key sequences.
+- `swapfile = false` — disables `.swp` files; rely on git + undo (`vim.opt.undofile`)
+  for recovery.
+
 
 
 ### Tmux Configuration
