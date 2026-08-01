@@ -21,6 +21,13 @@ export PATH
 # Uncomment the following line if you don't like systemctl's auto-paging feature:
 # export SYSTEMD_PAGER=
 
+# Secrets locais (tokens, API keys) - nunca rastreado pelo git, fica só na máquina.
+# ~/.bashrc.d é o próprio diretório do repo (symlink via stow), então secrets não
+# podem morar lá; ~/.bashrc.local fica fora do repo.
+if [ -f ~/.bashrc.local ]; then
+    . ~/.bashrc.local
+fi
+
 # User specific aliases and functions
 if [ -d ~/.bashrc.d ]; then
     for rc in ~/.bashrc.d/*; do
