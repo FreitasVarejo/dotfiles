@@ -20,8 +20,6 @@ luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
 at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
 
-
-
 ## Code Style Guidelines
 
 ### Shell Scripts (Bash)
@@ -55,12 +53,12 @@ fi
 - **NOTE:** Avoid bare-function syntax like `??()` / `!?()` in files sourced via
   `bash --rcfile` — bash 5.2 parser quirk in 2026.0+ requires `eval` if needed.
 
-
 ### Neovim Lua (LazyVim)
 
 **Indentation:** 2 spaces
 
 **Plugin specs** (one file per plugin/group in `lua/plugins/`):
+
 ```lua
 return {
   {
@@ -75,6 +73,7 @@ return {
 ```
 
 **Options, keymaps, autocmds:**
+
 ```lua
 vim.opt.setting = value
 vim.opt_local.setting = value  -- buffer-local
@@ -103,6 +102,7 @@ vim.api.nvim_create_autocmd("User", {
 ```
 
 **File organization:**
+
 - `lua/config/options.lua` - Vim options
 - `lua/config/keymaps.lua` - Key mappings
 - `lua/config/autocmds.lua` - Autocommands
@@ -110,6 +110,7 @@ vim.api.nvim_create_autocmd("User", {
 - `lua/plugins/*.lua` - Plugin specifications
 
 **Notable non-default options** (`lua/config/options.lua`):
+
 - `timeoutlen = 300` — wait time (ms) for a mapped key sequence to complete; lower
   than the default 1000 for snappier `<leader>`-prefixed keymaps.
 - `ttimeoutlen = 100` — wait time (ms) for terminal/keyboard codes (e.g. ESC in
@@ -117,8 +118,6 @@ vim.api.nvim_create_autocmd("User", {
   a mapping, while still leaving 100 ms for arrow-key / function-key sequences.
 - `swapfile = false` — disables `.swp` files; rely on git + undo (`vim.opt.undofile`)
   for recovery.
-
-
 
 ### Tmux Configuration
 
@@ -144,12 +143,12 @@ set -g @plugin_option 'value'
 
 ## Naming Conventions
 
-| Type | Convention | Example |
-|------|------------|---------|
-| Stow packages | lowercase, singular | `bash`, `nvim`, `tmux` |
-| Shell functions | snake_case | `log_info`, `backup_file` |
-| Shell variables | UPPER_SNAKE_CASE | `BACKUP_DIR`, `ALL_GOOD` |
-| Lua variables | snake_case | `lazypath`, `git_name` |
+| Type             | Convention                | Example                             |
+| ---------------- | ------------------------- | ----------------------------------- |
+| Stow packages    | lowercase, singular       | `bash`, `nvim`, `tmux`              |
+| Shell functions  | snake_case                | `log_info`, `backup_file`           |
+| Shell variables  | UPPER_SNAKE_CASE          | `BACKUP_DIR`, `ALL_GOOD`            |
+| Lua variables    | snake_case                | `lazypath`, `git_name`              |
 | Lua plugin files | kebab-case or single word | `tmux-navigator.lua`, `writing.lua` |
 
 ## Error Handling
@@ -168,6 +167,7 @@ set -g @plugin_option 'value'
 ## Dependencies
 
 Required tools (checked by `healthcheck.sh`):
+
 - **System:** git, stow, curl, make, gcc
 - **CLI:** tmux, rg (ripgrep), fd (>= 8.4 for Snacks picker), bat, fzf, zoxide, starship
 - **Editor:** nvim (v0.9+)
