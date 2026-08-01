@@ -4,14 +4,36 @@ Personal dotfiles using **GNU Stow** for symlink management. Each top-level dire
 (bash, git, nvim, tmux, conda, opencode, yazi) is a "stow package" that mirrors
 `$HOME` structure.
 
+## Architecture: thin orchestrators + per-package hooks
+
+`setup.sh` and `healthcheck.sh` are **thin orchestrators**. The actual validation and
+imperative setup logic lives *inside each package* under `<pkg>/hooks/`:
+
+```
+lib/common.sh          # shared logging, package-manager detection (PM_INSTALL), check_cmd
+setup.sh               # single source of truth: STOW_TARGETS map; stows then runs setup hooks
+healthcheck.sh         # discovers and runs every <pkg>/hooks/check.sh, aggregates results
+<pkg>/hooks/check.sh   # READ-ONLY dependency checks for that package; `exit $CHECK_FAILED`
+<pkg>/hooks/setup.sh   # optional; state-mutating setup, runs AFTER that package is stowed
+```
+
+- Every hook sources `lib/common.sh` (via `DOTFILES_DIR/../..`) for logging + helpers.
+- `check.sh` must stay read-only. Mark missing required deps with `fail_check` and end
+  with `exit "$CHECK_FAILED"`. Anything that mutates state (writing git config, installing
+  a plugin, registering MCP servers) belongs in `setup.sh`, not `check.sh`.
+- `hooks/` directories are excluded from stow via each package's `.stow-local-ignore`.
+- Install hints use `$PM_INSTALL` (auto-detected dnf/apt/pacman/brew), never hardcoded `apt`.
+- The Claude Code MCP server map lives in `opencode/hooks/mcp-servers.sh` (sourced by both
+  the opencode check and setup hooks) — co-located with the `opencode.json` it mirrors.
+
 ## Quick Reference
 
 ```bash
-./healthcheck.sh                    # Check dependencies
-./setup.sh                          # Apply configs via stow (creates backups if needed)
+./healthcheck.sh                    # Check dependencies (runs all per-package check hooks)
+./setup.sh                          # Apply configs via stow + run setup hooks (backups if needed)
 
 # Pre-commit validation (REQUIRED before any commit)
-shellcheck healthcheck.sh setup.sh  # Must pass
+shellcheck -x -P SCRIPTDIR setup.sh healthcheck.sh lib/common.sh */hooks/*.sh  # Must pass
 nvim --headless "+checkhealth" +qa  # Must load without errors
 tmux source-file ~/.config/tmux/tmux.conf  # Syntax check
 luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
@@ -161,8 +183,12 @@ set -g @plugin_option 'value'
 1. Create stow package directory: `mkdir new-tool`
 2. Mirror the target path structure inside it
 3. Add configuration files
-4. Run `./setup.sh` to apply
-5. Update `healthcheck.sh` if new dependencies required
+4. Add the package to the `STOW_TARGETS` map in `setup.sh` (the one central list)
+5. If it has dependencies, create `new-tool/hooks/check.sh` (read-only) — no edits to
+   `healthcheck.sh` needed; it auto-discovers `*/hooks/check.sh`
+6. If it needs imperative post-stow setup, create `new-tool/hooks/setup.sh`
+7. Create `new-tool/.stow-local-ignore` containing `hooks` so the hook dir isn't symlinked
+8. Run `./setup.sh` to apply
 
 ## Dependencies
 
@@ -175,9 +201,9 @@ Required tools (checked by `healthcheck.sh`):
 - **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
 - **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
   requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
-- **Claude Code:** optional; if `claude` is on PATH, `setup.sh` registers the MCP
-  servers listed in `CLAUDE_MCP_SERVERS` (in `setup.sh`) at user scope via
-  `claude mcp add-json`, mirroring the enabled servers in `opencode/opencode.json`:
+- **Claude Code:** optional; if `claude` is on PATH, `opencode/hooks/setup.sh` registers
+  the MCP servers listed in `CLAUDE_MCP_SERVERS` (in `opencode/hooks/mcp-servers.sh`) at
+  user scope via `claude mcp add-json`, mirroring the enabled servers in `opencode/opencode.json`:
   `git`, `docker`, `github`, `obsidian`. `sqlite` is intentionally left out of Claude
   Code's registration — its opencode config uses a per-workspace path
   (`${workspaceFolder}/data/metadata.db`), which doesn't make sense as a single
