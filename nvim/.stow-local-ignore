@@ -1,0 +1,4 @@
+hooks
+# Um .stow-local-ignore substitui a lista padrão do stow inteira, então
+# re-declaramos o ignore de .gitignore que o stow ignoraria por padrão.
+\.gitignore
