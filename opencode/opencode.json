@@ -16,13 +16,13 @@
   "mcp": {
     "docker": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-docker"],
-      "enabled": false
+      "command": ["npx", "-y", "docker-mcp"],
+      "enabled": true
     },
     "sqlite": {
       "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-sqlite", "--db-path", "${workspaceFolder}/cv_pipeline/metadata.db"],
-      "enabled": false
+      "command": ["npx", "-y", "mcp-server-sqlite-npx", "${workspaceFolder}/data/metadata.db"],
+      "enabled": true
     },
     "git": {
       "type": "local",
