@@ -63,21 +63,21 @@ check_cmd "rg" "sudo apt install ripgrep"
 
 # fd com checagem de versão (Snacks picker exige >= 8.4 para novos sintaxes).
 if command -v fd &>/dev/null; then
-    FD_VER=$(fd --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
-    if [ -n "$FD_VER" ]; then
-        FD_MAJOR=$(echo "$FD_VER" | cut -d. -f1)
-        FD_MINOR=$(echo "$FD_VER" | cut -d. -f2)
-        if [ "$FD_MAJOR" -lt 8 ] || { [ "$FD_MAJOR" -eq 8 ] && [ "$FD_MINOR" -lt 4 ]; }; then
-            log_warn "fd encontrado ($FD_VER) mas versão < 8.4 — Snacks picker pode falhar."
-            echo "    -> Atualizar fd: sudo apt install fd-find (Ubuntu 22.04+) ou compile from source."
-        else
-            log_success "fd encontrado: $FD_VER ($(command -v fd))"
-        fi
+  FD_VER=$(fd --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+  if [ -n "$FD_VER" ]; then
+    FD_MAJOR=$(echo "$FD_VER" | cut -d. -f1)
+    FD_MINOR=$(echo "$FD_VER" | cut -d. -f2)
+    if [ "$FD_MAJOR" -lt 8 ] || { [ "$FD_MAJOR" -eq 8 ] && [ "$FD_MINOR" -lt 4 ]; }; then
+      log_warn "fd encontrado ($FD_VER) mas versão < 8.4 — Snacks picker pode falhar."
+      echo "    -> Atualizar fd: sudo apt install fd-find (Ubuntu 22.04+) ou compile from source."
     else
-        log_success "fd encontrado: $(command -v fd)"
+      log_success "fd encontrado: $FD_VER ($(command -v fd))"
     fi
+  else
+    log_success "fd encontrado: $(command -v fd)"
+  fi
 else
-    check_cmd "fd" "sudo apt install fd-find (depois linkar fdfind -> fd)" "fdfind"
+  check_cmd "fd" "sudo apt install fd-find (depois linkar fdfind -> fd)" "fdfind"
 fi
 
 check_cmd "bat" "sudo apt install bat (depois linkar batcat->bat)" "batcat"
@@ -142,99 +142,99 @@ echo ""
 
 log_info "--- Node.js / NVM ---"
 if [ -d "$HOME/.nvm" ]; then
-    if command -v node &>/dev/null; then
-        NODE_VER=$(node --version)
-        log_success "Node.js encontrado: $NODE_VER via NVM"
-    else
-        log_warn "NVM instalado mas Node.js não encontrado."
-        echo "    -> Execute: nvm use default (o lazy-load no .bashrc vai carregar nvm na primeira chamada)"
-    fi
+  if command -v node &>/dev/null; then
+    NODE_VER=$(node --version)
+    log_success "Node.js encontrado: $NODE_VER via NVM"
+  else
+    log_warn "NVM instalado mas Node.js não encontrado."
+    echo "    -> Execute: nvm use default (o lazy-load no .bashrc vai carregar nvm na primeira chamada)"
+  fi
 else
-    log_warn "NVM não encontrado."
-    echo "    -> Instalar: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
+  log_warn "NVM não encontrado."
+  echo "    -> Instalar: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
 fi
 
 echo ""
 
 log_info "--- .NET SDK ---"
 if [ -d "$HOME/.dotnet" ]; then
-    log_success ".NET SDK encontrado em ~/.dotnet"
-    ROSLYN_BIN=""
-    for cand in \
-        "$HOME/.local/share/nvim/mason/bin/roslyn" \
-        "$HOME/.local/share/nvim/mason/bin/roslyn-language-server"; do
-        if [ -x "$cand" ]; then
-            ROSLYN_BIN="$cand"
-            break
-        fi
-    done
-    if [ -z "$ROSLYN_BIN" ]; then
-        ROSLYN_BIN=$(command -v roslyn 2>/dev/null || command -v roslyn-language-server 2>/dev/null || true)
+  log_success ".NET SDK encontrado em ~/.dotnet"
+  ROSLYN_BIN=""
+  for cand in \
+    "$HOME/.local/share/nvim/mason/bin/roslyn" \
+    "$HOME/.local/share/nvim/mason/bin/roslyn-language-server"; do
+    if [ -x "$cand" ]; then
+      ROSLYN_BIN="$cand"
+      break
     fi
-    if [ -n "$ROSLYN_BIN" ]; then
-        log_success "Roslyn LSP disponível: $ROSLYN_BIN"
-    else
-        log_warn "Roslyn não encontrado (C# no Neovim ficará sem LSP)."
-        echo "    -> Instalar via Mason: nvim --headless '+MasonInstall roslyn' +qa"
-        echo "    -> Ou dotnet tool install --global csharp-ls"
-    fi
+  done
+  if [ -z "$ROSLYN_BIN" ]; then
+    ROSLYN_BIN=$(command -v roslyn 2>/dev/null || command -v roslyn-language-server 2>/dev/null || true)
+  fi
+  if [ -n "$ROSLYN_BIN" ]; then
+    log_success "Roslyn LSP disponível: $ROSLYN_BIN"
+  else
+    log_warn "Roslyn não encontrado (C# no Neovim ficará sem LSP)."
+    echo "    -> Instalar via Mason: nvim --headless '+MasonInstall roslyn' +qa"
+    echo "    -> Ou dotnet tool install --global csharp-ls"
+  fi
 else
-    log_warn ".NET SDK não encontrado."
-    echo "    -> Instalar: https://dotnet.microsoft.com/download"
+  log_warn ".NET SDK não encontrado."
+  echo "    -> Instalar: https://dotnet.microsoft.com/download"
 fi
 
 echo ""
 
 log_info "--- Tree-sitter CLI ---"
 if command -v tree-sitter &>/dev/null; then
-    TS_VER=$(tree-sitter --version 2>&1 | head -n1)
-    log_success "Tree-sitter CLI encontrado: $TS_VER"
+  TS_VER=$(tree-sitter --version 2>&1 | head -n1)
+  log_success "Tree-sitter CLI encontrado: $TS_VER"
 else
-    log_warn "tree-sitter CLI não encontrado."
-    echo "    -> Baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
-    echo "    -> Ou execute: cargo install tree-sitter-cli"
+  log_warn "tree-sitter CLI não encontrado."
+  echo "    -> Baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
+  echo "    -> Ou execute: cargo install tree-sitter-cli"
 fi
 
 echo ""
 
 log_info "--- OpenCode ---"
 if command -v opencode &>/dev/null; then
-    OC_VER=$(opencode --version 2>&1 | head -n1)
-    log_success "OpenCode encontrado: $OC_VER ($(command -v opencode))"
+  OC_VER=$(opencode --version 2>&1 | head -n1)
+  log_success "OpenCode encontrado: $OC_VER ($(command -v opencode))"
 else
-    log_warn "OpenCode não encontrado (config em ~/.config/opencode não será usada)."
-    echo "    -> Instalar: curl -fsSL https://opencode.ai/install | bash"
+  log_warn "OpenCode não encontrado (config em ~/.config/opencode não será usada)."
+  echo "    -> Instalar: curl -fsSL https://opencode.ai/install | bash"
 fi
 
 echo ""
 
 log_info "--- Yazi Flavor ---"
 if [ -d "$HOME/.config/yazi/flavors/catppuccin-mocha.yazi" ]; then
-    log_success "Flavor catppuccin-mocha instalado"
+  log_success "Flavor catppuccin-mocha instalado"
 else
-    log_warn "Flavor catppuccin-mocha não encontrado."
-    echo "    -> Execute: cd ~/dotfiles/yazi && ya pkg install"
+  log_warn "Flavor catppuccin-mocha não encontrado."
+  echo "    -> Execute: cd ~/dotfiles/yazi && ya pkg install"
 fi
 
 echo ""
 
 log_info "--- Neovim smoke (LazyVim/Mason/Snacks warmup) ---"
 if command -v nvim &>/dev/null; then
-    if timeout 90 nvim --headless \
-        -c 'lua require("lazy").load({ plugins = { "folke/snacks.nvim" } })' \
-        -c 'lua local ok, snacks = pcall(require, "snacks"); if ok then pcall(function() snacks.picker.smart() end) end' \
-        -c 'qa' >/tmp/nvim-smoke.log 2>&1; then
-        log_success "Smoke test do Neovim completou sem timeout."
-        if grep -qiE 'E5113|fd < 8\.4|fd.*not found' /tmp/nvim-smoke.log; then
-            log_warn "Possível incompatibilidade de fd com Snacks picker detectada (ver /tmp/nvim-smoke.log)."
-        fi
-    else
-        log_warn "Smoke test excedeu timeout (90s). Pode ser primeira execução do Mason."
-        echo "    -> Tente novamente após: nvim --headless '+Mason' +qa"
+  if timeout 90 nvim --headless \
+    -c 'lua require("lazy").load({ plugins = { "folke/snacks.nvim" } })' \
+    -c 'lua local ok, snacks = pcall(require, "snacks"); if ok then pcall(function() snacks.picker.smart() end) end' \
+    -c 'qa' >/tmp/nvim-smoke.log 2>&1; then
+    log_success "Smoke test do Neovim completou sem timeout."
+    if grep -qiE 'E5113|fd < 8\.4|fd.*not found' /tmp/nvim-smoke.log; then
+      log_warn "Possível incompatibilidade de fd com Snacks picker detectada (ver /tmp/nvim-smoke.log)."
     fi
-    rm -f /tmp/nvim-smoke.log
+  else
+    log_warn "Smoke test excedeu timeout (90s). Pode ser primeira execução do Mason."
+    echo "    -> Tente novamente após: nvim --headless '+Mason' +qa"
+  fi
+  rm -f /tmp/nvim-smoke.log
 else
-    log_info "Smoke pulado (nvim ausente)."
+  log_info "Smoke pulado (nvim ausente)."
 fi
 
 echo ""
