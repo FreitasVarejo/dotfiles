@@ -175,3 +175,27 @@ Required tools (checked by `healthcheck.sh`):
 - **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
 - **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
   requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
+- **Claude Code:** optional; if `claude` is on PATH, `setup.sh` registers the MCP
+  servers listed in `CLAUDE_MCP_SERVERS` (in `setup.sh`) at user scope via
+  `claude mcp add-json`, mirroring the enabled servers in `opencode/opencode.json`:
+  `git`, `docker`, `github`, `obsidian`. `sqlite` is intentionally left out of Claude
+  Code's registration — its opencode config uses a per-workspace path
+  (`${workspaceFolder}/data/metadata.db`), which doesn't make sense as a single
+  global `user`-scope entry.
+  Not a stow package — Claude Code's user-scope MCP config lives inside the
+  stateful `~/.claude.json`, so it's registered imperatively instead of symlinked.
+- **`uv`/`uvx`:** required for the `obsidian` MCP server (`uvx mcp-obsidian`).
+  `sudo dnf install uv` on Fedora; checked by `healthcheck.sh`.
+- **Secrets (`GITHUB_TOKEN`, `OBSIDIAN_API_KEY`):** `~/.bashrc.d` is itself the
+  stowed repo directory (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't
+  hold untracked secrets. `bash/.bashrc` instead sources `~/.bashrc.local` if it
+  exists — that file lives outside the repo and is never committed. Put
+  `export GITHUB_TOKEN=...` (fine-grained PAT, used by the `github` MCP server) and
+  `export OBSIDIAN_API_KEY=...` (from the Obsidian Local REST API plugin, used by
+  the `obsidian` MCP server) in there.
+- **Obsidian `obsidian-local-rest-api` plugin:** required by the `obsidian` MCP
+  server. `setup.sh` (`install_obsidian_rest_api_plugin`) downloads the plugin into
+  `~/ObsidianVault/.obsidian/plugins/` and registers it in `community-plugins.json`
+  if the vault exists, but activation and API-key generation require opening
+  Obsidian once (Settings > Community plugins > enable "Local REST API", copy the
+  generated key into `OBSIDIAN_API_KEY`).

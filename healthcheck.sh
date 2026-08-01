@@ -208,6 +208,51 @@ fi
 
 echo ""
 
+log_info "--- Claude Code ---"
+if command -v claude &>/dev/null; then
+  CC_VER=$(claude --version 2>&1 | head -n1)
+  log_success "Claude Code encontrado: $CC_VER ($(command -v claude))"
+  CC_MCP_LIST=$(claude mcp list 2>/dev/null)
+  for mcp_name in git docker github obsidian; do
+    if grep -q "^${mcp_name}:" <<<"$CC_MCP_LIST"; then
+      log_success "MCP server '$mcp_name' registrado (user scope)"
+    else
+      log_warn "MCP server '$mcp_name' não registrado. Execute ./setup.sh para registrar."
+    fi
+  done
+else
+  log_warn "Claude Code não encontrado (registro de MCP servers em setup.sh será pulado)."
+  echo "    -> Instalar: https://docs.claude.com/en/docs/claude-code"
+fi
+
+if command -v uvx &>/dev/null; then
+  log_success "uvx encontrado ($(command -v uvx)) - necessário para o MCP server 'obsidian'"
+else
+  log_warn "uvx não encontrado (MCP server 'obsidian' vai falhar ao conectar)."
+  echo "    -> Instalar: sudo dnf install uv"
+fi
+
+if [ -n "$GITHUB_TOKEN" ]; then
+  log_success "GITHUB_TOKEN definido (MCP server 'github' pronto para autenticar)"
+else
+  log_warn "GITHUB_TOKEN não definido. Adicione em ~/.bashrc.local (não rastreado pelo git)."
+fi
+
+if [ -n "$OBSIDIAN_API_KEY" ]; then
+  log_success "OBSIDIAN_API_KEY definido (MCP server 'obsidian' pronto para autenticar)"
+else
+  log_warn "OBSIDIAN_API_KEY não definido. Adicione em ~/.bashrc.local (não rastreado pelo git)."
+fi
+
+if [ -f "$HOME/ObsidianVault/.obsidian/plugins/obsidian-local-rest-api/main.js" ]; then
+  log_success "Plugin 'obsidian-local-rest-api' instalado no ObsidianVault"
+else
+  log_warn "Plugin 'obsidian-local-rest-api' não encontrado no ObsidianVault."
+  echo "    -> Execute ./setup.sh para instalar, depois abra o Obsidian para ativá-lo."
+fi
+
+echo ""
+
 log_info "--- Yazi Flavor ---"
 if [ -d "$HOME/.config/yazi/flavors/catppuccin-mocha.yazi" ]; then
   log_success "Flavor catppuccin-mocha instalado"
