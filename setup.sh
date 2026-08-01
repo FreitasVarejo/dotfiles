@@ -40,12 +40,16 @@ backup_path() {
     local label="${2:-backup}"
 
     if [[ -e "$target" || -h "$target" ]]; then
-        if [[ -h "$target" ]]; then
-            local current_target
-            current_target=$(readlink -f "$target")
-            if [[ "$current_target" == "$SCRIPT_DIR"* ]]; then
-                return
-            fi
+        # Resolve o path real independente de o symlink estar no próprio $target
+        # ou em algum diretório pai (stow faz "tree folding": quando não há
+        # conflito, ele symlinka um diretório inteiro, ex: ~/.config/nvim/lua ->
+        # dotfiles/nvim/lua). Checar só "-h \"$target\"" ignora esse segundo caso
+        # e trata arquivos que já vivem dentro do repo como conflito, apagando-os
+        # do repo ao mover para o backup.
+        local resolved
+        resolved=$(readlink -f "$target" 2>/dev/null)
+        if [[ -n "$resolved" && "$resolved" == "$SCRIPT_DIR"* ]]; then
+            return
         fi
 
         if [[ "$HAS_BACKUP" == false ]]; then
