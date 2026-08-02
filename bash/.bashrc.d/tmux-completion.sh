@@ -12,16 +12,20 @@ _t_completion() {
   # Get list of tmux sessions (suppress errors if no sessions exist)
   local sessions
   sessions=$(tmux -u list-sessions -F "#{session_name}" 2>/dev/null)
-  
+
+  # Get list of hosts from ~/.ssh/config (skip wildcard patterns)
+  local ssh_hosts
+  ssh_hosts=$(awk 'tolower($1) == "host" { for (i = 2; i <= NF; i++) if ($i !~ /[*?]/) print $i }' ~/.ssh/config 2>/dev/null)
+
   # Determine context: first argument (command) or second+ argument (session/args)
   if [[ $cword -eq 1 ]]; then
     # First argument: complete commands
-    local commands="a n k kall ls lw rename mv send help h"
+    local commands="a n k kall ls lw rename mv ssh send help h"
     COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
   else
     # Second+ argument: context-dependent completion
     local cmd="${COMP_WORDS[1]}"
-    
+
     case "$cmd" in
       a|attach|n|new|k|kill|lw|list-windows)
         # These commands take session name as argument
@@ -34,6 +38,14 @@ _t_completion() {
           COMPREPLY=( $(compgen -W "$sessions" -- "$cur") )
         else
           # Completing new session name - no completion
+          COMPREPLY=()
+        fi
+        ;;
+      ssh)
+        # t ssh <session> <host> [path]: session has no completion, host comes from ~/.ssh/config
+        if [[ $cword -eq 3 ]]; then
+          COMPREPLY=( $(compgen -W "$ssh_hosts" -- "$cur") )
+        else
           COMPREPLY=()
         fi
         ;;
