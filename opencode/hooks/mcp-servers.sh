@@ -16,6 +16,12 @@
 # 'sqlite' fica de fora: no opencode.json ele usa um path por-workspace
 # (${workspaceFolder}/data/metadata.db), que não faz sentido como registro
 # global de escopo 'user' no Claude Code.
+#
+# 'ssh' aponta pro clone local em ~/mcp-servers/mcp-ssh (não é pacote npm
+# publicado, foi clonado e buildado manualmente com `npm run build`). $HOME
+# abaixo é literal de propósito (aspas duplas): expande aqui mesmo, no
+# ambiente de quem roda o hook, já que o valor precisa virar path absoluto
+# antes de ir pro JSON registrado no Claude Code.
 
 declare -A CLAUDE_MCP_SERVERS
 # shellcheck disable=SC2034  # consumido por hooks/check.sh e hooks/setup.sh via source
@@ -25,4 +31,5 @@ CLAUDE_MCP_SERVERS=(
   [docker]='{"type":"stdio","command":"npx","args":["-y","docker-mcp"]}'
   [github]='{"type": "http", "url": "https://api.githubcopilot.com/mcp/", "headersHelper": "echo \"{\\\"Authorization\\\": \\\"Bearer $GITHUB_TOKEN\\\"}\""}'
   [obsidian]='{"type":"stdio","command":"uvx","args":["mcp-obsidian"]}'
+  [ssh]="{\"type\":\"stdio\",\"command\":\"node\",\"args\":[\"$HOME/mcp-servers/mcp-ssh/dist/index.js\"]}"
 )
