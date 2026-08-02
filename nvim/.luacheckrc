@@ -15,7 +15,8 @@ ignore = {
 globals = {
   -- Neovim globals
   "vim",
-  
+  "Snacks",
+
   -- Standard Lua functions (usually builtin)
   "load",
   "loadstring",
