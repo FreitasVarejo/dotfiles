@@ -42,6 +42,26 @@ luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
 at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
 
+## Task manager / daily notes (Obsidian)
+
+Task/daily-note tracking over `~/ObsidianVault/tasks/`, driven by
+`nvim/lua/util/tasks.lua` + `nvim/lua/plugins/task-manager.lua`. **Full guide:**
+[`nvim/docs/task-manager.md`](nvim/docs/task-manager.md).
+
+Invariants an agent must not break:
+
+- One file per task: `tasks/<project>/<id>.md`. Its top is a 3-line callout —
+  `> [!<callout>] **<title>**` / `> [[<id>]]` / `> <n> - <status>`. **Status is
+  the callout type** (mapped via `tasks/status.json`), not a number on line 1.
+- `<id>` = filename = git branch name (no `feat/`); the `[[id]]` link is the
+  branch — there is no separate `Branch:` line. Lines 4+ are free text, preserved
+  verbatim.
+- `CURRENT.md` is generated (auto-regenerated on task save; previous day archived
+  to `tasks/daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
+  `templates/` are reserved, not projects.
+- Reuse `require("util.tasks").parse_block` / `serialize_block` (round-trip safe,
+  handles YAML frontmatter + legacy formats) instead of ad-hoc regex.
+
 ## Code Style Guidelines
 
 ### Shell Scripts (Bash)
