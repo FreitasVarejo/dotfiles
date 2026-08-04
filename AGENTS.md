@@ -51,16 +51,22 @@ Task/daily-note tracking over `~/ObsidianVault/tasks/`, driven by
 Invariants an agent must not break:
 
 - One file per task: `tasks/<project>/<id>.md`. Its top is a 3-line callout —
-  `> [!<callout>] **<title>**` / `> [[<id>]]` / `> <n> - <status>`. **Status is
-  the callout type** (mapped via `tasks/status.json`), not a number on line 1.
-- `<id>` = filename = git branch name (no `feat/`); the `[[id]]` link is the
-  branch — there is no separate `Branch:` line. Lines 4+ are free text, preserved
-  verbatim.
+  `> [!<callout>] <title>` / `> [[tasks/<project>/<id>|<id>]]` / `> <free name>`.
+  **Status is EXCLUSIVELY the callout type** (mapped via `tasks/status.json`,
+  which covers all 27 render-markdown.nvim callouts, ordered `todo` → done →
+  reference — see `tasks/STATUS.md` for the full ordered list with rendered
+  examples). Never write a status number anywhere in the file.
+- `<id>` = filename = git branch name (no `feat/`); line 2's wikilink target
+  is the vault-relative path with `<id>` as alias — there is no separate
+  `Branch:` line. Line 3 is a short free-form name, independent of status,
+  supplied on each create/edit (omit the line if empty). Lines 4+ are free
+  text, preserved verbatim.
 - `CURRENT.md` is generated (auto-regenerated on task save; previous day archived
   to `tasks/daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
   `templates/` are reserved, not projects.
 - Reuse `require("util.tasks").parse_block` / `serialize_block` (round-trip safe,
   handles YAML frontmatter + legacy formats) instead of ad-hoc regex.
+  `serialize_block` needs `model.project` set to emit the path-qualified link.
 
 ## Code Style Guidelines
 
