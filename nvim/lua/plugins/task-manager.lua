@@ -6,10 +6,10 @@
 -- e a keymap global <leader>ob do picker. Declarado como fragmento `optional`
 -- do spec já configurado do snacks.nvim.
 --
--- UI: picker de 2 níveis (projetos → tasks). A edição de uma task acontece num
--- form flutuante multi-campo, acionável tanto pelo picker (<C-e>) quanto pelo
--- <leader>oe quando o cursor está sobre um callout (em CURRENT.md ou no arquivo
--- da task).
+-- UI: picker de 2 níveis (projetos → tasks). Criação (<C-t>) e edição (<C-e> ou
+-- <leader>oe sobre um callout, em CURRENT.md ou no arquivo da task) usam o MESMO
+-- form flutuante posicional: título / id / "<tipo-de-callout> [descrição]" /
+-- notas, com os rótulos em virtual text e <C-s> para escolher o status.
 
 local tasks = require("util.tasks")
 
