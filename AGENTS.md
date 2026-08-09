@@ -42,11 +42,11 @@ luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
 at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
 
-## Task manager / daily notes (Obsidian)
+## Freitask / daily notes (Obsidian)
 
 Task/daily-note tracking over `~/ObsidianVault/tasks/`, driven by
-`nvim/lua/util/tasks.lua` + `nvim/lua/plugins/task-manager.lua`. **Full guide:**
-[`nvim/docs/task-manager.md`](nvim/docs/task-manager.md).
+`nvim/lua/util/freitask.lua` + `nvim/lua/plugins/freitask.lua`. **Full guide:**
+[`nvim/docs/freitask.md`](nvim/docs/freitask.md).
 
 Invariants an agent must not break:
 
@@ -64,7 +64,7 @@ Invariants an agent must not break:
 - `CURRENT.md` is generated (auto-regenerated on task save; previous day archived
   to `tasks/daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
   `templates/` are reserved, not projects.
-- Reuse `require("util.tasks").parse_block` / `serialize_block` (round-trip safe,
+- Reuse `require("util.freitask").parse_block` / `serialize_block` (round-trip safe,
   handles YAML frontmatter + legacy formats) instead of ad-hoc regex.
   `serialize_block` needs `model.project` set to emit the path-qualified link.
 

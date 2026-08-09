@@ -1,6 +1,6 @@
--- Task Manager: task tracking baseado em Obsidian, dirigido por Snacks.picker.
+-- Freitask: task tracking baseado em Obsidian, dirigido por Snacks.picker.
 --
--- Toda a lógica vive em `lua/util/tasks.lua` (parser/serializer do callout,
+-- Toda a lógica vive em `lua/util/freitask.lua` (parser/serializer do callout,
 -- resolver de cursor, form de edição, dashboard CURRENT.md). Este arquivo é só
 -- o spec do plugin: registra o autocmd (cache + keymap buffer-local <leader>oe)
 -- e a keymap global <leader>ob do picker. Declarado como fragmento `optional`
@@ -11,7 +11,7 @@
 -- form flutuante posicional: título / id / "<tipo-de-callout> [descrição]" /
 -- notas, com os rótulos em virtual text e <C-s> para escolher o status.
 
-local tasks = require("util.tasks")
+local tasks = require("util.freitask")
 
 return {
   "folke/snacks.nvim",
@@ -25,7 +25,7 @@ return {
       function()
         tasks.open_projects()
       end,
-      desc = "Task Manager (Obsidian)",
+      desc = "Freitask (Obsidian)",
     },
   },
 }
