@@ -1,0 +1,13 @@
+[Unit]
+Description=Checkpoint do vault a cada 15 minutos
+
+[Timer]
+# OnCalendar (e não OnUnitActiveSec) para que Persistent= valha: depois de
+# suspender/desligar, o checkpoint perdido roda assim que a sessão volta.
+OnCalendar=*:0/15
+Persistent=true
+# O timer também cobre as edições que chegam do celular via Syncthing — que o
+# Neovim nunca veria.
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Checkpoint git do vault do Obsidian
+Documentation=file:///home/freitaspinhe/dotfiles/nvim/docs/freitask.md
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/vault-checkpoint
+# O repo é local e sem remoto: nada de rede, nada a fazer em caso de falha
+# além de tentar de novo no próximo disparo.

@@ -48,25 +48,53 @@ Task/daily-note tracking over `~/ObsidianVault/tasks/`, driven by
 `nvim/lua/util/freitask.lua` + `nvim/lua/plugins/freitask.lua`. **Full guide:**
 [`nvim/docs/freitask.md`](nvim/docs/freitask.md).
 
+**The vault has its own contract**, colocated with the data, for agents pointed
+at the vault rather than at this repo: [`~/ObsidianVault/AGENTS.md`](file:///home/freitaspinhe/ObsidianVault/AGENTS.md).
+
+**Never `mv`, `rm` or hand-edit to move/rename/archive a task.** Use the CLI —
+it is the only thing that keeps the four coupled invariants in sync at once:
+
+```bash
+freitask archive <id> done|dropped|failed   # or unarchive / rename / list
+freitask doctor [--fix]                     # verify; --fix repairs what is derivable
+```
+
 Invariants an agent must not break:
 
-- One file per task: `tasks/<project>/<id>.md`. Its top is a 3-line callout —
-  `> [!<callout>] <title>` / `> [[tasks/<project>/<id>|<id>]]` / `> <free name>`.
+- One file per task: `tasks/<project>/<id>.md`, or
+  `tasks/<project>/archived/<type>/<id>.md` when archived (`done|dropped|failed`).
+  **Being archived is the PATH**, not a frontmatter flag.
+- The top of the file is a callout: `> [!<callout>] <title>` /
+  `> [[tasks/<project>/<id>|<id>]]` / optional `> _state description_` (italic
+  is what identifies it, not position — omit the line entirely if empty) /
+  lines 4+ free text, preserved verbatim.
   **Status is EXCLUSIVELY the callout type** (mapped via `tasks/status.json`,
   which covers all 27 render-markdown.nvim callouts, ordered `todo` → done →
-  reference — see `tasks/STATUS.md` for the full ordered list with rendered
-  examples). Never write a status number anywhere in the file.
-- `<id>` = filename = git branch name (no `feat/`); line 2's wikilink target
-  is the vault-relative path with `<id>` as alias — there is no separate
-  `Branch:` line. Line 3 is a short free-form name, independent of status,
-  supplied on each create/edit (omit the line if empty). Lines 4+ are free
-  text, preserved verbatim.
+  reference — see `tasks/STATUS.md`). Never write a status number anywhere.
+- `<id>` = filename = git branch name (no `feat/`); line 2's wikilink target is
+  the vault-relative path with `<id>` as alias — there is no separate `Branch:`
+  line, and the frontmatter `id:` must match the filename.
+- Renaming an id **breaks external backlinks irrecoverably** unless done through
+  `freitask rename` / `M.apply_edit`, which call `M.retarget_links`. Archiving
+  by hand is only *repairable* damage (`freitask doctor --fix`) — still use the CLI.
+- Archiving/unarchiving append a dated line to the `## Histórico` footer. Do not
+  write there by hand: the path stays the source of truth, and a history line
+  without the corresponding move is just text lying about where the file is.
 - `CURRENT.md` is generated (auto-regenerated on task save; previous day archived
   to `tasks/daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
-  `templates/` are reserved, not projects.
+  `templates/` are reserved, not projects — and `daily/` must never be rewritten.
+- `*.sync-conflict-*.md` (Syncthing, the vault syncs with a phone) are ignored by
+  the tool on purpose and reported by `doctor`. Never resolve one unattended.
 - Reuse `require("util.freitask").parse_block` / `serialize_block` (round-trip safe,
   handles YAML frontmatter + legacy formats) instead of ad-hoc regex.
-  `serialize_block` needs `model.project` set to emit the path-qualified link.
+  `serialize_block` needs `model.project` (and `model.archived`) to emit the link.
+- `M.split_task_path(path)` → `project, id, archived` is the single guard for
+  "is this a task file?". Extend it rather than adding a new `match` at a use site.
+
+Safety net: `vault-checkpoint.timer` snapshots the vault every 15 min into a git
+repo whose `GIT_DIR` lives **outside** the synced folder
+(`~/.local/state/obsidian-vault.git`), so git and Syncthing never share a byte.
+Inspect/undo with `vaultgit log|restore`. Never commit it by hand.
 
 ## Code Style Guidelines
 

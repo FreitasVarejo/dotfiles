@@ -27,6 +27,7 @@ STOW_TARGETS=(
   [git]="$HOME/.config/git"
   [yazi]="$HOME/.config/yazi"
   [opencode]="$HOME/.config/opencode"
+  [vault]="$HOME"
 )
 
 if ! command -v stow &>/dev/null; then

@@ -1,0 +1,25 @@
+#!/bin/bash
+# vault-checkpoint — grava um snapshot do vault no repo git externo.
+#
+# Chamado pelo timer vault-checkpoint.timer; o objetivo é você NUNCA commitar à
+# mão. Commits são checkpoints de máquina, não commits semânticos: a mensagem
+# diz quando e quantos arquivos, e nada mais.
+#
+# Sai em silêncio (status 0) quando nada mudou — sem isto o timer encheria a
+# história de commits vazios.
+
+set -euo pipefail
+
+VAULTGIT="$(dirname "${BASH_SOURCE[0]}")/vaultgit"
+[[ -x "$VAULTGIT" ]] || VAULTGIT="vaultgit"
+
+"$VAULTGIT" add -A
+
+# `diff --cached --quiet` sai 1 quando HÁ mudança; dentro do `if` isso não
+# dispara o `set -e`.
+if "$VAULTGIT" diff --cached --quiet; then
+  exit 0
+fi
+
+n=$("$VAULTGIT" diff --cached --name-only | wc -l)
+"$VAULTGIT" commit -q -m "checkpoint $(date '+%Y-%m-%d %H:%M') ($n arquivo(s))"

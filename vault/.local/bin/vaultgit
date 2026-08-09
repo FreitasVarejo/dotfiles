@@ -1,0 +1,40 @@
+#!/bin/bash
+# vaultgit — git do vault do Obsidian.
+#
+# O repositório fica DELIBERADAMENTE fora da pasta sincronizada:
+#
+#   ~/.local/state/obsidian-vault.git/   metadata (objects, refs, index)
+#   ~/ObsidianVault/                     worktree, sincronizado pelo Syncthing
+#
+# Sincronizar `.git/` entre dispositivos corrompe o repo: refs, objects e index
+# mudam sem transação e o Syncthing os replica arquivo a arquivo. Mantendo a
+# metadata fora da pasta, as duas ferramentas nunca tocam o mesmo byte e o
+# conflito deixa de ser possível por construção — não por configuração que é
+# preciso lembrar de manter.
+#
+# Consequência: cada máquina tem sua PRÓPRIA história do vault. Isto é um log
+# de undo local, não um mecanismo de sincronização (quem sincroniza é o
+# Syncthing) e não histórico compartilhado. O celular não participa.
+#
+# Uso: idêntico ao git.
+#   vaultgit log --oneline -- tasks/jellyfin/stack-up.md
+#   vaultgit diff HEAD~5 -- tasks/
+#   vaultgit restore --source=HEAD~3 tasks/jellyfin/stack-up.md
+
+set -euo pipefail
+
+VAULT_GIT_DIR="${VAULT_GIT_DIR:-$HOME/.local/state/obsidian-vault.git}"
+VAULT_WORK_TREE="${VAULT_WORK_TREE:-$HOME/ObsidianVault}"
+
+if [[ ! -d "$VAULT_GIT_DIR" ]]; then
+  echo "vaultgit: repositório não existe em $VAULT_GIT_DIR" >&2
+  echo "  -> rode: ~/dotfiles/setup.sh   (ou vault/hooks/setup.sh)" >&2
+  exit 1
+fi
+
+if [[ ! -d "$VAULT_WORK_TREE" ]]; then
+  echo "vaultgit: vault não encontrado em $VAULT_WORK_TREE" >&2
+  exit 1
+fi
+
+exec git --git-dir="$VAULT_GIT_DIR" --work-tree="$VAULT_WORK_TREE" "$@"

@@ -1,0 +1,29 @@
+#!/bin/bash
+# freitask — CLI de tasks do vault do Obsidian.
+#
+# Shim sobre nvim/lua/util/freitask_cli.lua, que por sua vez é um shim sobre
+# util.freitask. Toda a regra vive num lugar só; aqui não há lógica de negócio
+# nenhuma, de propósito.
+#
+# Existe para que quem não é o Neovim — Obsidian, scripts, agentes de IA —
+# tenha um caminho certo que seja mais fácil que `mv`.
+
+set -euo pipefail
+
+CLI_LUA="${FREITASK_CLI_LUA:-$HOME/.config/nvim/lua/util/freitask_cli.lua}"
+
+if ! command -v nvim &>/dev/null; then
+  echo "freitask: nvim não encontrado no PATH" >&2
+  exit 2
+fi
+
+if [[ ! -f "$CLI_LUA" ]]; then
+  echo "freitask: $CLI_LUA não encontrado (os dotfiles foram aplicados?)" >&2
+  echo "  -> rode: ~/dotfiles/setup.sh" >&2
+  exit 2
+fi
+
+# --clean: a CLI não deve depender de plugins nem do estado do usuário; o
+# módulo só toca arquivos e vim.fn. `-l` já implica --headless e repassa os
+# argumentos seguintes ao script via _G.arg.
+exec nvim --clean --cmd "set runtimepath+=$HOME/.config/nvim" -l "$CLI_LUA" "$@"
