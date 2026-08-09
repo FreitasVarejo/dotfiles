@@ -10,6 +10,10 @@
 -- <leader>oe sobre um callout, em CURRENT.md ou no arquivo da task) usam o MESMO
 -- form flutuante posicional: título / id / "<tipo-de-callout> [descrição]" /
 -- notas, com os rótulos em virtual text e <C-s> para escolher o status.
+--
+-- Arquivar/desarquivar (<C-r> no picker, <leader>oa no arquivo) ficam FORA do
+-- form de propósito: são ações com confirmação, e um quarto campo posicional
+-- faria uma linha apagada sem querer mover arquivo de lugar.
 
 local tasks = require("util.freitask")
 
