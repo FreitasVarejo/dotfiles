@@ -39,7 +39,7 @@
     },
     "obsidian": {
       "type": "local",
-      "command": ["uvx", "mcp-obsidian"],
+      "command": ["uvx", "--with", "mcp<2", "mcp-obsidian"],
       "enabled": true
     }
   }

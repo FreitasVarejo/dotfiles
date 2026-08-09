@@ -64,4 +64,13 @@ else
   echo "    -> Execute ./setup.sh para instalar, depois abra o Obsidian para ativá-lo."
 fi
 
+# A REST API roda dentro do app do Obsidian: sem o app aberto, as tools do MCP
+# server 'obsidian' falham mesmo com tudo instalado e o server "conectado".
+if curl -sk --max-time 3 -o /dev/null "https://127.0.0.1:27124/"; then
+  log_success "Local REST API respondendo em 127.0.0.1:27124 (Obsidian aberto)"
+else
+  log_warn "Nada respondendo em 127.0.0.1:27124 - as tools do MCP 'obsidian' vão falhar."
+  echo "    -> Abra o app do Obsidian (a REST API é um plugin dele, não um serviço)."
+fi
+
 exit "$CHECK_FAILED"
