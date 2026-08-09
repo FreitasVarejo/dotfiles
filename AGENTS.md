@@ -45,8 +45,9 @@ at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations
 ## Freitask / daily notes (Obsidian)
 
 Task/daily-note tracking over `~/ObsidianVault/tasks/`, driven by
-`nvim/lua/util/freitask.lua` + `nvim/lua/plugins/freitask.lua`. **Full guide:**
-[`nvim/docs/freitask.md`](nvim/docs/freitask.md).
+`nvim/lua/freitask/` + `nvim/lua/plugins/freitask.lua`. **Full guide:**
+[`nvim/docs/freitask.md`](nvim/docs/freitask.md); **module map, dependency rules
+and how to test:** [`nvim/docs/freitask-internals.md`](nvim/docs/freitask-internals.md).
 
 **The vault has its own contract**, colocated with the data, for agents pointed
 at the vault rather than at this repo: [`~/ObsidianVault/AGENTS.md`](file:///home/freitaspinhe/ObsidianVault/AGENTS.md).
@@ -85,10 +86,10 @@ Invariants an agent must not break:
   `templates/` are reserved, not projects — and `daily/` must never be rewritten.
 - `*.sync-conflict-*.md` (Syncthing, the vault syncs with a phone) are ignored by
   the tool on purpose and reported by `doctor`. Never resolve one unattended.
-- Reuse `require("util.freitask").parse_block` / `serialize_block` (round-trip safe,
+- Reuse `require("freitask").parse_block` / `serialize_block` (round-trip safe,
   handles YAML frontmatter + legacy formats) instead of ad-hoc regex.
   `serialize_block` needs `model.project` (and `model.archived`) to emit the link.
-- `M.split_task_path(path)` → `project, id, archived` is the single guard for
+- `path.split_task_path(path)` → `project, id, archived` is the single guard for
   "is this a task file?". Extend it rather than adding a new `match` at a use site.
 
 Safety net: `vault-checkpoint.timer` snapshots the vault every 15 min into a git
@@ -264,8 +265,17 @@ Required tools (checked by `healthcheck.sh`):
   global `user`-scope entry.
   Not a stow package — Claude Code's user-scope MCP config lives inside the
   stateful `~/.claude.json`, so it's registered imperatively instead of symlinked.
-- **`uv`/`uvx`:** required for the `obsidian` MCP server (`uvx mcp-obsidian`).
-  `sudo dnf install uv` on Fedora; checked by `healthcheck.sh`.
+- **`uv`/`uvx`:** required for the `obsidian` MCP server
+  (`uvx --with 'mcp<2' mcp-obsidian`). `sudo dnf install uv` on Fedora; checked by
+  `healthcheck.sh`. The `mcp<2` pin is load-bearing: `mcp-obsidian` 0.2.2 leaves its
+  Python SDK dependency unpinned, so `uvx` resolves `mcp` 2.x, which dropped the
+  lowlevel `Server.list_tools`/`call_tool` decorators — the server then dies with an
+  `AttributeError` at import and the client only reports "Connection closed".
+- **Obsidian desktop app must be running** for any `obsidian` MCP tool to work: the
+  Local REST API is a plugin *inside* the app, listening on `127.0.0.1:27124` (HTTPS,
+  self-signed; `enableInsecureServer` is off). With Obsidian closed there is no
+  listener and every tool call fails, even though `claude mcp list` may still show the
+  server as connected — the stdio process starts fine, it's the HTTP call that fails.
 - **Secrets (`GITHUB_TOKEN`, `OBSIDIAN_API_KEY`):** `~/.bashrc.d` is itself the
   stowed repo directory (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't
   hold untracked secrets. `bash/.bashrc` instead sources `~/.bashrc.local` if it
