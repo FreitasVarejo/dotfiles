@@ -41,13 +41,19 @@ luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
 
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
 at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
+(The freitask test suite lives in its own repo: `~/projects/freitask.nvim/tests/run.sh`.)
 
 ## Freitask / daily notes (Obsidian)
 
-Task/daily-note tracking over `~/ObsidianVault/tasks/`, driven by
-`nvim/lua/freitask/` + `nvim/lua/plugins/freitask.lua`. **Full guide:**
-[`nvim/docs/freitask.md`](nvim/docs/freitask.md); **module map, dependency rules
-and how to test:** [`nvim/docs/freitask-internals.md`](nvim/docs/freitask-internals.md).
+Task/daily-note tracking over `~/ObsidianVault/tasks/`. **The code lives in its
+own repo** at `~/projects/freitask.nvim` — this repo only carries the lazy.nvim
+spec (`nvim/lua/plugins/freitask.lua`, loaded via `dir=`) and the CLI wrapper
+(`vault/.local/bin/freitask`). **Full guide:**
+`~/projects/freitask.nvim/docs/freitask.md`; **module map, dependency rules and
+how to test:** `~/projects/freitask.nvim/docs/freitask-internals.md`.
+
+Changes to task behaviour go in that repo, not here. What belongs here is only
+the wiring: where the clone lives, and how the CLI finds it (`FREITASK_REPO`).
 
 **The vault has its own contract**, colocated with the data, for agents pointed
 at the vault rather than at this repo: [`~/ObsidianVault/AGENTS.md`](file:///home/freitaspinhe/ObsidianVault/AGENTS.md).

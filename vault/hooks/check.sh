@@ -74,6 +74,7 @@ if command -v freitask &>/dev/null; then
 else
   log_missing "CLI 'freitask' não encontrada no PATH"
   echo "    -> Aplicar os dotfiles: ~/dotfiles/setup.sh"
+  echo "    -> A CLI também precisa do clone de freitask.nvim (ver o check do nvim)."
   fail_check
 fi
 

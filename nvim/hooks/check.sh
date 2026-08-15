@@ -85,6 +85,21 @@ else
 fi
 
 echo ""
+log_info "--- Freitask (plugin externo) ---"
+# O freitask deixou de morar em nvim/lua/ e virou repo próprio. O spec do lazy
+# se desativa em silêncio se o clone não existir (não vale derrubar o startup do
+# Neovim por causa dele), então é aqui que a ausência precisa aparecer.
+FREITASK_REPO="${FREITASK_REPO:-$HOME/projects/freitask.nvim}"
+if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
+  log_success "freitask.nvim encontrado: $FREITASK_REPO"
+else
+  log_missing "freitask.nvim não encontrado em $FREITASK_REPO"
+  echo "    -> Clonar o repo do plugin lá (ou exportar FREITASK_REPO)."
+  echo "    -> Sem ele: o picker <leader>ob some e a CLI 'freitask' falha."
+  fail_check
+fi
+
+echo ""
 log_info "--- Snacks.image optionals (preview de imagens inline) ---"
 log_optional "Estes são opcionais; o picker e dashboard funcionam sem eles."
 check_cmd "magick" "$PM_INSTALL imagemagick" "optional"
