@@ -1,10 +1,13 @@
-[user]
-	name = Gabriel Freitas Pinheiro
-	email = gabrielpinheiro2003@gmail.com
-	# email is set per-machine via: git config --global user.email "you@example.com"
+# A identidade NÃO fica aqui de propósito. Este arquivo é o config XDG
+# (~/.config/git/config, symlink para o repo); o git lê TAMBÉM ~/.gitconfig, e
+# ~/.gitconfig ganha nos conflitos. Ter [user] nos dois fazia o daqui nunca
+# valer nada e o check do pacote sempre dizer "já configurada".
+# Identidade é por-máquina e mora em ~/.gitconfig, escrita por git/hooks/setup.sh.
 
 [credential]
-	helper = store
+	# libsecret guarda no keyring da sessão; `store` grava o token em texto
+	# plano em ~/.git-credentials.
+	helper = libsecret
 
 # --- Delta (Modern Diff) ---
 [interactive]
@@ -35,7 +38,10 @@
 
 [core]
   pager = less -FRSX
-  editor = code --wait
+  # nvim, e não `code --wait`: bash/.bashrc.d/editor.sh já exporta
+  # EDITOR/VISUAL/GIT_EDITOR=nvim, então o VS Code só aparecia quando o git era
+  # chamado de fora do shell — o pior dos dois mundos.
+  editor = nvim
 
 [alias]
   co = checkout
@@ -75,11 +81,8 @@
 [push]
   default = simple
 
-[branch "master"]
-  mergeoptions = --no-edit
-
 [pull]
   rebase = false
 
 [init]
-  defaultBranch = master
+  defaultBranch = main

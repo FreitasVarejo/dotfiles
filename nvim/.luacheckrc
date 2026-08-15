@@ -5,11 +5,6 @@
 std = "lua54"
 max_line_length = 120
 
--- Ignore specific warnings globally
-ignore = {
-  "631", -- Line is too long
-}
-
 -- Define globals that should not trigger undefined variable warnings
 -- Neovim and Lua standard library globals
 globals = {

@@ -30,14 +30,16 @@ vim.api.nvim_create_user_command("LspStatus", function()
   print(msg)
 end, {})
 
--- Diagnostic toggle command
+-- Diagnostic toggle command.
+-- vim.diagnostic.is_disabled()/disable() foram removidas no Neovim 0.11; o par
+-- atual é is_enabled()/enable(bool).
 vim.api.nvim_create_user_command("DiagToggle", function()
-  if vim.diagnostic.is_disabled() then
-    vim.diagnostic.enable()
-    vim.notify("✓ Diagnósticos habilitados", vim.log.levels.INFO)
-  else
-    vim.diagnostic.disable()
+  local enabled = vim.diagnostic.is_enabled()
+  vim.diagnostic.enable(not enabled)
+  if enabled then
     vim.notify("✗ Diagnósticos desabilitados", vim.log.levels.INFO)
+  else
+    vim.notify("✓ Diagnósticos habilitados", vim.log.levels.INFO)
   end
 end, {})
 

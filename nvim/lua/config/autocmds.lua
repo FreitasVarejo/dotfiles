@@ -1,5 +1,6 @@
 -- Autocommands are automatically loaded on the VeryLazy event
--- Default autocommands that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/autocmds.lua
+-- Default autocommands that are always set:
+-- https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/autocmds.lua
 -- Add any additional autocommands here
 
 -- Garante que o spell check esteja desativado para markdown,
