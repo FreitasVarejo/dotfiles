@@ -21,7 +21,6 @@ HAS_BACKUP=false
 declare -A STOW_TARGETS
 STOW_TARGETS=(
   [bash]="$HOME"
-  [conda]="$HOME"
   [tmux]="$HOME/.config/tmux"
   [nvim]="$HOME/.config/nvim"
   [git]="$HOME/.config/git"

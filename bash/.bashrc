@@ -48,18 +48,6 @@ if [ -d "/usr/local/cuda" ]; then
     fi
 fi
 
-# Lazy conda: carrega conda.sh na primeira chamada de `conda`,
-# evitando o custo de inicialização (~150ms) em shells onde nunca é usado.
-conda() {
-    unfunction conda 2>/dev/null || unset -f conda
-    if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "$HOME/miniconda3/etc/profile.d/conda.sh"
-    elif [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
-        . "/opt/conda/etc/profile.d/conda.sh"
-    fi
-    command conda "$@"
-}
-
 if [ -f "$HOME/.cargo/env" ]; then
     . "$HOME/.cargo/env"
 fi
@@ -131,22 +119,6 @@ fi
 
 if command -v lazygit &> /dev/null; then
     alias lg='lazygit'
-fi
-
-# Copilot CLI shortcuts (fallback para opencode --provider copilot).
-# '!?' é expansão de histórico do bash; usamos eval para que o parser não
-# tente validar '??' / '!?' como nomes em tempo de parse (algumas versões
-# do bash falham em --rcfile com esses nomes).
-if command -v github-copilot-cli &>/dev/null; then
-    set +H
-    eval '??() { github-copilot-cli suggest "$@"; }'
-    eval '!?() { github-copilot-cli explain "$@"; }'
-    set -H
-elif command -v copilot &>/dev/null; then
-    set +H
-    eval '??() { copilot suggest "$@"; }'
-    eval '!?() { copilot explain "$@"; }'
-    set -H
 fi
 
 # Yazi: Wrapper para mudar de diretório ao sair
