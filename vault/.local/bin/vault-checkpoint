@@ -1,14 +1,30 @@
 #!/bin/bash
 # vault-checkpoint — grava um snapshot do vault no repo git externo.
 #
-# Chamado pelo timer vault-checkpoint.timer; o objetivo é você NUNCA commitar à
-# mão. Commits são checkpoints de máquina, não commits semânticos: a mensagem
-# diz quando e quantos arquivos, e nada mais.
+# Chamado pelo timer vault-checkpoint.timer (vault pessoal) ou por
+# vault-checkpoint@<nome>.timer (vaults extras); o objetivo é você NUNCA
+# commitar à mão. Commits são checkpoints de máquina, não commits semânticos.
 #
-# Sai em silêncio (status 0) quando nada mudou — sem isto o timer encheria a
-# história de commits vazios.
+# Uso: vault-checkpoint [<nome>]
+#   sem argumento  -> vault pessoal (defaults do vaultgit)
+#   com <nome>     -> lê ~/.config/vault-checkpoint/<nome>.env, que define
+#                     VAULT_GIT_DIR, VAULT_WORK_TREE e, opcionalmente,
+#                     VAULT_PUSH_REMOTE (nome do remoto; ausente = não faz push).
+#
+# Sai em silêncio (status 0) quando nada mudou; o push, quando configurado,
+# roda mesmo assim — para recuperar um push que falhou na rodada anterior.
+# Falha de push NÃO falha o checkpoint: sem rede o commit local continua.
 
 set -euo pipefail
+
+if [[ $# -gt 0 ]]; then
+  env_file="$HOME/.config/vault-checkpoint/$1.env"
+  [[ -f "$env_file" ]] || { echo "vault-checkpoint: $env_file não existe" >&2; exit 1; }
+  set -a
+  # shellcheck disable=SC1090
+  . "$env_file"
+  set +a
+fi
 
 VAULTGIT="$(dirname "${BASH_SOURCE[0]}")/vaultgit"
 [[ -x "$VAULTGIT" ]] || VAULTGIT="vaultgit"
@@ -17,9 +33,19 @@ VAULTGIT="$(dirname "${BASH_SOURCE[0]}")/vaultgit"
 
 # `diff --cached --quiet` sai 1 quando HÁ mudança; dentro do `if` isso não
 # dispara o `set -e`.
-if "$VAULTGIT" diff --cached --quiet; then
-  exit 0
+if ! "$VAULTGIT" diff --cached --quiet; then
+  n=$("$VAULTGIT" diff --cached --name-only | wc -l)
+  "$VAULTGIT" commit -q -m "checkpoint $(date '+%Y-%m-%d %H:%M') ($n arquivo(s))"
 fi
 
-n=$("$VAULTGIT" diff --cached --name-only | wc -l)
-"$VAULTGIT" commit -q -m "checkpoint $(date '+%Y-%m-%d %H:%M') ($n arquivo(s))"
+# Push opt-in. Só toca a rede se o remoto ainda não tem o HEAD local.
+if [[ -n "${VAULT_PUSH_REMOTE:-}" ]]; then
+  branch=$("$VAULTGIT" symbolic-ref --short -q HEAD || echo main)
+  local_head=$("$VAULTGIT" rev-parse HEAD)
+  remote_head=$("$VAULTGIT" rev-parse -q --verify "refs/remotes/$VAULT_PUSH_REMOTE/$branch" 2>/dev/null || true)
+  if [[ "$local_head" != "$remote_head" ]]; then
+    if ! "$VAULTGIT" push -q "$VAULT_PUSH_REMOTE" "HEAD:refs/heads/$branch"; then
+      echo "vault-checkpoint: push para '$VAULT_PUSH_REMOTE' falhou; tento de novo na próxima rodada" >&2
+    fi
+  fi
+fi

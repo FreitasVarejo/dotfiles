@@ -1,0 +1,12 @@
+[Unit]
+Description=Checkpoint do vault "%i" a cada 15 minutos
+
+[Timer]
+# OnCalendar (e não OnUnitActiveSec) para que Persistent= valha: depois de
+# suspender/desligar, o checkpoint perdido roda assim que a sessão volta.
+OnCalendar=*:0/15
+Persistent=true
+Unit=vault-checkpoint@%i.service
+
+[Install]
+WantedBy=timers.target

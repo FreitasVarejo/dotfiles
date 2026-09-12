@@ -1,0 +1,11 @@
+[Unit]
+Description=Checkpoint git do vault "%i"
+# Cada instância é um arquivo ~/.config/vault-checkpoint/<nome>.env (stowado do
+# pacote vault); sem o arquivo a unidade nem tenta rodar.
+ConditionPathExists=%h/.config/vault-checkpoint/%i.env
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/vault-checkpoint %i
+# Push (se configurado) é best-effort dentro do script; falha de rede não
+# derruba a unidade.

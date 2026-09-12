@@ -23,6 +23,15 @@
 
 set -euo pipefail
 
+# VAULT=<nome> seleciona um vault extra: lê ~/.config/vault-checkpoint/<nome>.env.
+#   VAULT=enter-hackathon vaultgit log --oneline -- freitas/
+if [[ -n "${VAULT:-}" ]]; then
+  env_file="$HOME/.config/vault-checkpoint/$VAULT.env"
+  [[ -f "$env_file" ]] || { echo "vaultgit: $env_file não existe" >&2; exit 1; }
+  # shellcheck disable=SC1090
+  . "$env_file"
+fi
+
 VAULT_GIT_DIR="${VAULT_GIT_DIR:-$HOME/.local/state/obsidian-vault.git}"
 VAULT_WORK_TREE="${VAULT_WORK_TREE:-$HOME/ObsidianVault}"
 

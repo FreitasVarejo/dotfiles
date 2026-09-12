@@ -78,4 +78,26 @@ else
   fail_check
 fi
 
+# 5. Vaults extras -----------------------------------------------------------
+for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
+  [[ -f "$env_file" ]] || continue
+  name=$(basename "$env_file" .env)
+  VAULT_GIT_DIR="" VAULT_WORK_TREE=""
+  # shellcheck disable=SC1090
+  . "$env_file"
+  [[ -n "$VAULT_WORK_TREE" && -d "$VAULT_WORK_TREE" ]] || continue
+  if [[ -d "$VAULT_GIT_DIR" ]]; then
+    log_success "Vault '$name': repo com $(git --git-dir="$VAULT_GIT_DIR" rev-list --count HEAD 2>/dev/null || echo 0) checkpoint(s)"
+  else
+    log_missing "Vault '$name': repo de checkpoints ausente ($VAULT_GIT_DIR)"
+    fail_check
+  fi
+  if systemctl --user is-enabled "vault-checkpoint@$name.timer" &>/dev/null; then
+    log_success "vault-checkpoint@$name.timer habilitado"
+  else
+    log_missing "vault-checkpoint@$name.timer não habilitado"
+    fail_check
+  fi
+done
+
 exit "${CHECK_FAILED:-0}"
