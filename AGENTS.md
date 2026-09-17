@@ -295,3 +295,17 @@ Required tools (checked by `healthcheck.sh`):
   if the vault exists, but activation and API-key generation require opening
   Obsidian once (Settings > Community plugins > enable "Local REST API", copy the
   generated key into `OBSIDIAN_API_KEY`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `FreitasVarejo/dotfiles`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
