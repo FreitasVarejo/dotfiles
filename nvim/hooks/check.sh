@@ -94,7 +94,7 @@ if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
   log_success "freitask.nvim encontrado: $FREITASK_REPO"
 else
   log_missing "freitask.nvim não encontrado em $FREITASK_REPO"
-  echo "    -> Clonar o repo do plugin lá (ou exportar FREITASK_REPO)."
+  echo "    -> setup.sh clona de git@github.com:FreitasVarejo/freitask.nvim.git."
   echo "    -> Sem ele: o picker <leader>ob some e a CLI 'freitask' falha."
   fail_check
 fi
