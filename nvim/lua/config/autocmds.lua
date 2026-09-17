@@ -30,3 +30,17 @@ vim.api.nvim_create_autocmd("User", {
     pcall(vim.keymap.del, "n", "<leader>E")
   end,
 })
+
+-- Espelha para o clipboard (OSC 52) apenas o yank explicito: 'd', 'x' e 'c'
+-- passam pelo registrador sem nome mas nao devem esmagar o clipboard.
+vim.api.nvim_create_autocmd("TextYankPost", {
+  callback = function()
+    local ev = vim.v.event
+    if ev.operator == "y" and (ev.regname == "" or ev.regname == "+") then
+      local ok, osc52 = pcall(require, "vim.ui.clipboard.osc52")
+      if ok then
+        osc52.copy("+")(ev.regcontents, ev.regtype)
+      end
+    end
+  end,
+})
