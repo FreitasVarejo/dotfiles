@@ -45,21 +45,21 @@ luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
 
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
 at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
-(The freitask test suite lives in its own repo: `~/projects/freitask.nvim/tests/run.sh`.)
+(The freitask test suite lives in its own repo: `~/dev/freitask.nvim/tests/run.sh`.)
 
 ## Freitask / daily notes (Obsidian)
 
-Task/daily-note tracking over `~/ObsidianVault/tasks/`. **The code lives in its
-own repo** at `~/projects/freitask.nvim` — this repo only carries the lazy.nvim
+Task/daily-note tracking over `~/ObsidianVault/projects/<project>/tasks/`. **The code lives in its
+own repo** at `~/dev/freitask.nvim` — this repo only carries the lazy.nvim
 spec (`nvim/lua/plugins/freitask.lua`, loaded via `dir=`) and the CLI wrapper
 (`vault/.local/bin/freitask`). **Full guide:**
-`~/projects/freitask.nvim/docs/freitask.md`; **module map, dependency rules and
-how to test:** `~/projects/freitask.nvim/docs/freitask-internals.md`.
+`~/dev/freitask.nvim/docs/freitask.md`; **module map, dependency rules and
+how to test:** `~/dev/freitask.nvim/docs/freitask-internals.md`.
 
 Changes to task behaviour go in that repo, not here. What belongs here is only
 the wiring: where the clone lives, and how the CLI finds it (`FREITASK_REPO`).
 `FREITASK_REPO` is the single knob: the lazy.nvim spec, both nvim hooks and the
-CLI honour it, defaulting to `~/projects/freitask.nvim`. On a machine where the
+CLI honour it, defaulting to `~/dev/freitask.nvim`. On a machine where the
 clone lives elsewhere (the notebook keeps repos in `~/dev`), export it from
 `~/.bashrc.local` — it is per-machine state, so it never goes in the repo.
 
@@ -76,16 +76,19 @@ freitask doctor [--fix]                     # verify; --fix repairs what is deri
 
 Invariants an agent must not break:
 
-- One file per task: `tasks/<project>/<id>.md`, or
-  `tasks/<project>/archived/<type>/<id>.md` when archived (`done|dropped|failed`).
+- One file per task: `projects/<project>/tasks/<id>.md`, or
+  `projects/<project>/tasks/archived/<type>/<id>.md` when archived (`done|dropped|failed`).
   **Being archived is the PATH**, not a frontmatter flag.
 - The top of the file is a callout: `> [!<callout>] <title>` /
-  `> [[tasks/<project>/<id>|<id>]]` / optional `> _state description_` (italic
+  `> [[projects/<project>/tasks/<id>|<id>]]` / optional `> _state description_` (italic
   is what identifies it, not position — omit the line entirely if empty) /
   lines 4+ free text, preserved verbatim.
-  **Status is EXCLUSIVELY the callout type** (mapped via `tasks/status.json`,
-  which covers all 27 render-markdown.nvim callouts, ordered `todo` → done →
-  reference — see `tasks/STATUS.md`). Never write a status number anywhere.
+  **Status is EXCLUSIVELY the callout type** (mapped via `.freitask/status.json`):
+  six execution phases plus `done`, ordered `todo` → `abstract` (refining) →
+  `example` (implementing) → `question` (in review) → `warning` (blocked) →
+  `check` (ready) → `done` (archived). Never write a status number anywhere.
+  Ownership is a separate, orthogonal axis in the frontmatter (`dono` / `desde` /
+  `dominio`) — see the vault's `AGENTS.md`.
 - `<id>` = filename = git branch name (no `feat/`); line 2's wikilink target is
   the vault-relative path with `<id>` as alias — there is no separate `Branch:`
   line, and the frontmatter `id:` must match the filename.
@@ -96,7 +99,7 @@ Invariants an agent must not break:
   write there by hand: the path stays the source of truth, and a history line
   without the corresponding move is just text lying about where the file is.
 - `CURRENT.md` is generated (auto-regenerated on task save; previous day archived
-  to `tasks/daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
+  to `daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
   `templates/` are reserved, not projects — and `daily/` must never be rewritten.
 - `*.sync-conflict-*.md` (Syncthing, the vault syncs with a phone) are ignored by
   the tool on purpose and reported by `doctor`. Never resolve one unattended.
@@ -304,7 +307,7 @@ Required tools (checked by `healthcheck.sh`):
 
 ### Issue tracker
 
-Work lives as freitask tasks in `~/ObsidianVault/tasks/dotfiles/`, not GitHub issues (this repo has no pipeline). See `docs/agents/issue-tracker.md`.
+Work lives as freitask tasks in `~/ObsidianVault/projects/workflow-ia/tasks/`, not GitHub issues (this repo has no pipeline). See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

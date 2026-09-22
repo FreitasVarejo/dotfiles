@@ -29,7 +29,7 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 This repo is single-context, so there is no root `CONTEXT-MAP.md` and no per-context `src/<context>/docs/adr/`. If the repo ever splits into genuinely separate contexts, add a `CONTEXT-MAP.md` at the root pointing at one `CONTEXT.md` per context and update this file.
 
-Note that some domain lives *outside* this repo and `AGENTS.md` points at it: the freitask code and its docs are in `~/projects/freitask.nvim`, and the vault carries its own contract at `~/ObsidianVault/AGENTS.md`. Follow those pointers rather than re-deriving that domain from the wiring kept here.
+Note that some domain lives *outside* this repo and `AGENTS.md` points at it: the freitask code and its docs are in `~/dev/freitask.nvim`, and the vault carries its own contract at `~/ObsidianVault/AGENTS.md`. Follow those pointers rather than re-deriving that domain from the wiring kept here.
 
 ## Use the glossary's vocabulary
 

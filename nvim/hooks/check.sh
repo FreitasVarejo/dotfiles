@@ -89,7 +89,7 @@ log_info "--- Freitask (plugin externo) ---"
 # O freitask deixou de morar em nvim/lua/ e virou repo próprio. O spec do lazy
 # se desativa em silêncio se o clone não existir (não vale derrubar o startup do
 # Neovim por causa dele), então é aqui que a ausência precisa aparecer.
-FREITASK_REPO="${FREITASK_REPO:-$HOME/projects/freitask.nvim}"
+FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
 if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
   log_success "freitask.nvim encontrado: $FREITASK_REPO"
 else

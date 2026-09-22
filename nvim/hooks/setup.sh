@@ -11,7 +11,7 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
 . "$DOTFILES_DIR/lib/common.sh"
 
-FREITASK_REPO="${FREITASK_REPO:-$HOME/projects/freitask.nvim}"
+FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
 FREITASK_REMOTE="git@github.com:FreitasVarejo/freitask.nvim.git"
 
 log_info "--- Freitask (plugin externo) ---"

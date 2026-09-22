@@ -2,28 +2,28 @@
 
 Este repo **não tem esteira** (nenhum GitHub Action lê issue nenhuma), então o
 trabalho não vive em GitHub Issues: vive como **task do freitask** em
-`~/ObsidianVault/tasks/dotfiles/<id>.md`. Decisão em
+`~/ObsidianVault/projects/workflow-ia/tasks/<id>.md`. Decisão em
 `~/ObsidianVault/projects/workflow-ia/decisoes/0005-freitask-e-frente-issue-e-execucao-onde-ha-esteira.md`.
 Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em task.
 
 ## Convenções
 
 - **Criar uma task**: até `freitask new` existir (task `freitask-new`), crie o
-  arquivo `~/ObsidianVault/tasks/dotfiles/<id>.md` no formato do bloco:
+  arquivo `~/ObsidianVault/projects/workflow-ia/tasks/<id>.md` no formato do bloco:
   ```markdown
   > [!todo] Título
-  > [[tasks/dotfiles/<id>|<id>]]
+  > [[projects/workflow-ia/tasks/<id>|<id>]]
   > _estado opcional, em itálico_
   texto livre
   ```
   `<id>` é kebab-case, igual ao nome do arquivo e ao nome da branch git (sem
   `feat/`). Depois rode `freitask doctor`.
-- **Ler uma task**: `cat ~/ObsidianVault/tasks/dotfiles/<id>.md`.
+- **Ler uma task**: `cat ~/ObsidianVault/projects/workflow-ia/tasks/<id>.md`.
 - **Listar**: `freitask list [--json] [--archived]`.
 - **Comentar / registrar progresso**: edite o corpo da task (linhas 4+ são texto
   livre) e a descrição em itálico da linha 3. Nunca escreva em `## Histórico`.
 - **Mudar o status**: troque o callout da linha 1 (`todo`, `done`…; vocabulário
-  em `tasks/status.json`).
+  em `.freitask/status.json`).
 - **Fechar**: `freitask archive <id> done|dropped|failed`. Nunca `mv`/`rm`.
 - **Renomear**: `freitask rename <id> <novo-id>`.
 
@@ -33,7 +33,7 @@ Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em
 
 ## Quando uma skill disser "publicar no issue tracker"
 
-Crie uma task do freitask em `tasks/dotfiles/`, como acima.
+Crie uma task do freitask em `projects/workflow-ia/tasks/`, como acima.
 
 ## Quando uma skill disser "buscar o ticket"
 

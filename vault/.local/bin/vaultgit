@@ -17,9 +17,9 @@
 # Syncthing) e não histórico compartilhado. O celular não participa.
 #
 # Uso: idêntico ao git.
-#   vaultgit log --oneline -- tasks/jellyfin/stack-up.md
+#   vaultgit log --oneline -- projects/homelab/tasks/contact-point-de-alertas.md
 #   vaultgit diff HEAD~5 -- tasks/
-#   vaultgit restore --source=HEAD~3 tasks/jellyfin/stack-up.md
+#   vaultgit restore --source=HEAD~3 projects/homelab/tasks/contact-point-de-alertas.md
 
 set -euo pipefail
 

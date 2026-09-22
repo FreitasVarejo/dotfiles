@@ -1,6 +1,6 @@
 -- Freitask: task tracking baseado em Obsidian, dirigido por Snacks.picker.
 --
--- O código vive em ~/projects/freitask.nvim (repo próprio) desde que passou de
+-- O código vive em ~/dev/freitask.nvim (repo próprio) desde que passou de
 -- 3.000 linhas: era um aplicativo hospedado dentro do dotfiles, com testes e
 -- CLI, e o histórico dele se misturava ao de config de shell e tmux.
 --
@@ -16,7 +16,7 @@
 -- O mesmo knob dos hooks e da CLI: FREITASK_REPO cobre a máquina em que o
 -- clone mora noutro lugar (no notebook, ~/dev). Vai em ~/.bashrc.local, que
 -- fica fora do repo.
-local repo = vim.fn.expand(vim.env.FREITASK_REPO or "~/projects/freitask.nvim")
+local repo = vim.fn.expand(vim.env.FREITASK_REPO or "~/dev/freitask.nvim")
 
 if vim.fn.isdirectory(repo) ~= 1 then
   return {}
