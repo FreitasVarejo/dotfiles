@@ -78,7 +78,22 @@ else
   fail_check
 fi
 
-# 5. Vaults extras -----------------------------------------------------------
+# 5. Contrato do vault (vault-lint) ------------------------------------------
+# Sempre AVISO, nunca fail_check: ponteiro morto e ADR desatualizado não
+# impedem ninguém de trabalhar, e um healthcheck vermelho por isso ensina a
+# ignorar o vermelho. A decisão é a ADR 0009 em projects/workflow-ia/decisoes/.
+if command -v vault-lint &>/dev/null; then
+  if vault-lint --quiet; then
+    log_success "vault-lint: contrato em dia"
+  else
+    log_warn "vault-lint encontrou contrato desatualizado"
+    echo "    -> Detalhes: vault-lint"
+  fi
+else
+  log_optional "vault-lint não encontrado no PATH (rode ~/dotfiles/setup.sh)."
+fi
+
+# 6. Vaults extras -----------------------------------------------------------
 for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
   [[ -f "$env_file" ]] || continue
   name=$(basename "$env_file" .env)

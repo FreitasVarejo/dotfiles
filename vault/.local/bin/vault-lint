@@ -1,0 +1,278 @@
+#!/bin/bash
+# vault-lint — vigia de contrato do vault do Obsidian.
+#
+# A ADR 0009 (projects/workflow-ia/decisoes/) decidiu que contrato só carrega
+# ponteiro e regra, nunca cópia de estado. Corrigir um contrato desatualizado à
+# mão resolve hoje e não impede o próximo; este check é quem impede o próximo.
+#
+# Deliberadamente SEPARADO do `freitask doctor`: aquele cuida do domínio das
+# tasks (formato do bloco, path x status, links entre tasks) e falha quando o
+# domínio está quebrado. Este olha o vault inteiro — contrato, ADR, wikilink —
+# e é sempre AVISO: um ponteiro morto não impede ninguém de trabalhar, então
+# não tem por que deixar o healthcheck vermelho. Ver `vault/hooks/check.sh`.
+#
+# Uso:
+#   vault-lint            # relatório legível
+#   vault-lint --json     # para a rodada noturna consumir
+#   vault-lint --quiet    # só o código de saída
+#
+# Saída: 0 = limpo, 1 = achados, 2 = erro de ambiente/uso.
+
+set -euo pipefail
+
+VAULT="${FREITASK_VAULT:-$HOME/ObsidianVault}"
+
+FORMAT=texto
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --json) FORMAT=json ;;
+    --quiet) FORMAT=quiet ;;
+    -h | --help)
+      sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      echo "vault-lint: opção desconhecida: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ ! -d "$VAULT" ]]; then
+  echo "vault-lint: vault não encontrado em $VAULT" >&2
+  exit 2
+fi
+
+# --- Coleta de achados ------------------------------------------------------
+# Um achado por linha em FINDINGS: check<TAB>arquivo<TAB>linha<TAB>detalhe.
+# A linha nunca vem vazia: TAB é IFS-whitespace, então `read` colapsa dois
+# seguidos e o campo seguinte entraria no lugar errado. Sem linha, mande '-'.
+FINDINGS=()
+finding() { FINDINGS+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"); }
+
+# --- Check 1: caminho citado em contrato que não existe ---------------------
+# Contrato é AGENTS.md / CLAUDE.md e o que está em docs/agents/ — o AGENTS.md
+# dos dotfiles trata os dois como o mesmo gênero.
+contract_files() {
+  local root=$1 f
+  for f in "$root/AGENTS.md" "$root/CLAUDE.md"; do
+    [[ -f "$f" ]] && printf '%s\n' "$f"
+  done
+  if [[ -d "$root/docs/agents" ]]; then
+    find "$root/docs/agents" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort
+  fi
+  return 0
+}
+
+# Raízes varridas: o vault, os dotfiles e todo repo em ~/dev e ~/projects que
+# tenha contrato. Derivado do disco, nunca uma lista fixa — o clone já mudou de
+# ~/projects para ~/dev uma vez, e foi justamente isso que gerou esta task.
+lint_roots() {
+  printf '%s\n' "$VAULT"
+  local parent dir
+  for parent in "$HOME/dotfiles" "$HOME"/dev/*/ "$HOME"/projects/*/; do
+    dir=${parent%/}
+    [[ -d "$dir" ]] || continue
+    [[ -f "$dir/AGENTS.md" || -f "$dir/CLAUDE.md" ]] || continue
+    printf '%s\n' "$dir"
+  done
+}
+
+# Só caminho ancorado no home (`~/...`). A primeira versão aceitava qualquer
+# token com barra e afogou os dois achados reais em sessenta falsos: `feat/` é
+# prefixo de branch, `/colher` é slash command, `FreitasVarejo/bjju-vision` é
+# slug de repo, `origin/master` é ref e `decisoes/` é um fragmento cuja raiz
+# depende de quem lê. Fragmento relativo é ambíguo por natureza — é exatamente
+# por isso que ele não apodrece. O que apodrece é o caminho que afirma onde
+# uma coisa está, e esse sempre começa em `~/`: foi assim que
+# `~/projects/freitask.nvim` e `~/dotfiles/nvim/lua/freitask/` ficaram para trás
+# quando o clone e o plugin mudaram de lugar.
+extract_paths() {
+  awk '
+    FNR == 1 { fence = 0 }
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    {
+      line = $0
+      while (match(line, /`[^`]+`/)) {
+        tok = substr(line, RSTART + 1, RLENGTH - 2)
+        line = substr(line, RSTART + RLENGTH)
+        if (tok !~ /^~\//) continue
+        if (tok ~ /[<>$*|(){}[:space:]]/) continue   # molde ou comando
+        if (tok ~ /\.\./) continue                    # caminho relativo a um $VAR
+        gsub(/[.,;:]+$/, "", tok)
+        if (tok != "") print FILENAME "\t" FNR "\t" tok
+      }
+    }
+  ' "$@"
+}
+
+while read -r root; do
+  mapfile -t contracts < <(contract_files "$root")
+  ((${#contracts[@]})) || continue
+  while IFS=$'\t' read -r file lineno tok; do
+    # O '~' vem citado no contrato como texto; quem expande é este script.
+    target="$HOME/${tok:2}"
+    [[ -e "${target%/}" ]] && continue
+    finding caminho-morto "${file/#"$HOME"/\~}" "$lineno" "$tok"
+  done < <(extract_paths "${contracts[@]}")
+done < <(lint_roots)
+
+# Mesma varredura dos caminhos, para `[[wikilink]]`. Fora do escopo: bloco de
+# código E código inline, porque é neles que contrato e spec mostram o formato
+# de um link (`[[alvo|alias]]`) — aquilo é molde, não ponteiro.
+extract_links() {
+  awk '
+    FNR == 1 { fence = 0 }
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    {
+      line = $0
+      gsub(/`[^`]*`/, "", line)
+      while (match(line, /\[\[[^]]*\]\]/)) {
+        print FILENAME "\t" FNR "\t" substr(line, RSTART + 2, RLENGTH - 4)
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "$@"
+}
+
+# Os .md que o lint LÊ. Três exclusões, cada uma por um motivo diferente:
+# conflito do Syncthing é cópia transitória de um arquivo já checado (e quem
+# reporta a existência dele é o `freitask doctor`); e `daily/` é registro
+# congelado — o contrato proíbe reescrevê-lo, então todo achado ali seria um
+# aviso que ninguém tem permissão de corrigir, que é a definição de ruído. Os
+# `daily/` de agosto sozinhos respondiam por 300 dos 376 primeiros achados,
+# todos links para o layout de task anterior a 22/09.
+vault_notes() {
+  find "$VAULT" \( -name .git -o -name .obsidian -o -name .trash -o -name daily \) -prune -o \
+    -name '*.md' -type f -print 2>/dev/null | grep -v '\.sync-conflict-' | sort || true
+}
+
+# --- Check 2: ADR supersedido inteiro que continua vigente ------------------
+# Só o marcador "inteira" conta. Supersede parcial ("a cláusula X", "a seção
+# Y") deixa a decisão vigente de propósito: o que caiu foi um pedaço, e a nota
+# continua valendo para o resto.
+adr_status() {
+  awk '
+    NR == 1 && $0 != "---" { exit }
+    NR > 1 && $0 == "---" { exit }
+    /^status:[[:space:]]*/ { sub(/^status:[[:space:]]*/, ""); gsub(/"/, ""); print; exit }
+  ' "$1"
+}
+
+resolve_note() {
+  local name=$1
+  local hit
+  hit=$(printf '%s\n' "${NOTE_PATHS[$name]:-}" | head -n1)
+  [[ -n "$hit" ]] && printf '%s' "$hit"
+}
+
+# Índice de notas do vault: caminho relativo sem .md e basename sem .md, mais
+# os anexos por nome. É o mesmo índice que o check 3 usa para os wikilinks.
+declare -A NOTE_PATHS
+while IFS= read -r rel; do
+  base=${rel##*/}
+  NOTE_PATHS["$rel"]="$rel"
+  NOTE_PATHS["$base"]="$rel"
+  if [[ "$rel" == *.md ]]; then
+    NOTE_PATHS["${rel%.md}"]="$rel"
+    NOTE_PATHS["${base%.md}"]="$rel"
+  fi
+done < <(cd "$VAULT" && find . \
+  \( -name .git -o -name .obsidian -o -name .trash \) -prune -o \
+  -type f -print 2>/dev/null | sed 's|^\./||' | grep -v '\.sync-conflict-' || true)
+
+while IFS= read -r adr; do
+  entrada=$(awk '
+    NR == 1 && $0 != "---" { exit }
+    NR > 1 && $0 == "---" { exit }
+    /^supersede:[[:space:]]*/ { sub(/^supersede:[[:space:]]*/, ""); print NR "\t" $0; exit }
+  ' "$adr")
+  [[ -n "$entrada" ]] || continue
+  supersede=${entrada#*$'\t'}
+  supersede_lineno=${entrada%%$'\t'*}
+  supersede=${supersede//\"/}
+  # A lista é separada por ';' e cada item é "[[alvo]] — escopo".
+  while IFS= read -r item; do
+    [[ "$item" == *inteira* ]] || continue
+    [[ "$item" =~ \[\[([^]|]+) ]] || continue
+    alvo=${BASH_REMATCH[1]}
+    alvo_path=$(resolve_note "$alvo")
+    [[ -n "$alvo_path" ]] || continue
+    st=$(adr_status "$VAULT/$alvo_path")
+    [[ "$st" == "vigente" ]] || continue
+    finding supersede-vigente "${adr#"$VAULT"/}" "$supersede_lineno" \
+      "[[$alvo]] supersedida inteira, mas $alvo_path segue 'status: vigente'"
+  done < <(printf '%s\n' "${supersede//;/$'\n'}")
+done < <(find "$VAULT/projects" -mindepth 3 -maxdepth 3 -path '*/decisoes/*.md' -type f 2>/dev/null | sort)
+
+# --- Check 3: wikilink para nota inexistente --------------------------------
+while IFS=$'\t' read -r file lineno link; do
+  alvo=${link%%|*}          # alias
+  alvo=${alvo%%\#*}         # heading
+  alvo=${alvo%%^*}          # bloco
+  alvo=${alvo%\\}           # `[[nota\]]`: escape de quem escreveu, não parte do alvo
+  alvo=${alvo%"${alvo##*[![:space:]]}"}
+  [[ -n "$alvo" ]] || continue
+  [[ "$alvo" == :*: ]] && continue      # `[[:digit:]]`, classe POSIX das notas de estudo
+  [[ "$alvo" == *"<"* ]] && continue    # molde de contrato, não link
+  [[ -n "${NOTE_PATHS[$alvo]:-}" ]] && continue
+  # O Obsidian também resolve relativo à pasta de quem linka, e é assim que os
+  # índices de capítulo do `study/` apontam para os próprios arquivos.
+  dir=$(dirname "${file#"$VAULT"/}")
+  [[ -e "$VAULT/$dir/$alvo" || -e "$VAULT/$dir/$alvo.md" ]] && continue
+  finding wikilink-morto "${file#"$VAULT"/}" "$lineno" "[[$alvo]]"
+done < <(
+  mapfile -t notas < <(vault_notes)
+  ((${#notas[@]})) && extract_links "${notas[@]}"
+)
+
+# --- Relatório --------------------------------------------------------------
+json_escape() {
+  local s=${1//\\/\\\\}
+  s=${s//\"/\\\"}
+  s=${s//$'\t'/\\t}
+  printf '%s' "$s"
+}
+
+case "$FORMAT" in
+  quiet) ;;
+  json)
+    printf '{"vault":"%s","findings":[' "$(json_escape "$VAULT")"
+    sep=""
+    for f in ${FINDINGS+"${FINDINGS[@]}"}; do
+      IFS=$'\t' read -r check file lineno detail <<<"$f"
+      printf '%s{"check":"%s","file":"%s","line":%s,"detail":"%s"}' \
+        "$sep" "$(json_escape "$check")" "$(json_escape "$file")" \
+        "${lineno:-null}" "$(json_escape "$detail")"
+      sep=","
+    done
+    printf ']}\n'
+    ;;
+  *)
+    if ((${#FINDINGS[@]} == 0)); then
+      echo "vault-lint: nenhum achado."
+    else
+      last=""
+      for f in "${FINDINGS[@]}"; do
+        IFS=$'\t' read -r check file lineno detail <<<"$f"
+        if [[ "$check" != "$last" ]]; then
+          case "$check" in
+            caminho-morto) echo "--- Caminho citado em contrato que não existe" ;;
+            supersede-vigente) echo "--- ADR supersedido inteiro que continua vigente" ;;
+            wikilink-morto) echo "--- Wikilink para nota inexistente" ;;
+          esac
+          last=$check
+        fi
+        printf '  %s%s: %s\n' "$file" "${lineno:+:$lineno}" "$detail"
+      done
+      printf '\n%d achado(s). São avisos: nada aqui impede o vault de funcionar.\n' \
+        "${#FINDINGS[@]}"
+    fi
+    ;;
+esac
+
+((${#FINDINGS[@]} == 0)) || exit 1
+exit 0

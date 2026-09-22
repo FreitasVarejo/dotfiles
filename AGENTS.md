@@ -114,6 +114,18 @@ repo whose `GIT_DIR` lives **outside** the synced folder
 (`~/.local/state/obsidian-vault.git`), so git and Syncthing never share a byte.
 Inspect/undo with `vaultgit log|restore`. Never commit it by hand.
 
+Contract watchdog: `vault-lint` (read-only) reports three kinds of rot across the
+vault and every repo that carries a contract — a `~/…` path cited in an
+`AGENTS.md`/`CLAUDE.md`/`docs/agents/` file that no longer exists, an ADR
+superseded *inteira* whose own frontmatter still says `status: vigente`, and a
+wikilink with no target. It is deliberately **separate from `freitask doctor`**
+(that one owns the task domain and fails) and it runs as a **warning only** — a
+dead pointer blocks nobody, and a healthcheck that goes red over one teaches you
+to ignore red (ADR 0009 in the vault). `vault-lint --json` is there for the
+nightly round. Links inside code spans and fences are format examples, not
+pointers, and `daily/` is a frozen record the contract forbids rewriting: both
+are out of scope by design.
+
 ## Code Style Guidelines
 
 ### Shell Scripts (Bash)
