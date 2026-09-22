@@ -29,4 +29,5 @@ if [ "$ALL_GOOD" = true ]; then
 else
   echo -e "${RED} Faltam dependências.${NC}"
   echo "Instale as ferramentas listadas como [MISSING] acima antes de rodar ./setup.sh para a melhor experiência."
+  exit 1
 fi
