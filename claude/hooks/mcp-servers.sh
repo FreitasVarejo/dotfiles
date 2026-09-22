@@ -1,9 +1,11 @@
 #!/bin/bash
 # shellcheck shell=bash
 #
-# Fonte única dos MCP servers expostos ao Claude Code, espelhando os servers
-# habilitados em opencode/opencode.json. Sourced por hooks/check.sh (só usa as
-# chaves/nomes) e hooks/setup.sh (usa nome + JSON para registrar).
+# Fonte única dos MCP servers expostos ao Claude Code. Sourced por
+# hooks/check.sh (só usa as chaves/nomes) e hooks/setup.sh (usa nome + JSON
+# para registrar). Este mapa É a lista do que faz parte do workflow: MCP
+# registrado à mão numa máquina e ausente daqui é experimento local, sem
+# healthcheck nem reprodução (ADR 0011 do projeto workflow-ia, no vault).
 #
 # Mantido como mapa bash (não um arquivo stowado) porque o Claude Code guarda a
 # config MCP de escopo 'user' dentro de ~/.claude.json — arquivo com estado
@@ -13,17 +15,9 @@
 # simples): headersHelper roda esse echo no momento da conexão, expandindo a
 # variável no ambiente do Claude Code (vinda de ~/.bashrc.local), não aqui.
 #
-# 'sqlite' fica de fora: no opencode.json ele usa um path por-workspace
-# (${workspaceFolder}/data/metadata.db), que não faz sentido como registro
-# global de escopo 'user' no Claude Code.
-#
-# 'obsidian' precisa do `--with 'mcp<2'`: o mcp-obsidian 0.2.2 declara a
-# dependência do SDK Python solta, então o uvx resolve o `mcp` 2.x, que removeu
-# os decorators lowlevel `Server.list_tools`/`call_tool`. Sem o pin o server
-# estoura AttributeError no import e o cliente só vê "Connection closed".
-# Lembrando que ele fala com o plugin Local REST API, que roda DENTRO do app do
-# Obsidian: com o Obsidian fechado não há nada escutando em 127.0.0.1:27124 e
-# as tools falham mesmo com o pin correto.
+# Não há MCP de Obsidian local: onde o vault está em disco, o agente lê e
+# escreve os .md direto. O único MCP de Obsidian é o obsidian-web-mcp do pi01,
+# para o claude.ai, que não tem disco (ADR 0008).
 #
 # 'ssh' aponta pro clone local em ~/mcp-servers/mcp-ssh (não é pacote npm
 # publicado, foi clonado e buildado manualmente com `npm run build`). $HOME
@@ -38,6 +32,18 @@ CLAUDE_MCP_SERVERS=(
   [git]='{"type":"stdio","command":"npx","args":["-y","git-mcp"]}'
   [docker]='{"type":"stdio","command":"npx","args":["-y","docker-mcp"]}'
   [github]='{"type": "http", "url": "https://api.githubcopilot.com/mcp/", "headersHelper": "echo \"{\\\"Authorization\\\": \\\"Bearer $GITHUB_TOKEN\\\"}\""}'
-  [obsidian]='{"type":"stdio","command":"uvx","args":["--with","mcp<2","mcp-obsidian"]}'
   [ssh]="{\"type\":\"stdio\",\"command\":\"node\",\"args\":[\"$HOME/mcp-servers/mcp-ssh/dist/index.js\"]}"
 )
+
+# Diretório de skills do pacote e o alvo do stow. Compartilhado pelos hooks
+# para que "quais skills existem" tenha uma resposta só.
+# shellcheck disable=SC2034  # consumido pelos hooks via source
+CLAUDE_PKG_SKILLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.claude/skills" && pwd)"
+# shellcheck disable=SC2034  # consumido pelos hooks via source
+CLAUDE_HOME_SKILLS_DIR="$HOME/.claude/skills"
+
+# skill_surfaces <skill-dir> -> imprime o valor de metadata.surfaces do SKILL.md
+# ("code", "web" ou "code,web"; vazio se não declarado).
+skill_surfaces() {
+  sed -n '/^---$/,/^---$/p' "$1/SKILL.md" | sed -n 's/^  surfaces: *"\{0,1\}\([a-z,]*\)"\{0,1\}.*/\1/p' | head -n1
+}

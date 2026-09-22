@@ -5,3 +5,5 @@ fzf
 history.txt
 .mcp-ssh.lock
 mcp-ssh.lock
+# Se o stow dobrar ~/.claude/skills, o claude.ai sincroniza para dentro do repo
+claude/.claude/skills/synced/

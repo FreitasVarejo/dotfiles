@@ -1,45 +1,47 @@
-# Issue tracker: GitHub
+# Issue tracker: freitask (vault do Obsidian)
 
-Issues and specs for this repo live as GitHub issues in [`FreitasVarejo/dotfiles`](https://github.com/FreitasVarejo/dotfiles). Use the `gh` CLI for all operations.
+Este repo **não tem esteira** (nenhum GitHub Action lê issue nenhuma), então o
+trabalho não vive em GitHub Issues: vive como **task do freitask** em
+`~/ObsidianVault/tasks/dotfiles/<id>.md`. Decisão em
+`~/ObsidianVault/projects/workflow-ia/decisoes/0005-freitask-e-frente-issue-e-execucao-onde-ha-esteira.md`.
+Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em task.
 
-## Conventions
+## Convenções
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+- **Criar uma task**: até `freitask new` existir (task `freitask-new`), crie o
+  arquivo `~/ObsidianVault/tasks/dotfiles/<id>.md` no formato do bloco:
+  ```markdown
+  > [!todo] Título
+  > [[tasks/dotfiles/<id>|<id>]]
+  > _estado opcional, em itálico_
+  texto livre
+  ```
+  `<id>` é kebab-case, igual ao nome do arquivo e ao nome da branch git (sem
+  `feat/`). Depois rode `freitask doctor`.
+- **Ler uma task**: `cat ~/ObsidianVault/tasks/dotfiles/<id>.md`.
+- **Listar**: `freitask list [--json] [--archived]`.
+- **Comentar / registrar progresso**: edite o corpo da task (linhas 4+ são texto
+  livre) e a descrição em itálico da linha 3. Nunca escreva em `## Histórico`.
+- **Mudar o status**: troque o callout da linha 1 (`todo`, `done`…; vocabulário
+  em `tasks/status.json`).
+- **Fechar**: `freitask archive <id> done|dropped|failed`. Nunca `mv`/`rm`.
+- **Renomear**: `freitask rename <id> <novo-id>`.
 
-Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+## Pull requests como superfície de triagem
 
-## Pull requests as a triage surface
+**Não.** Dono único, sem contribuição externa.
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+## Quando uma skill disser "publicar no issue tracker"
 
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
+Crie uma task do freitask em `tasks/dotfiles/`, como acima.
 
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments` then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
+## Quando uma skill disser "buscar o ticket"
 
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
+Leia o arquivo da task.
 
-## When a skill says "publish to the issue tracker"
+## Labels de triagem e wayfinding
 
-Create a GitHub issue.
-
-## When a skill says "fetch the relevant ticket"
-
-Run `gh issue view <number> --comments`.
-
-## Wayfinding operations
-
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
-
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only, the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+Não se aplicam: o freitask não tem labels nem sub-issues, e `/triage` e
+`/wayfinder` não fazem parte do repertório de skills deste workflow. Decisão que
+sair de uma task vira ADR no vault (`projects/workflow-ia/decisoes/`); a task só
+linka.

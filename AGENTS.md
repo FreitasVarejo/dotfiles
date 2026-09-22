@@ -1,7 +1,7 @@
 # AGENTS.md - Dotfiles Repository Guide
 
 Personal dotfiles using **GNU Stow** for symlink management. Each top-level directory
-(bash, git, nvim, tmux, conda, opencode, yazi) is a "stow package" that mirrors
+(bash, git, nvim, tmux, yazi, vault, claude) is a "stow package" that mirrors
 `$HOME` structure.
 
 ## Architecture: thin orchestrators + per-package hooks
@@ -23,8 +23,12 @@ healthcheck.sh         # discovers and runs every <pkg>/hooks/check.sh, aggregat
   a plugin, registering MCP servers) belongs in `setup.sh`, not `check.sh`.
 - `hooks/` directories are excluded from stow via each package's `.stow-local-ignore`.
 - Install hints use `$PM_INSTALL` (auto-detected dnf/apt/pacman/brew), never hardcoded `apt`.
-- The Claude Code MCP server map lives in `opencode/hooks/mcp-servers.sh` (sourced by both
-  the opencode check and setup hooks) — co-located with the `opencode.json` it mirrors.
+- The Claude Code MCP server map lives in `claude/hooks/mcp-servers.sh` (sourced by the
+  `claude` check and setup hooks). An MCP registered by hand on one machine and absent
+  from the map is a local experiment: no healthcheck, no reproduction (ADR 0011 in the vault).
+- Contracts (`AGENTS.md`, `docs/agents/`) hold **pointers and rules only** — never counts
+  or copies of state ("82 ADRs", "5 skills"). Anything that needs a number is a derived
+  check (ADR 0009 in the vault). The vault's `vault-lint` task will enforce this.
 
 ## Quick Reference
 
@@ -262,49 +266,41 @@ Required tools (checked by `healthcheck.sh`):
 - **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
 - **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
   requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
-- **Claude Code:** optional; if `claude` is on PATH, `opencode/hooks/setup.sh` registers
-  the MCP servers listed in `CLAUDE_MCP_SERVERS` (in `opencode/hooks/mcp-servers.sh`) at
-  user scope via `claude mcp add-json`, mirroring the enabled servers in `opencode/opencode.json`:
-  `git`, `docker`, `github`, `obsidian`. `sqlite` is intentionally left out of Claude
-  Code's registration — its opencode config uses a per-workspace path
-  (`${workspaceFolder}/data/metadata.db`), which doesn't make sense as a single
-  global `user`-scope entry.
-  Not a stow package — Claude Code's user-scope MCP config lives inside the
-  stateful `~/.claude.json`, so it's registered imperatively instead of symlinked.
-- **`uv`/`uvx`:** required for the `obsidian` MCP server
-  (`uvx --with 'mcp<2' mcp-obsidian`). `sudo dnf install uv` on Fedora; checked by
-  `healthcheck.sh`. The `mcp<2` pin is load-bearing: `mcp-obsidian` 0.2.2 leaves its
-  Python SDK dependency unpinned, so `uvx` resolves `mcp` 2.x, which dropped the
-  lowlevel `Server.list_tools`/`call_tool` decorators — the server then dies with an
-  `AttributeError` at import and the client only reports "Connection closed".
-- **Obsidian desktop app must be running** for any `obsidian` MCP tool to work: the
-  Local REST API is a plugin *inside* the app, listening on `127.0.0.1:27124` (HTTPS,
-  self-signed; `enableInsecureServer` is off). With Obsidian closed there is no
-  listener and every tool call fails, even though `claude mcp list` may still show the
-  server as connected — the stdio process starts fine, it's the HTTP call that fails.
-- **Secrets (`GITHUB_TOKEN`, `OBSIDIAN_API_KEY`):** `~/.bashrc.d` is itself the
-  stowed repo directory (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't
-  hold untracked secrets. `bash/.bashrc` instead sources `~/.bashrc.local` if it
-  exists — that file lives outside the repo and is never committed. Put
-  `export GITHUB_TOKEN=...` (fine-grained PAT, used by the `github` MCP server) and
-  `export OBSIDIAN_API_KEY=...` (from the Obsidian Local REST API plugin, used by
-  the `obsidian` MCP server) in there.
-- **Obsidian `obsidian-local-rest-api` plugin:** required by the `obsidian` MCP
-  server. `setup.sh` (`install_obsidian_rest_api_plugin`) downloads the plugin into
-  `~/ObsidianVault/.obsidian/plugins/` and registers it in `community-plugins.json`
-  if the vault exists, but activation and API-key generation require opening
-  Obsidian once (Settings > Community plugins > enable "Local REST API", copy the
-  generated key into `OBSIDIAN_API_KEY`).
+- **Claude Code (`claude/` package):** stowed to `$HOME`. Two things live there:
+  - `claude/.claude/skills/<skill>/` → `~/.claude/skills/<skill>`, one symlink **per skill**,
+    never `~/.claude` (stateful: `~/.claude.json`, history, trust) nor `~/.claude/skills`
+    as a whole (Claude Code writes `synced/` there; a folded symlink would put it inside
+    this repo — `claude/hooks/setup.sh` unfolds it). Cursor CLI on the work WSL reads the
+    same directory, so one install serves both agents. `claude/hooks/check.sh` fails when a
+    package skill isn't visible and when a skill cites another that isn't in the package.
+  - `claude/hooks/mcp-servers.sh`: the MCP map, registered at user scope by
+    `claude/hooks/setup.sh` via `claude mcp add-json` (`git`, `docker`, `github`, `ssh`).
+    Not a stowed file — Claude Code keeps user-scope MCP config inside the stateful
+    `~/.claude.json`, so it's registered imperatively.
+- **Skills policy** (ADRs 0004, 0006, 0007, 0010 in
+  `~/ObsidianVault/projects/workflow-ia/decisoes/`): third-party skills are **vendored**
+  as copies with `metadata.upstream` / `upstream-commit` in the SKILL.md frontmatter —
+  never `npx`, marketplace plugin or submodule. A skill is global only when it was really
+  used in two repos and names no project noun; otherwise it stays in the repo's `.claude/`.
+  `metadata.surfaces` (`code`, `web`, `code,web`) says where a skill runs:
+  `claude/hooks/build-web-zip.sh` zips the `web` ones for manual upload to claude.ai, and the
+  copy claude.ai syncs back to `~/.claude/skills/synced/` is the mirror `check.sh` compares
+  against (warning "re-subir" on drift). Don't rewrite a vendored skill in the vendoring
+  commit; rewriting is its own task.
+- **No local Obsidian MCP** (ADR 0008): where the vault is on disk (notebook, pi01, work
+  WSL) agents read and write the `.md` files directly. The only Obsidian MCP is
+  `obsidian-web-mcp` on pi01, for claude.ai, which has no disk.
+- **Secrets (`GITHUB_TOKEN`):** `~/.bashrc.d` is itself the stowed repo directory
+  (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't hold untracked secrets.
+  `bash/.bashrc` instead sources `~/.bashrc.local` if it exists — that file lives outside
+  the repo and is never committed. Put `export GITHUB_TOKEN=...` (fine-grained PAT, used
+  by the `github` MCP server) in there.
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live as GitHub issues in `FreitasVarejo/dotfiles`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-The five canonical triage roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
+Work lives as freitask tasks in `~/ObsidianVault/tasks/dotfiles/`, not GitHub issues (this repo has no pipeline). See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

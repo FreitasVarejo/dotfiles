@@ -25,8 +25,8 @@ STOW_TARGETS=(
   [nvim]="$HOME/.config/nvim"
   [git]="$HOME/.config/git"
   [yazi]="$HOME/.config/yazi"
-  [opencode]="$HOME/.config/opencode"
   [vault]="$HOME"
+  [claude]="$HOME"
 )
 
 if ! command -v stow &>/dev/null; then
@@ -62,25 +62,12 @@ backup_path() {
   fi
 }
 
-backup_home_package() {
-  local pkg_name="$1"
-  local pkg_path="$SCRIPT_DIR/$pkg_name"
-
-  for item in "$pkg_path"/* "$pkg_path"/.*; do
-    [[ "$(basename "$item")" == "." ]] && continue
-    [[ "$(basename "$item")" == ".." ]] && continue
-    [[ "$(basename "$item")" == "*" ]] && continue
-    # Não faz backup do diretório de hooks (não é stowado).
-    [[ "$(basename "$item")" == "hooks" ]] && continue
-
-    [[ -e "$item" ]] || continue
-    local rel_path
-    rel_path=$(basename "$item")
-    backup_path "$HOME/$rel_path" "~$rel_path"
-  done
-}
-
-backup_xdg_package() {
+# Faz backup arquivo a arquivo, nunca do diretório inteiro: um pacote com alvo
+# $HOME pode conter .config/, .local/ ou .claude/ — diretórios reais cheios de
+# estado que não podem ir para o backup só porque existem. Só o que conflita de
+# verdade (um arquivo no lugar onde o stow quer pôr um symlink) é movido.
+# Pula hooks/ e os arquivos que o stow ignora (.stow-local-ignore, README.md).
+backup_package_files() {
   local pkg_name="$1"
   local local_target="${STOW_TARGETS[$pkg_name]}"
   local pkg_path="$SCRIPT_DIR/$pkg_name"
@@ -88,7 +75,11 @@ backup_xdg_package() {
   while IFS= read -r -d '' file; do
     local rel_path="${file#"$pkg_path"/}"
     backup_path "$local_target/$rel_path" "$local_target/$rel_path"
-  done < <(find "$pkg_path" -type f -not -path "$pkg_path/hooks/*" -print0 2>/dev/null | grep -vzE '\.md$')
+  done < <(find "$pkg_path" -type f \
+    -not -path "$pkg_path/hooks/*" \
+    -not -name '.stow-local-ignore' \
+    -not -name 'README.md' \
+    -print0 2>/dev/null)
 }
 
 run_package_setup_hook() {
@@ -110,12 +101,8 @@ for pkg_name in "${!STOW_TARGETS[@]}"; do
 
   log_info "Processing package: $pkg_name -> $local_target"
 
-  if [[ "$local_target" == "$HOME" ]]; then
-    backup_home_package "$pkg_name"
-  else
-    backup_xdg_package "$pkg_name"
-    mkdir -p "$local_target"
-  fi
+  backup_package_files "$pkg_name"
+  mkdir -p "$local_target"
 
   if stow -R -t "$local_target" "$pkg_name" 2>/dev/null; then
     log_success "Stowed $pkg_name"

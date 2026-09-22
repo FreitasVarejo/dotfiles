@@ -56,11 +56,6 @@ if [ -d "$HOME/.dotnet/tools" ]; then
     export PATH=$PATH:$HOME/.dotnet/tools
 fi
 
-# opencode
-if [ -d "$HOME/.opencode/bin" ]; then
-    export PATH=$HOME/.opencode/bin:$PATH
-fi
-
 # Custom prompt - Modern style with hostname and window title
 # export PS1='\[\e]0;\h\a\]\[\033[01;32m\]\h ➜  \[\033[01;34m\]\W\[\033[00m\] '
 
