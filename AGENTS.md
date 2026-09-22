@@ -26,9 +26,14 @@ healthcheck.sh         # discovers and runs every <pkg>/hooks/check.sh, aggregat
 - The Claude Code MCP server map lives in `claude/hooks/mcp-servers.sh` (sourced by the
   `claude` check and setup hooks). An MCP registered by hand on one machine and absent
   from the map is a local experiment: no healthcheck, no reproduction (ADR 0011 in the vault).
-- Contracts (`AGENTS.md`, `docs/agents/`) hold **pointers and rules only** — never counts
-  or copies of state ("82 ADRs", "5 skills"). Anything that needs a number is a derived
-  check (ADR 0009 in the vault). The vault's `vault-lint` task will enforce this.
+- Contracts (`AGENTS.md`, `docs/agents/`) hold **pointers and rules only** — never counts,
+  copies of state ("82 ADRs", "5 skills"), or claims about what a tool can do. Anything that
+  needs a number is a derived check (ADR 0009 in the vault); anything about a tool's
+  capability is a pointer to `--help` (ADR 0014). Future tense about our own tooling is the
+  smell: either it exists and reads in the present, or it isn't mentioned.
+- `vault-lint` reports the rot it can see — dead `~/…` pointers, whole-superseded ADRs still
+  marked `vigente`, dangling wikilinks. It cannot see a stale capability claim; that one is
+  on whoever writes the contract.
 
 ## Quick Reference
 
@@ -309,11 +314,14 @@ Required tools (checked by `healthcheck.sh`):
 - **No local Obsidian MCP** (ADR 0008): where the vault is on disk (notebook, pi01, work
   WSL) agents read and write the `.md` files directly. The only Obsidian MCP is
   `obsidian-web-mcp` on pi01, for claude.ai, which has no disk.
-- **Secrets (`GITHUB_TOKEN`):** `~/.bashrc.d` is itself the stowed repo directory
+- **Secrets:** `~/.bashrc.d` is itself the stowed repo directory
   (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't hold untracked secrets.
   `bash/.bashrc` instead sources `~/.bashrc.local` if it exists — that file lives outside
-  the repo and is never committed. Put `export GITHUB_TOKEN=...` (fine-grained PAT, used
-  by the `github` MCP server) in there.
+  the repo and is never committed. Per-machine state goes there (e.g. `FREITASK_REPO`).
+- **Do not export `GITHUB_TOKEN`.** The `github` MCP server mints its header from
+  `gh auth token` (see `claude/hooks/mcp-servers.sh`), so the PAT never has to sit in the
+  environment — and an exported secret is inherited by every child process, agents included.
+  `claude/hooks/check.sh` warns when it finds one. Authenticate with `gh auth login` instead.
 
 ## Agent skills
 
@@ -323,4 +331,6 @@ Work lives as freitask tasks in `~/ObsidianVault/projects/workflow-ia/tasks/`, n
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+The *why* lives in the vault, not here (ADR 0001): decisions in
+`~/ObsidianVault/projects/workflow-ia/decisoes/`, glossary in
+`~/ObsidianVault/projects/workflow-ia/glossario.md`. See `docs/agents/domain.md`.

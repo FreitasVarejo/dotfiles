@@ -8,16 +8,11 @@ Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em
 
 ## Convenções
 
-- **Criar uma task**: até `freitask new` existir (task `freitask-new`), crie o
-  arquivo `~/ObsidianVault/projects/workflow-ia/tasks/<id>.md` no formato do bloco:
-  ```markdown
-  > [!todo] Título
-  > [[projects/workflow-ia/tasks/<id>|<id>]]
-  > _estado opcional, em itálico_
-  texto livre
-  ```
-  `<id>` é kebab-case, igual ao nome do arquivo e ao nome da branch git (sem
-  `feat/`). Depois rode `freitask doctor`.
+- **Criar uma task**: `freitask new <projeto> <id> "<título>" [--desc "<estado>"]`.
+  **Nunca escreva o arquivo à mão** — a CLI serializa o bloco pelo mesmo código
+  que o Neovim usa e regenera o `CURRENT.md`, que é o que se perde criando o
+  `.md` na mão. `<id>` é kebab-case, igual ao nome do arquivo e ao nome da
+  branch git (sem `feat/`). Argumentos exatos: `freitask help`.
 - **Ler uma task**: `cat ~/ObsidianVault/projects/workflow-ia/tasks/<id>.md`.
 - **Listar**: `freitask list [--json] [--archived]`.
 - **Comentar / registrar progresso**: edite o corpo da task (linhas 4+ são texto
@@ -26,6 +21,7 @@ Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em
   em `.freitask/status.json`).
 - **Fechar**: `freitask archive <id> done|dropped|failed`. Nunca `mv`/`rm`.
 - **Renomear**: `freitask rename <id> <novo-id>`.
+- **Ao terminar**: `freitask doctor`. Saída 0 = consistente.
 
 ## Pull requests como superfície de triagem
 
