@@ -100,6 +100,7 @@ extract_paths() {
         line = substr(line, RSTART + RLENGTH)
         if (tok !~ /^~\//) continue
         if (tok ~ /[<>$*|(){}[:space:]]/) continue   # molde ou comando
+        if (tok ~ /…|\.\.\./) continue                 # `~/…`: a própria prosa sobre caminhos
         if (tok ~ /\.\./) continue                    # caminho relativo a um $VAR
         gsub(/[.,;:]+$/, "", tok)
         if (tok != "") print FILENAME "\t" FNR "\t" tok
