@@ -58,6 +58,10 @@ how to test:** `~/projects/freitask.nvim/docs/freitask-internals.md`.
 
 Changes to task behaviour go in that repo, not here. What belongs here is only
 the wiring: where the clone lives, and how the CLI finds it (`FREITASK_REPO`).
+`FREITASK_REPO` is the single knob: the lazy.nvim spec, both nvim hooks and the
+CLI honour it, defaulting to `~/projects/freitask.nvim`. On a machine where the
+clone lives elsewhere (the notebook keeps repos in `~/dev`), export it from
+`~/.bashrc.local` — it is per-machine state, so it never goes in the repo.
 
 **The vault has its own contract**, colocated with the data, for agents pointed
 at the vault rather than at this repo: [`~/ObsidianVault/AGENTS.md`](file:///home/freitaspinhe/ObsidianVault/AGENTS.md).

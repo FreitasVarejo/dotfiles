@@ -13,7 +13,10 @@
 -- <leader>oe sobre um callout, em CURRENT.md ou no arquivo da task) usam o MESMO
 -- form flutuante posicional. Ver docs/ no repo do plugin.
 
-local repo = vim.fn.expand("~/projects/freitask.nvim")
+-- O mesmo knob dos hooks e da CLI: FREITASK_REPO cobre a máquina em que o
+-- clone mora noutro lugar (no notebook, ~/dev). Vai em ~/.bashrc.local, que
+-- fica fora do repo.
+local repo = vim.fn.expand(vim.env.FREITASK_REPO or "~/projects/freitask.nvim")
 
 if vim.fn.isdirectory(repo) ~= 1 then
   return {}
