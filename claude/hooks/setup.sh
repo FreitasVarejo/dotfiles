@@ -32,21 +32,47 @@ register_claude_mcp_servers() {
     return
   fi
 
-  local existing
-  existing=$(claude mcp list 2>/dev/null || true)
+  if ! command -v python3 &>/dev/null; then
+    log_warn "python3 não encontrado; não dá para comparar o registro com o mapa."
+    return
+  fi
 
-  local name
-  for name in "${!CLAUDE_MCP_SERVERS[@]}"; do
-    if grep -q "^${name}:" <<<"$existing"; then
-      log_success "MCP server '$name' já registrado no Claude Code"
-      continue
-    fi
+  local name plan
+  plan=$(
+    for name in "${!CLAUDE_MCP_SERVERS[@]}"; do
+      printf '%s\t%s\n' "$name" "${CLAUDE_MCP_SERVERS[$name]}"
+    done | mcp_plan
+  )
+
+  local verdict
+  while IFS=$'\t' read -r name verdict; do
+    [[ -n "$name" ]] || continue
+    case "$verdict" in
+      ok)
+        log_success "MCP server '$name' já registrado e em dia"
+        continue
+        ;;
+      invalid)
+        log_warn "MCP server '$name': JSON inválido em mcp-servers.sh"
+        continue
+        ;;
+      update)
+        # `add-json` não sobrescreve servidor existente: atualizar é remover e
+        # registrar de novo. A remoção é tolerante a falha de propósito — se o
+        # servidor sumiu entre o plano e aqui, o add seguinte resolve.
+        claude mcp remove "$name" --scope user &>/dev/null || true
+        ;;
+    esac
     if claude mcp add-json "$name" "${CLAUDE_MCP_SERVERS[$name]}" --scope user &>/dev/null; then
-      log_success "MCP server '$name' registrado no Claude Code"
+      if [[ "$verdict" == "update" ]]; then
+        log_success "MCP server '$name' atualizado no Claude Code (configuração havia mudado)"
+      else
+        log_success "MCP server '$name' registrado no Claude Code"
+      fi
     else
       log_warn "Falha ao registrar MCP server '$name' no Claude Code"
     fi
-  done
+  done <<<"$plan"
 }
 
 log_info "Conferindo o diretório de skills..."

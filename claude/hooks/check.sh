@@ -97,13 +97,26 @@ echo ""
 log_info "--- MCP servers (mapa em claude/hooks/mcp-servers.sh) ---"
 if command -v claude &>/dev/null; then
   CC_MCP_LIST=$(claude mcp list 2>/dev/null)
-  for mcp_name in "${!CLAUDE_MCP_SERVERS[@]}"; do
-    if grep -q "^${mcp_name}:" <<<"$CC_MCP_LIST"; then
-      log_success "MCP server '$mcp_name' registrado (user scope)"
-    else
-      log_warn "MCP server '$mcp_name' não registrado. Execute ./setup.sh para registrar."
-    fi
-  done
+  if command -v python3 &>/dev/null; then
+    while IFS=$'\t' read -r mcp_name mcp_verdict; do
+      [[ -n "$mcp_name" ]] || continue
+      case "$mcp_verdict" in
+        ok) log_success "MCP server '$mcp_name' registrado e em dia (user scope)" ;;
+        add) log_warn "MCP server '$mcp_name' não registrado. Execute ./setup.sh para registrar." ;;
+        update)
+          log_warn "MCP server '$mcp_name' registrado com configuração DIFERENTE do mapa."
+          echo "    -> Reaplicar: ./setup.sh"
+          ;;
+        invalid) log_warn "MCP server '$mcp_name': JSON inválido em mcp-servers.sh" ;;
+      esac
+    done < <(
+      for mcp_name in "${!CLAUDE_MCP_SERVERS[@]}"; do
+        printf '%s\t%s\n' "$mcp_name" "${CLAUDE_MCP_SERVERS[$mcp_name]}"
+      done | mcp_plan
+    )
+  else
+    log_optional "Sem python3: configuração dos MCP servers não comparada com o mapa."
+  fi
   if grep -q "^obsidian:" <<<"$CC_MCP_LIST"; then
     log_warn "MCP server 'obsidian' (Local REST API) ainda registrado; saiu do mapa (ADR 0008)."
     echo "    -> Remover: claude mcp remove obsidian --scope user"
@@ -112,10 +125,26 @@ else
   log_optional "Sem Claude Code: registro de MCP servers não verificado."
 fi
 
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  log_success "GITHUB_TOKEN definido (MCP server 'github' pronto para autenticar)"
+# Duas perguntas DIFERENTES, e confundi-las dá falso negativo: o `gh` prefere
+# $GITHUB_TOKEN à credencial que ele mesmo guardou, então uma variável morta no
+# ambiente faz `gh auth status` reprovar uma máquina perfeitamente autenticada.
+# Neutralizar a variável isola a primeira pergunta ("existe credencial
+# própria?") da segunda ("tem segredo solto no ambiente?"). `env -u` a REMOVE,
+# em vez de defini-la vazia: "vazia" e "ausente" não são a mesma coisa para
+# todo programa, e aqui a pergunta é sobre ausência.
+if ! command -v gh &>/dev/null; then
+  log_optional "Sem gh: credencial do MCP 'github' não verificada."
+elif env -u GITHUB_TOKEN gh auth status &>/dev/null; then
+  log_success "gh tem credencial própria (o MCP 'github' a busca por 'gh auth token')"
 else
-  log_warn "GITHUB_TOKEN não definido. Adicione em ~/.bashrc.local (não rastreado pelo git)."
+  log_warn "gh sem credencial própria. Rode 'gh auth login --skip-ssh-key'."
+  echo "    -> o MCP 'github' monta o header com 'gh auth token'; sem isso ele falha com 401."
+fi
+
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  log_warn "GITHUB_TOKEN está no ambiente e SOMBREIA a credencial do gh."
+  echo "    -> Segredo exportado é herdado por todo processo filho, inclusive agentes."
+  echo "    -> Remova o export de ~/.bashrc.local e abra um terminal novo."
 fi
 
 exit "$CHECK_FAILED"
