@@ -27,6 +27,7 @@ STOW_TARGETS=(
   [yazi]="$HOME/.config/yazi"
   [vault]="$HOME"
   [claude]="$HOME"
+  [ssh]="$HOME"
 )
 
 if ! command -v stow &>/dev/null; then
