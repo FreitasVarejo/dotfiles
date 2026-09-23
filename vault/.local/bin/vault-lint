@@ -186,16 +186,30 @@ vault_notes() {
     -name '*.md' -type f -print 2>/dev/null | grep -v '\.sync-conflict-' | sort || true
 }
 
-# --- Check 2: ADR supersedido inteiro que continua vigente ------------------
-# Só o marcador "inteira" conta. Supersede parcial ("a cláusula X", "a seção
-# Y") deixa a decisão vigente de propósito: o que caiu foi um pedaço, e a nota
-# continua valendo para o resto.
-adr_status() {
+# --- Check 2: nota supersedida inteira que continua vigente ----------------
+# Vale para qualquer nota, não só ADR: um `registro` também substitui outro
+# inteiro (o inventário de skills de 21/09 foi o caso). Só o marcador "inteira"
+# conta. Supersede parcial ("a cláusula X", "a seção Y") deixa a nota vigente de
+# propósito: o que caiu foi um pedaço, e ela continua valendo para o resto.
+#
+# O vínculo aparece escrito dos dois lados, e os dois são lidos:
+#   `supersede: "[[alvo]] — inteira"` na nota nova  -> o alvo não pode estar vigente
+#   `supersedida-por: "[[x]] — inteira"` na antiga  -> ela mesma não pode estar vigente
+
+# frontmatter_fields <nota>...: arquivo<TAB>linha<TAB>campo<TAB>valor para
+# status, supersede e supersedida-por. Um awk só para o vault inteiro.
+frontmatter_fields() {
   awk '
-    NR == 1 && $0 != "---" { exit }
-    NR > 1 && $0 == "---" { exit }
-    /^status:[[:space:]]*/ { sub(/^status:[[:space:]]*/, ""); gsub(/"/, ""); print; exit }
-  ' "$1"
+    FNR == 1 { fm = ($0 == "---"); next }
+    !fm { nextfile }
+    $0 == "---" { fm = 0; nextfile }
+    match($0, /^(status|supersede|supersedida-por):[[:space:]]*/) {
+      campo = substr($0, 1, index($0, ":") - 1)
+      valor = substr($0, RLENGTH + 1)
+      gsub(/"/, "", valor)
+      print FILENAME "\t" FNR "\t" campo "\t" valor
+    }
+  ' "$@"
 }
 
 resolve_note() {
@@ -220,29 +234,42 @@ done < <(cd "$VAULT" && find . \
   \( -name .git -o -name .obsidian -o -name .trash \) -prune -o \
   -type f -print 2>/dev/null | sed 's|^\./||' | grep -v '\.sync-conflict-' || true)
 
-while IFS= read -r adr; do
-  entrada=$(awk '
-    NR == 1 && $0 != "---" { exit }
-    NR > 1 && $0 == "---" { exit }
-    /^supersede:[[:space:]]*/ { sub(/^supersede:[[:space:]]*/, ""); print NR "\t" $0; exit }
-  ' "$adr")
-  [[ -n "$entrada" ]] || continue
-  supersede=${entrada#*$'\t'}
-  supersede_lineno=${entrada%%$'\t'*}
-  supersede=${supersede//\"/}
-  # A lista é separada por ';' e cada item é "[[alvo]] — escopo".
+# Itens "inteira" de uma lista "[[a]] — escopo; [[b]] — escopo": um alvo por linha.
+whole_targets() {
+  local item
   while IFS= read -r item; do
     [[ "$item" == *inteira* ]] || continue
-    [[ "$item" =~ \[\[([^]|]+) ]] || continue
-    alvo=${BASH_REMATCH[1]}
-    alvo_path=$(resolve_note "$alvo")
-    [[ -n "$alvo_path" ]] || continue
-    st=$(adr_status "$VAULT/$alvo_path")
-    [[ "$st" == "vigente" ]] || continue
-    finding supersede-vigente "${adr#"$VAULT"/}" "$supersede_lineno" \
-      "[[$alvo]] supersedida inteira, mas $alvo_path segue 'status: vigente'"
-  done < <(printf '%s\n' "${supersede//;/$'\n'}")
-done < <(find "$VAULT/projects" -mindepth 3 -maxdepth 3 -path '*/decisoes/*.md' -type f 2>/dev/null | sort)
+    [[ "$item" =~ \[\[([^]|]+) ]] && printf '%s\n' "${BASH_REMATCH[1]}"
+  done < <(printf '%s\n' "${1//;/$'\n'}")
+}
+
+declare -A NOTE_STATUS
+SUPERSEDE_ROWS=()
+while IFS=$'\t' read -r file lineno campo valor; do
+  rel=${file#"$VAULT"/}
+  case "$campo" in
+    status) NOTE_STATUS[$rel]=$valor ;;
+    *) SUPERSEDE_ROWS+=("$rel"$'\t'"$lineno"$'\t'"$campo"$'\t'"$valor") ;;
+  esac
+done < <(
+  mapfile -t notas < <(vault_notes)
+  ((${#notas[@]})) && frontmatter_fields "${notas[@]}"
+)
+
+for row in ${SUPERSEDE_ROWS+"${SUPERSEDE_ROWS[@]}"}; do
+  IFS=$'\t' read -r rel lineno campo valor <<<"$row"
+  while IFS= read -r alvo; do
+    if [[ "$campo" == supersede ]]; then
+      alvo_path=$(resolve_note "$alvo")
+      [[ -n "$alvo_path" && "${NOTE_STATUS[$alvo_path]:-}" == vigente ]] || continue
+      finding supersede-vigente "$rel" "$lineno" \
+        "[[$alvo]] supersedida inteira, mas $alvo_path segue 'status: vigente'"
+    elif [[ "${NOTE_STATUS[$rel]:-}" == vigente ]]; then
+      finding supersede-vigente "$rel" "$lineno" \
+        "diz ser supersedida inteira por [[$alvo]], mas segue 'status: vigente'"
+    fi
+  done < <(whole_targets "$valor")
+done
 
 # --- Check 3: wikilink para nota inexistente --------------------------------
 while IFS=$'\t' read -r file lineno link; do

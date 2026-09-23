@@ -32,8 +32,8 @@ precommit.sh           # pre-commit gate over every shell/lua file git knows abo
   needs a number is a derived check (ADR 0009 in the vault); anything about a tool's
   capability is a pointer to `--help` (ADR 0014). Future tense about our own tooling is the
   smell: either it exists and reads in the present, or it isn't mentioned.
-- `vault-lint` reports the rot it can see — dead `~/…` pointers, whole-superseded ADRs still
-  marked `vigente`, dangling wikilinks. It cannot see a stale capability claim; that one is
+- `vault-lint` reports the rot it can see — dead `~/…` pointers, whole-superseded notes (ADR or
+  not) still marked `vigente`, dangling wikilinks. It cannot see a stale capability claim; that one is
   on whoever writes the contract.
 
 ## Quick Reference
@@ -118,8 +118,9 @@ Inspect/undo with `vaultgit log|restore`. Never commit it by hand.
 
 Contract watchdog: `vault-lint` (read-only) reports three kinds of rot across the
 vault and every repo that carries a contract — a `~/…` path cited in an
-`AGENTS.md`/`CLAUDE.md`/`docs/agents/` file that no longer exists, an ADR
-superseded *inteira* whose own frontmatter still says `status: vigente`, and a
+`AGENTS.md`/`CLAUDE.md`/`docs/agents/` file that no longer exists, a note (ADR
+or not) superseded *inteira* — read from `supersede:` on the new one or
+`supersedida-por:` on the old one — still marked `status: vigente`, and a
 wikilink with no target. It is deliberately **separate from `freitask doctor`**
 (that one owns the task domain and fails) and it runs as a **warning only** — a
 dead pointer blocks nobody, and a healthcheck that goes red over one teaches you
