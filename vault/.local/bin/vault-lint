@@ -46,11 +46,13 @@ if [[ ! -d "$VAULT" ]]; then
 fi
 
 # --- Coleta de achados ------------------------------------------------------
-# Um achado por linha em FINDINGS: check<TAB>arquivo<TAB>linha<TAB>detalhe.
-# A linha nunca vem vazia: TAB é IFS-whitespace, então `read` colapsa dois
-# seguidos e o campo seguinte entraria no lugar errado. Sem linha, mande '-'.
+# Um achado por linha em FINDINGS: check<TAB>arquivo<TAB>linha<TAB>detalhe
+# <TAB>worktrees. A linha nunca vem vazia: TAB é IFS-whitespace, então `read`
+# colapsa dois seguidos e o campo seguinte entraria no lugar errado. Sem
+# linha, mande '-'. `worktrees` é em quantas worktrees do mesmo repo o achado
+# aparece (1 fora do check 1).
 FINDINGS=()
-finding() { FINDINGS+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"); }
+finding() { FINDINGS+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"$'\t'"${5:-1}"); }
 
 # --- Check 1: caminho citado em contrato que não existe ---------------------
 # Contrato é AGENTS.md / CLAUDE.md e o que está em docs/agents/ — o AGENTS.md
@@ -110,16 +112,48 @@ extract_paths() {
   ' "$@"
 }
 
+# Worktree não é repo: quatro worktrees do mesmo clone carregam o mesmo
+# docs/agents/, e contá-las como quatro repos multiplicava cada achado por
+# quatro — o número passava a medir branches abertas, não podridão. O git
+# responde quem é o mesmo repo: `--git-common-dir` é igual em todas as
+# worktrees de um clone. Fora de git, a raiz é o próprio grupo.
+git_dir_abs() { (cd "$1" && cd "$(git rev-parse "$2" 2>/dev/null)" 2>/dev/null && pwd -P); }
+
+declare -A PATH_SHOWN PATH_WT PATH_IS_MAIN
+PATH_KEYS=()
 while read -r root; do
   mapfile -t contracts < <(contract_files "$root")
   ((${#contracts[@]})) || continue
+  group=$(git_dir_abs "$root" --git-common-dir) || group=""
+  [[ -n "$group" ]] || group=$root
+  # Principal é a worktree cujo git-dir é o próprio common-dir.
+  is_main=0
+  [[ "$(git_dir_abs "$root" --git-dir)" == "$group" || "$group" == "$root" ]] && is_main=1
   while IFS=$'\t' read -r file lineno tok; do
     # O '~' vem citado no contrato como texto; quem expande é este script.
     target="$HOME/${tok:2}"
     [[ -e "${target%/}" ]] && continue
-    finding caminho-morto "${file/#"$HOME"/\~}" "$lineno" "$tok"
+    key="$group"$'\t'"${file#"$root"/}"$'\t'"$lineno"$'\t'"$tok"
+    shown="${file/#"$HOME"/\~}"
+    if [[ -z "${PATH_WT[$key]:-}" ]]; then
+      PATH_KEYS+=("$key")
+      PATH_WT[$key]=1
+      PATH_SHOWN[$key]=$shown
+      PATH_IS_MAIN[$key]=$is_main
+    else
+      PATH_WT[$key]=$((PATH_WT[$key] + 1))
+      if ((is_main && !PATH_IS_MAIN[$key])); then
+        PATH_SHOWN[$key]=$shown
+        PATH_IS_MAIN[$key]=1
+      fi
+    fi
   done < <(extract_paths "${contracts[@]}")
 done < <(lint_roots)
+
+for key in ${PATH_KEYS+"${PATH_KEYS[@]}"}; do
+  IFS=$'\t' read -r _ _ lineno tok <<<"$key"
+  finding caminho-morto "${PATH_SHOWN[$key]}" "$lineno" "$tok" "${PATH_WT[$key]}"
+done
 
 # Mesma varredura dos caminhos, para `[[wikilink]]`. Fora do escopo: bloco de
 # código E código inline, porque é neles que contrato e spec mostram o formato
@@ -245,10 +279,10 @@ case "$FORMAT" in
     printf '{"vault":"%s","findings":[' "$(json_escape "$VAULT")"
     sep=""
     for f in ${FINDINGS+"${FINDINGS[@]}"}; do
-      IFS=$'\t' read -r check file lineno detail <<<"$f"
-      printf '%s{"check":"%s","file":"%s","line":%s,"detail":"%s"}' \
+      IFS=$'\t' read -r check file lineno detail wt <<<"$f"
+      printf '%s{"check":"%s","file":"%s","line":%s,"detail":"%s","worktrees":%s}' \
         "$sep" "$(json_escape "$check")" "$(json_escape "$file")" \
-        "${lineno:-null}" "$(json_escape "$detail")"
+        "${lineno:-null}" "$(json_escape "$detail")" "${wt:-1}"
       sep=","
     done
     printf ']}\n'
@@ -259,7 +293,7 @@ case "$FORMAT" in
     else
       last=""
       for f in "${FINDINGS[@]}"; do
-        IFS=$'\t' read -r check file lineno detail <<<"$f"
+        IFS=$'\t' read -r check file lineno detail wt <<<"$f"
         if [[ "$check" != "$last" ]]; then
           case "$check" in
             caminho-morto) echo "--- Caminho citado em contrato que não existe" ;;
@@ -268,7 +302,9 @@ case "$FORMAT" in
           esac
           last=$check
         fi
-        printf '  %s%s: %s\n' "$file" "${lineno:+:$lineno}" "$detail"
+        extra=""
+        ((${wt:-1} > 1)) && extra=" (+$((wt - 1)) worktrees)"
+        printf '  %s%s: %s%s\n' "$file" "${lineno:+:$lineno}" "$detail" "$extra"
       done
       printf '\n%d achado(s). São avisos: nada aqui impede o vault de funcionar.\n' \
         "${#FINDINGS[@]}"
