@@ -1,7 +1,9 @@
 #!/bin/bash
 # shellcheck shell=bash
 # Checks do pacote 'nvim': versão do Neovim, tree-sitter CLI, .NET SDK + Roslyn
-# LSP, smoke test do LazyVim/Snacks, e os opcionais de preview de imagem.
+# LSP e os opcionais de preview de imagem. READ-ONLY: o warmup do lazy/Mason
+# (que instala plugin) mora no setup.sh; a versão do fd que o Snacks exige é
+# checada no hook do bash.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -61,27 +63,6 @@ else
   log_warn "tree-sitter CLI não encontrado."
   echo "    -> Baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
   echo "    -> Ou execute: cargo install tree-sitter-cli"
-fi
-
-echo ""
-log_info "--- Neovim smoke (LazyVim/Mason/Snacks warmup) ---"
-if command -v nvim &>/dev/null; then
-  SMOKE_LOG=$(mktemp "${TMPDIR:-/tmp}/nvim-smoke.XXXXXX.log")
-  if timeout 90 nvim --headless \
-    -c 'lua require("lazy").load({ plugins = { "folke/snacks.nvim" } })' \
-    -c 'lua local ok, snacks = pcall(require, "snacks"); if ok then pcall(function() snacks.picker.smart() end) end' \
-    -c 'qa' >"$SMOKE_LOG" 2>&1; then
-    log_success "Smoke test do Neovim completou sem timeout."
-    if grep -qiE 'E5113|fd < 8\.4|fd.*not found' "$SMOKE_LOG"; then
-      log_warn "Possível incompatibilidade de fd com Snacks picker detectada (ver $SMOKE_LOG)."
-    fi
-  else
-    log_warn "Smoke test excedeu timeout (90s). Pode ser primeira execução do Mason."
-    echo "    -> Tente novamente após: nvim --headless '+Mason' +qa"
-  fi
-  rm -f "$SMOKE_LOG"
-else
-  log_info "Smoke pulado (nvim ausente)."
 fi
 
 echo ""
