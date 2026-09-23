@@ -4,10 +4,17 @@
 # valer nada e o check do pacote sempre dizer "já configurada".
 # Identidade é por-máquina e mora em ~/.gitconfig, escrita por git/hooks/setup.sh.
 
-[credential]
-	# libsecret guarda no keyring da sessão; `store` grava o token em texto
-	# plano em ~/.git-credentials.
-	helper = libsecret
+# Credencial HTTPS do GitHub vem do gh, que já guarda o token no keyring: uma
+# fonte só, e nada a instalar além do gh. Antes era `store` (token em texto
+# plano em ~/.git-credentials) e depois libsecret, um binário à parte que não
+# existe no pi01 nem no WSL. Os remotes são SSH; isto só vale para HTTPS.
+# O `helper =` vazio zera helper herdado — é o formato do `gh auth setup-git`.
+[credential "https://github.com"]
+	helper =
+	helper = !gh auth git-credential
+[credential "https://gist.github.com"]
+	helper =
+	helper = !gh auth git-credential
 
 # --- Delta (Modern Diff) ---
 [interactive]

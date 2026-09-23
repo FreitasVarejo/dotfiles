@@ -20,19 +20,18 @@ fi
 
 echo ""
 log_info "--- Credential helper ---"
-# git/config pede o helper libsecret, que NÃO vem com o git: é um binário à
-# parte em git-core. Sem ele, toda operação por HTTPS falha com "credential-
-# libsecret is not a git command" — pior que o `store` que ele substituiu.
-helper=$(git config --get credential.helper 2>/dev/null)
-if [ "$helper" != "libsecret" ]; then
-  log_optional "credential.helper = '${helper:-<nenhum>}' (o config do repo pede libsecret)."
-elif git --exec-path >/dev/null 2>&1 && [ -x "$(git --exec-path)/git-credential-libsecret" ]; then
-  log_success "git-credential-libsecret encontrado"
+# git/config entrega a credencial HTTPS do GitHub ao gh. Só aviso, nunca
+# fail_check: os remotes são SSH, e sem o gh o git apenas volta a pedir senha
+# num clone HTTPS. Se o gh está logado é o hook do claude que confere.
+helper=$(git config --get-urlmatch credential.helper https://github.com 2>/dev/null)
+if [[ "$helper" != *"gh auth git-credential"* ]]; then
+  log_optional "credential.helper do github.com = '${helper:-<nenhum>}' (o config do repo pede o gh)."
+elif command -v gh &>/dev/null; then
+  log_success "HTTPS do GitHub autentica pelo gh ($(command -v gh))"
 else
-  log_missing "credential.helper = libsecret, mas o binário não existe."
-  echo "    -> Sugestão: $PM_INSTALL git-credential-libsecret"
-  echo "    -> Até instalar, autenticação por HTTPS falha (SSH não é afetado)."
-  fail_check
+  log_warn "credential.helper aponta para o gh, mas o gh não está no PATH."
+  echo "    -> Sugestão: $PM_INSTALL gh"
+  echo "    -> Até instalar, clone HTTPS do GitHub pede senha (SSH não é afetado)."
 fi
 
 if [ -s "$HOME/.git-credentials" ]; then
