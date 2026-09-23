@@ -1,9 +1,12 @@
 #!/bin/bash
 # coletar-estado.sh — junta o estado de uma frente de trabalho num digest só.
 #
-# Lê seis fontes e não escreve em nenhuma: o backlog do freitask, as notas do
-# projeto no vault, o histórico do vaultgit, o git dos repos que carregam
-# contrato apontando para o projeto, a esteira do GitHub e o host vinculado.
+# Lê seis fontes: o backlog do freitask, as notas do projeto no vault, o
+# histórico do vaultgit, o git dos repos que carregam contrato apontando para o
+# projeto, a esteira do GitHub e o host vinculado.
+#
+# Escreve em exatamente um lugar, e só com --gravar: o registro da própria
+# rodada, em projects/<projeto>/estado-<host>.md. Nunca toca em tasks/.
 #
 # Nada aqui é lista fixa. Projeto é pasta com `tasks/`; repo pertence ao
 # projeto quando o contrato dele cita `projects/<projeto>/`; host se vincula
@@ -14,7 +17,10 @@
 #   coletar-estado.sh <projeto> [opções]
 #   coletar-estado.sh --listar            # projetos que existem, com apelidos
 #
-#   --janela <dias>   janela de "o que mudou" (padrão: 14)
+#   --janela <dias>   janela de "o que mudou" (padrão: desde a última coleta
+#                     registrada; sem registro, 14 dias)
+#   --gravar          grava o registro desta rodada (frontmatter e fila; a
+#                     prosa escrita por quem leu é preservada intacta)
 #   --json            despeja o documento canônico
 #   --sem-rede        pula GitHub e host (offline, ou quando pressa importa)
 #   --host <alias>    força o alias de SSH em vez do vinculado pela tag
@@ -33,16 +39,20 @@ REDE=1
 HOST_FORCADO=""
 PEDIDO=""
 LISTAR=0
+GRAVAR=0
+JANELA_EXPLICITA=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --listar) LISTAR=1 ;;
     --json) FORMATO=json ;;
     --sem-rede) REDE=0 ;;
+    --gravar) GRAVAR=1 ;;
     --janela)
       shift
       [[ ${1:-} =~ ^[0-9]+$ ]] || { echo "coletar-estado: --janela quer um número de dias" >&2; exit 2; }
       JANELA=$1
+      JANELA_EXPLICITA=1
       ;;
     --host)
       shift
@@ -193,7 +203,67 @@ if ! PROJETO=$(resolver "$PEDIDO"); then
 fi
 
 PDIR="$VAULT/projects/$PROJETO"
-DESDE=$(date -d "-$JANELA days" +%Y-%m-%d)
+
+# O nome desta máquina como o vault a chama: a nota de hosts/ cujo H1 começa
+# pelo hostname. `fedora-41` vira `fedora-workstation`; `pi01` é ele mesmo.
+# Sem nota correspondente, o hostname serve — o que importa é ser único por
+# máquina, porque é isso que torna o conflito de Syncthing impossível.
+host_desta_maquina() {
+  local hn h nome
+  hn=$(hostname -s 2>/dev/null || echo maquina)
+  if [[ -d "$VAULT/hosts" ]]; then
+    for h in "$VAULT"/hosts/*.md; do
+      [[ -f "$h" ]] || continue
+      nome=$(basename "$h" .md)
+      if grep -qiE "^# *$hn( |$|—|-)" "$h" 2>/dev/null; then
+        printf '%s\n' "$nome"
+        return 0
+      fi
+    done
+  fi
+  printf '%s\n' "$hn"
+}
+HOST_LOCAL=$(host_desta_maquina)
+REGISTRO="$PDIR/estado-$HOST_LOCAL.md"
+
+# --- Registro da rodada anterior --------------------------------------------
+# Guarda só o que este coletor não recalcula: quando foi a última coleta, desde
+# quando cada pendência está na fila, e o que a conversa decidiu. Lista de task,
+# commit e ADR não entram — para isso o coletor é mais rápido e nunca erra.
+secao_do_registro() {
+  [[ -f "$REGISTRO" ]] || return 0
+  awk -v alvo="$1" '
+    $0 ~ "^## " alvo "$" { dentro = 1; next }
+    dentro && /^## / { exit }
+    dentro { print }
+  ' "$REGISTRO"
+}
+
+COLETADO_EM=""
+if [[ -f "$REGISTRO" ]]; then
+  COLETADO_EM=$(awk '
+    NR == 1 && $0 == "---" { fm = 1; next }
+    fm && $0 == "---" { exit }
+    fm && /^coletado-em:/ { sub(/^coletado-em:[[:space:]]*/, ""); print; exit }
+  ' "$REGISTRO")
+fi
+
+if [[ $JANELA_EXPLICITA -eq 1 ]]; then
+  DESDE=$(date -d "-$JANELA days" +%Y-%m-%d)
+  JANELA_ORIGEM="--janela $JANELA dias"
+elif [[ -n "$COLETADO_EM" ]]; then
+  DESDE=${COLETADO_EM:0:10}
+  # Quanto tempo faz, em palavra: "desde 2026-09-23" sozinho parece defeito
+  # quando a coleta foi hoje de manhã.
+  _seg=$(( $(date +%s) - $(date -d "$COLETADO_EM" +%s 2>/dev/null || date +%s) ))
+  if [[ $_seg -lt 5400 ]]; then _faz="há $(( _seg / 60 )) min"
+  elif [[ $_seg -lt 172800 ]]; then _faz="há $(( _seg / 3600 ))h"
+  else _faz="há $(( _seg / 86400 )) dias"; fi
+  JANELA_ORIGEM="desde a última coleta, $_faz (${COLETADO_EM:0:16})"
+else
+  DESDE=$(date -d "-$JANELA days" +%Y-%m-%d)
+  JANELA_ORIGEM="$JANELA dias (não há registro anterior)"
+fi
 
 # --- Tasks ------------------------------------------------------------------
 # O freitask é a autoridade do que existe e em que fase está; ele não devolve
@@ -306,6 +376,9 @@ vault_json() {
     NF >= 2 && $1 ~ /^[AMDR]/ {
       arquivo = $NF
       genero = "outro"
+      # O registro que esta própria skill escreve sai da timeline: senão toda
+      # rodada reporta como novidade o arquivo que ela acabou de gravar.
+      if (arquivo ~ /\/estado-[^\/]+\.md$/)   next
       if (arquivo ~ /\/decisoes\//)        genero = "adr"
       else if (arquivo ~ /\/tasks\//)      genero = "task"
       else if (arquivo ~ /\/reviews\//)    genero = "review"
@@ -561,6 +634,28 @@ PENDENCIAS=$(pendencias_json)
 HOST=$(host_json)
 AVISOS=$(avisos_json)
 
+REGISTRO_JSON=$(
+  if [[ -f "$REGISTRO" ]]; then
+    fonte registro ok "${REGISTRO#"$VAULT"/}"
+  else
+    fonte registro vazio "primeira rodada nesta máquina — ${REGISTRO#"$VAULT"/} ainda não existe"
+  fi
+  jq -n \
+    --argjson existe "$([[ -f "$REGISTRO" ]] && echo true || echo false)" \
+    --arg caminho "${REGISTRO#"$VAULT"/}" \
+    --arg coletado "$COLETADO_EM" \
+    --argjson fila "$(
+      secao_do_registro "Na sua fila desde" |
+        sed -n 's/^- \(.*\) — visto desde \([0-9-]\{10\}\) · \([0-9]*\).*$/\1\t\2\t\3/p' |
+        jq -R -s 'split("\n")|map(select(length>0))|map(split("\t"))|map({chave:.[0],desde:.[1],rodadas:(.[2]|tonumber? // 1)})'
+    )" \
+    --arg decidido "$(secao_do_registro "Decidido na conversa")" \
+    --arg adiado "$(secao_do_registro "Adiado de propósito")" \
+    --arg leitura "$(secao_do_registro "Leitura da última rodada")" \
+    '{existe:$existe, caminho:$caminho, coletado_em:$coletado, fila:$fila,
+      decidido:$decidido, adiado:$adiado, leitura:$leitura}'
+)
+
 MOC="-"
 [[ -f "$PDIR/$PROJETO.md" ]] && MOC="projects/$PROJETO/$PROJETO.md"
 # find sai 1 quando decisoes/ não existe (projeto sem ADR nenhuma): com
@@ -576,11 +671,86 @@ DOC=$(jq -n \
   --argjson tasks "$TASKS" --argjson vault "$VAULTLOG" --argjson repos "$REPOS" \
   --argjson planos "$PLANOS" --argjson gh "$GH" --argjson notas "$NOTAS" \
   --argjson pendencias "$PENDENCIAS" --argjson host "$HOST" --argjson avisos "$AVISOS" \
+  --argjson registro "$REGISTRO_JSON" --arg janela_origem "$JANELA_ORIGEM" \
   '{projeto:$projeto, pedido:$pedido, gerado_em:$gerado, janela_dias:$janela,
     desde:$desde, moc:$moc, adrs:$adrs, fontes:$fontes, tasks:$tasks,
     mudancas_vault:$vault, repos:$repos, planos:$planos,
     esperando: ($gh + {notas_avulsas:$notas, pendencias:$pendencias}),
-    host:$host, avisos:$avisos}')
+    host:$host, avisos:$avisos, registro:$registro,
+    janela_origem:$janela_origem}')
+
+# --- Gravação do registro ---------------------------------------------------
+# O único caminho de escrita deste script. Dono do frontmatter e da fila; a
+# prosa das três seções seguintes é de quem leu o relatório e volta intacta.
+gravar_registro() {
+  local hoje agora fila dec adi lei tmp
+  hoje=$(date +%Y-%m-%d)
+  agora=$(date --iso-8601=seconds)
+
+  # Item que já estava mantém a data de entrada e ganha uma rodada; item novo
+  # entra com hoje. Item que saiu da pendência some — MAS só se a fonte dele
+  # foi lida de verdade: com --sem-rede, PR e issue ficam como estavam, senão
+  # a primeira rodada offline apagaria o histórico inteiro.
+  fila=$(printf '%s' "$DOC" | jq -r --arg hoje "$hoje" '
+    . as $r
+    | ( [ $r.esperando.prs[]    | "PR #\(.number)" ]
+      + [ $r.esperando.issues[] | "issue #\(.number)" ]
+      + [ $r.tasks[] | select(.arquivada == "" and .callout == "question") | "task `\(.id)`" ]
+      ) as $agora
+    | ( $r.registro.fila | map({key: .chave, value: .}) | from_entries ) as $antes
+    | ( [ $r.fontes[] | select(.fonte == "github"   and .estado == "ok") ] | length > 0 ) as $gh_ok
+    | ( [ $r.fontes[] | select(.fonte == "freitask" and .estado == "ok") ] | length > 0 ) as $ft_ok
+    | ( $agora | map( . as $k | {
+          chave: $k,
+          desde: ($antes[$k].desde // $hoje),
+          rodadas: (($antes[$k].rodadas // 0) + 1)
+        }) ) as $novos
+    | ( $r.registro.fila
+        | map(select([.chave] | inside($agora) | not))
+        | map(select(if (.chave | startswith("task")) then ($ft_ok | not) else ($gh_ok | not) end))
+      ) as $preservados
+    | ($novos + $preservados) | sort_by(.desde)
+    | .[] | "- \(.chave) — visto desde \(.desde) · \(.rodadas) rodada\(if .rodadas == 1 then "" else "s" end)"')
+
+  dec=$(secao_do_registro "Decidido na conversa")
+  adi=$(secao_do_registro "Adiado de propósito")
+  lei=$(secao_do_registro "Leitura da última rodada")
+
+  # Temporário na MESMA pasta: `mv` só é atômico dentro do mesmo sistema de
+  # arquivos, e escrita pela metade num vault sincronizado é o que não pode.
+  tmp=$(mktemp "$PDIR/.estado-XXXXXX")
+  {
+    printf -- '---\n'
+    printf 'tipo: registro\nstatus: vigente\n'
+    printf 'data: %s\nhost: %s\ncoletado-em: %s\n' "$hoje" "$HOST_LOCAL" "$agora"
+    printf 'origem: "skill current-project-state"\n'
+    printf -- '---\n\n'
+    printf '# Estado de %s — registro da skill\n\n' "$PROJETO"
+    cat <<'TXT'
+**Isto não é spec, e não é cópia do backlog.** Task, commit, ADR e PR vivem no
+coletor, que os recalcula em segundos; aqui fica só o que ele não sabe derivar.
+Quando este registro divergir do coletor, quem está errado é ele.
+
+Task é citada entre crases, nunca como wikilink com caminho: arquivar uma task
+muda o caminho dela, e o link quebrado vira erro irreparável no `freitask doctor`.
+TXT
+    printf '\n## Na sua fila desde\n'
+    printf '<!-- gerado pelo coletor: não edite à mão. A data é quando ESTE registro\n'
+    printf '     passou a ver o item, não quando ele nasceu; a idade real do item vem\n'
+    printf '     da linha atualizado que o coletor traz viva. -->\n'
+    if [[ -n "$fila" ]]; then printf '%s\n' "$fila"; else printf -- '- nada esperando você\n'; fi
+    printf '\n## Decidido na conversa\n'
+    [[ -n "$dec" ]] && printf '%s\n' "$dec"
+    printf '\n## Adiado de propósito\n'
+    [[ -n "$adi" ]] && printf '%s\n' "$adi"
+    printf '\n## Leitura da última rodada\n'
+    [[ -n "$lei" ]] && printf '%s\n' "$lei"
+  } >"$tmp"
+  mv -f "$tmp" "$REGISTRO"
+  echo "coletar-estado: registro gravado em ${REGISTRO#"$VAULT"/}" >&2
+}
+
+[[ $GRAVAR -eq 1 ]] && gravar_registro
 
 if [[ $FORMATO == json ]]; then
   printf '%s\n' "$DOC"
@@ -594,6 +764,10 @@ fi
 printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
   def col(n): (. + "                                        ")[0:n];
   def bloco(l): if (l | length) == 0 then "  —" else (l | join("\n")) end;
+  # prosa do registro vem verbatim do arquivo: indenta para não quebrar a
+  # leitura do relatório, e some quando só tem espaço em branco.
+  def prosa: if (gsub("\\s"; "")) == "" then "    —"
+             else (split("\n") | map(select(length > 0)) | map("    " + .) | join("\n")) end;
   def bloco(l; aviso): if (l | length) == 0 then "  — \(aviso)" else (l | join("\n")) end;
   def linha_task:
     "  - \(.id)  ·  \(.titulo)"
@@ -604,12 +778,24 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
   . as $r |
 
   "# estado: \($r.projeto)" + (if $r.pedido != $r.projeto then "   (pedido: \"\($r.pedido)\")" else "" end),
-  "gerado em \($r.gerado_em) · janela de \($r.janela_dias) dias (desde \($r.desde))",
+  "gerado em \($r.gerado_em) · janela: \($r.janela_origem) — mudanças desde \($r.desde)",
   "vault: projects/\($r.projeto)/ · MOC: \($r.moc) · \($r.adrs) ADR(s) em decisoes/",
   "",
 
   "## fontes",
   bloco([ $r.fontes[] | "  \(.estado|col(14))\(.fonte|col(12))\(.detalhe)" ]),
+  "",
+
+  "## registro da rodada anterior",
+  ( if $r.registro.existe | not then "  — primeira rodada nesta máquina; nada gravado ainda (\($r.registro.caminho))"
+    else
+      "  \($r.registro.caminho) · coletado em \($r.registro.coletado_em)"
+      + "\n\n  na sua fila desde:\n"
+      + bloco([ $r.registro.fila[] | "    \(.chave|col(26))desde \(.desde) · \(.rodadas) rodada\(if .rodadas == 1 then "" else "s" end)" ])
+      + "\n\n  decidido na conversa:\n" + ($r.registro.decidido | prosa)
+      + "\n\n  adiado de propósito:\n"  + ($r.registro.adiado   | prosa)
+      + "\n\n  leitura da última rodada:\n" + ($r.registro.leitura | prosa)
+    end ),
   "",
 
   "## tasks por fase",
