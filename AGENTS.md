@@ -13,6 +13,7 @@ imperative setup logic lives *inside each package* under `<pkg>/hooks/`:
 lib/common.sh          # shared logging, package-manager detection (PM_INSTALL), check_cmd
 setup.sh               # single source of truth: STOW_TARGETS map; stows then runs setup hooks
 healthcheck.sh         # discovers and runs every <pkg>/hooks/check.sh, aggregates results
+precommit.sh           # pre-commit gate over every shell/lua file git knows about
 <pkg>/hooks/check.sh   # READ-ONLY dependency checks for that package; `exit $CHECK_FAILED`
 <pkg>/hooks/setup.sh   # optional; state-mutating setup, runs AFTER that package is stowed
 ```
@@ -40,12 +41,8 @@ healthcheck.sh         # discovers and runs every <pkg>/hooks/check.sh, aggregat
 ```bash
 ./healthcheck.sh                    # Check dependencies (runs all per-package check hooks)
 ./setup.sh                          # Apply configs via stow + run setup hooks (backups if needed)
-
-# Pre-commit validation (REQUIRED before any commit)
-shellcheck -x -P SCRIPTDIR setup.sh healthcheck.sh lib/common.sh */hooks/*.sh  # Must pass
-nvim --headless "+checkhealth" +qa  # Must load without errors
-tmux source-file ~/.config/tmux/tmux.conf  # Syntax check
-luac -p nvim/lua/config/*.lua nvim/lua/plugins/**/*.lua  # Lua syntax
+./precommit.sh                      # REQUIRED before any commit; must exit 0
+./precommit.sh --list               # what it covers (derived from git, not from a glob)
 ```
 
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
