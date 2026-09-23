@@ -13,7 +13,9 @@ _nvm_lazy_load() {
         unset -f "$_cmd" 2>/dev/null || true
     done
 
+    # shellcheck source=/dev/null  # instalado pelo nvm, fora do repo
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    # shellcheck source=/dev/null
     [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
     if type nvm &>/dev/null; then

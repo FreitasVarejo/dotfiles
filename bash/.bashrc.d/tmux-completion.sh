@@ -3,11 +3,11 @@
 # Enables autocomplete for session names, commands, etc.
 
 _t_completion() {
-  local cur prev words cword
+  # COMP_CWORD é o índice da palavra sob o cursor; sem ele, cword ficava vazio
+  # e a completion de comandos nunca disparava.
+  local cword=$COMP_CWORD
+  local cur="${COMP_WORDS[cword]}"
   COMPREPLY=()
-  
-  cur="${COMP_WORDS[cword]}"
-  prev="${COMP_WORDS[cword-1]}"
   
   # Get list of tmux sessions (suppress errors if no sessions exist)
   local sessions
@@ -21,7 +21,7 @@ _t_completion() {
   if [[ $cword -eq 1 ]]; then
     # First argument: complete commands
     local commands="a n k kall ls lw rename mv ssh send help h"
-    COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
+    mapfile -t COMPREPLY < <(compgen -W "$commands" -- "$cur")
   else
     # Second+ argument: context-dependent completion
     local cmd="${COMP_WORDS[1]}"
@@ -29,13 +29,13 @@ _t_completion() {
     case "$cmd" in
       a|attach|n|new|k|kill|lw|list-windows)
         # These commands take session name as argument
-        COMPREPLY=( $(compgen -W "$sessions" -- "$cur") )
+        mapfile -t COMPREPLY < <(compgen -W "$sessions" -- "$cur")
         ;;
       rename|mv)
         # For rename, complete either old or new session name
         if [[ $cword -eq 2 ]]; then
           # Completing old session name
-          COMPREPLY=( $(compgen -W "$sessions" -- "$cur") )
+          mapfile -t COMPREPLY < <(compgen -W "$sessions" -- "$cur")
         else
           # Completing new session name - no completion
           COMPREPLY=()
@@ -44,7 +44,7 @@ _t_completion() {
       ssh)
         # t ssh <session> <host> [path]: session has no completion, host comes from ~/.ssh/config
         if [[ $cword -eq 3 ]]; then
-          COMPREPLY=( $(compgen -W "$ssh_hosts" -- "$cur") )
+          mapfile -t COMPREPLY < <(compgen -W "$ssh_hosts" -- "$cur")
         else
           COMPREPLY=()
         fi

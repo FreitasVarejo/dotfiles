@@ -25,6 +25,7 @@ export PATH
 # ~/.bashrc.d é o próprio diretório do repo (symlink via stow), então secrets não
 # podem morar lá; ~/.bashrc.local fica fora do repo.
 if [ -f ~/.bashrc.local ]; then
+    # shellcheck source=/dev/null  # fora do repo por definição
     . ~/.bashrc.local
 fi
 
@@ -32,6 +33,7 @@ fi
 if [ -d ~/.bashrc.d ]; then
     for rc in ~/.bashrc.d/*; do
         if [ -f "$rc" ]; then
+            # shellcheck source=/dev/null  # cada arquivo é checado por si só
             . "$rc"
         fi
     done
@@ -49,6 +51,7 @@ if [ -d "/usr/local/cuda" ]; then
 fi
 
 if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck source=/dev/null  # gerado pelo rustup
     . "$HOME/.cargo/env"
 fi
 
@@ -90,6 +93,7 @@ if command -v fzf &>/dev/null; then
             /usr/local/share/fzf/completion.bash \
             "$(brew --prefix 2>/dev/null)/opt/fzf/shell/completion.bash" \
             "$HOME/.fzf/shell/completion.bash"; do
+            # shellcheck source=/dev/null  # vem do pacote do fzf
             [ -f "$_fzf_completion" ] && . "$_fzf_completion" && break
         done
         for _fzf_keybind in \
@@ -97,6 +101,7 @@ if command -v fzf &>/dev/null; then
             /usr/local/share/fzf/key-bindings.bash \
             "$(brew --prefix 2>/dev/null)/opt/fzf/shell/key-bindings.bash" \
             "$HOME/.fzf/shell/key-bindings.bash"; do
+            # shellcheck source=/dev/null  # vem do pacote do fzf
             [ -f "$_fzf_keybind" ] && . "$_fzf_keybind" && break
         done
         unset _fzf_completion _fzf_keybind
@@ -132,6 +137,7 @@ fi
 # Enable vi-style line editing
 set -o vi
 # Show vi mode in prompt (optional: shows [vi] when entering normal mode)
+# shellcheck disable=SC2128,SC2178  # bash >=5.1 aceita PROMPT_COMMAND array; aqui é sempre string
 export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}echo -ne '\033]0;${USER}@${HOSTNAME}\007'"
 
 # Luacheck portável: respeita PATH se já existe, senão cai para ~/.luarocks/bin.
