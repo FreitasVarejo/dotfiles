@@ -12,13 +12,19 @@ VAULT_WORK_TREE="$HOME/ObsidianVault"
 
 log_info "--- Vault do Obsidian ---"
 
+# Sem o vault principal, 1-5 perdem o objeto mas não o hook inteiro: os
+# binários no PATH e os vaults extras (6) continuam valendo — uma máquina só
+# com o enter-hackathon ainda precisa ser checada.
+HAS_VAULT=true
 if [[ ! -d "$VAULT_WORK_TREE" ]]; then
-  log_optional "Vault não encontrado em $VAULT_WORK_TREE (nada a checar)."
-  exit "${CHECK_FAILED:-0}"
+  HAS_VAULT=false
+  log_optional "Vault principal não encontrado em $VAULT_WORK_TREE (checagens dele puladas)."
 fi
 
 # 1. Repo de checkpoints -----------------------------------------------------
-if [[ -d "$VAULT_GIT_DIR" ]]; then
+if [[ "$HAS_VAULT" == false ]]; then
+  :
+elif [[ -d "$VAULT_GIT_DIR" ]]; then
   n=$(git --git-dir="$VAULT_GIT_DIR" rev-list --count HEAD 2>/dev/null || echo 0)
   log_success "Repo de checkpoints: $n commit(s)"
 
@@ -40,7 +46,9 @@ else
 fi
 
 # 2. Timer -------------------------------------------------------------------
-if command -v systemctl &>/dev/null && systemctl --user show-environment &>/dev/null; then
+if [[ "$HAS_VAULT" == false ]]; then
+  :
+elif command -v systemctl &>/dev/null && systemctl --user show-environment &>/dev/null; then
   if systemctl --user is-enabled vault-checkpoint.timer &>/dev/null; then
     log_success "vault-checkpoint.timer habilitado"
   else
@@ -58,7 +66,7 @@ fi
 # até o próximo checkpoint.
 ST_CONFIG="$HOME/.local/state/syncthing/config.xml"
 [[ -f "$ST_CONFIG" ]] || ST_CONFIG="$HOME/.config/syncthing/config.xml"
-if [[ -f "$ST_CONFIG" ]] && ! grep -q '<versioning>[^<]*<type>' "$ST_CONFIG" 2>/dev/null; then
+if [[ "$HAS_VAULT" == true && -f "$ST_CONFIG" ]] && ! grep -q '<versioning>[^<]*<type>' "$ST_CONFIG" 2>/dev/null; then
   log_optional "Syncthing sem versionamento na pasta do vault (undo depende só dos checkpoints)."
 fi
 
@@ -66,7 +74,9 @@ fi
 # O doctor FALHA, ao contrário do vault-lint (ADR 0009): achado `error`
 # pendente é fail_check, `warn` é aviso. O nível vem do --json; achado já
 # reparado (`fixed`) não conta para nenhum dos dois.
-if command -v freitask &>/dev/null; then
+if command -v freitask &>/dev/null && [[ "$HAS_VAULT" == false ]]; then
+  log_success "freitask encontrado: $(command -v freitask) (doctor pulado: sem vault principal)"
+elif command -v freitask &>/dev/null; then
   if ! command -v jq &>/dev/null; then
     # Sem jq não dá para separar erro de aviso: degrada para aviso, como antes.
     if freitask doctor --quiet; then
@@ -108,7 +118,9 @@ fi
 # Sempre AVISO, nunca fail_check: ponteiro morto e ADR desatualizado não
 # impedem ninguém de trabalhar, e um healthcheck vermelho por isso ensina a
 # ignorar o vermelho. A decisão é a ADR 0009 em projects/workflow-ia/decisoes/.
-if command -v vault-lint &>/dev/null; then
+if command -v vault-lint &>/dev/null && [[ "$HAS_VAULT" == false ]]; then
+  log_success "vault-lint encontrado: $(command -v vault-lint) (lint pulado: sem vault principal)"
+elif command -v vault-lint &>/dev/null; then
   if vault-lint --quiet; then
     log_success "vault-lint: contrato em dia"
   else
