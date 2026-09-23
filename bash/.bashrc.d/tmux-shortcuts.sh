@@ -5,7 +5,7 @@
 #   t                    - list sessions
 #   t ls / t l           - list sessions (alias)
 #   t a session-name     - attach to session
-#   t n session-name     - create new session
+#   t n [session-name]   - create new session (default: name of the current directory)
 #   t k session-name     - kill session
 #   t kall               - kill all sessions
 #   t ssh session host [path] - new session, ssh into host (from ~/.ssh/config), optional cd
@@ -42,8 +42,14 @@ t() {
     n|new)
       local session="${2:-}"
       if [[ -z "$session" ]]; then
-        echo "Usage: t n <session-name>"
-        return 1
+        # Sem nome: a sessão leva o nome do diretório atual. tmux não aceita
+        # '.' nem ':' em nome de sessão, então viram '_' (ex.: .config -> _config).
+        # Se já existe uma com esse nome, -A anexa a ela em vez de falhar.
+        session="${PWD##*/}"
+        session="${session:-root}"
+        session="${session//[.:]/_}"
+        tmux -u new-session -A -s "$session"
+        return $?
       fi
       tmux -u new-session -s "$session"
       ;;
@@ -158,7 +164,7 @@ SESSÕES:
   (no args)         List all sessions
   ls / l            List all sessions
   a <session>       Attach to session
-  n <session>       Create new session
+  n [session]       Create new session (default: current directory's name)
   k <session>       Kill session
   kall              Kill all sessions
   ssh <session> <host> [path]  New session, SSH into host, cd into path
@@ -182,6 +188,7 @@ EXEMPLOS:
   t ls / t l              # List sessions
   t a dev                 # Attach to 'dev' session
   t n my-project          # Create new session 'my-project'
+  t n                     # In ~/dev/foo: create (or attach to) session 'foo'
   t k old-session         # Kill 'old-session'
   t ssh pi01-work pi01 ~/projects/foo  # New session 'pi01-work', ssh pi01, cd to ~/projects/foo
   t rename dev development # Rename 'dev' to 'development'
