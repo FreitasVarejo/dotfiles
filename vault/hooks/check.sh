@@ -63,13 +63,39 @@ if [[ -f "$ST_CONFIG" ]] && ! grep -q '<versioning>[^<]*<type>' "$ST_CONFIG" 2>/
 fi
 
 # 4. Integridade dos dados do freitask ---------------------------------------
+# O doctor FALHA, ao contrário do vault-lint (ADR 0009): achado `error`
+# pendente é fail_check, `warn` é aviso. O nível vem do --json; achado já
+# reparado (`fixed`) não conta para nenhum dos dois.
 if command -v freitask &>/dev/null; then
-  if freitask doctor --quiet; then
-    log_success "freitask doctor: vault consistente"
+  if ! command -v jq &>/dev/null; then
+    # Sem jq não dá para separar erro de aviso: degrada para aviso, como antes.
+    if freitask doctor --quiet; then
+      log_success "freitask doctor: vault consistente"
+    else
+      log_warn "freitask doctor encontrou inconsistências (sem jq, erro e aviso não se distinguem)"
+      echo "    -> Detalhes: freitask doctor"
+      echo "    -> Para o healthcheck distinguir: $PM_INSTALL jq"
+    fi
   else
-    log_warn "freitask doctor encontrou inconsistências"
-    echo "    -> Detalhes: freitask doctor"
-    echo "    -> Reparar o que for automático: freitask doctor --fix"
+    doctor_json=$(freitask doctor --json 2>/dev/null)
+    n_err=$(jq '[.findings[] | select(.level == "error" and (.fixed | not))] | length' <<<"$doctor_json" 2>/dev/null)
+    n_warn=$(jq '[.findings[] | select(.level != "error" and (.fixed | not))] | length' <<<"$doctor_json" 2>/dev/null)
+    if [[ -z "$n_err" || -z "$n_warn" ]]; then
+      log_error "freitask doctor não devolveu JSON legível"
+      echo "    -> Detalhes: freitask doctor"
+      fail_check
+    elif ((n_err > 0)); then
+      log_error "freitask doctor: $n_err erro(s) e $n_warn aviso(s)"
+      jq -r '.findings[] | select(.level == "error" and (.fixed | not)) | "    -> \(.kind): \(.path)"' <<<"$doctor_json"
+      echo "    -> Erro não é reparado pelo --fix: resolva à mão (freitask doctor mostra o motivo)"
+      fail_check
+    elif ((n_warn > 0)); then
+      log_warn "freitask doctor: $n_warn aviso(s)"
+      echo "    -> Detalhes: freitask doctor"
+      echo "    -> Reparar o que for automático: freitask doctor --fix"
+    else
+      log_success "freitask doctor: vault consistente"
+    fi
   fi
 else
   log_missing "CLI 'freitask' não encontrada no PATH"
