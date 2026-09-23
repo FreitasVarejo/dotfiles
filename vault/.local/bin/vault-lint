@@ -20,7 +20,8 @@
 
 set -euo pipefail
 
-VAULT="${FREITASK_VAULT:-$HOME/ObsidianVault}"
+# Fixo, como no config.lua do freitask: trocar de vault é trocar $HOME.
+VAULT="$HOME/ObsidianVault"
 
 FORMAT=texto
 while [[ $# -gt 0 ]]; do

@@ -15,7 +15,8 @@ set -euo pipefail
 
 FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
 CLI_LUA="${FREITASK_CLI_LUA:-$FREITASK_REPO/lua/freitask/cli.lua}"
-VAULT="${FREITASK_VAULT:-$HOME/ObsidianVault}"
+# Fixo, como no config.lua do freitask: trocar de vault é trocar $HOME.
+VAULT="$HOME/ObsidianVault"
 
 if ! command -v nvim &>/dev/null; then
   echo "freitask: nvim não encontrado no PATH" >&2
