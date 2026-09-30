@@ -131,6 +131,18 @@ else
   log_optional "vault-lint não encontrado no PATH (rode ~/dotfiles/setup.sh)."
 fi
 
+# 5b. bookorbit-organize -------------------------------------------------------
+# Ferramenta manual (roda depois de um lote de livros), então tudo aqui é aviso:
+# sem ela ou sem uma dependência, só o organizador de gênero/série fica de fora.
+if command -v bookorbit-organize &>/dev/null; then
+  log_success "bookorbit-organize encontrado: $(command -v bookorbit-organize)"
+  check_cmd jq "$PM_INSTALL jq" optional
+  check_cmd curl "$PM_INSTALL curl" optional
+  check_cmd ssh "$PM_INSTALL openssh-clients" optional
+else
+  log_optional "bookorbit-organize não encontrado no PATH (rode ~/dotfiles/setup.sh)."
+fi
+
 # 6. Vaults extras -----------------------------------------------------------
 for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
   [[ -f "$env_file" ]] || continue

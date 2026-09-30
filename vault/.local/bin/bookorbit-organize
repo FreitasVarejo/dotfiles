@@ -1,0 +1,163 @@
+#!/bin/bash
+# bookorbit-organize: reconcilia gênero, série e autor dos livros do BookOrbit
+# a partir do caminho do arquivo na biblioteca.
+#
+#   <Gênero>/[<Série>/]arquivo.ext        gênero = 1ª pasta; série = 2ª pasta
+#   <qualquer>/<Série> - Volume NN.ext    série e índice pelo nome do arquivo
+#
+# Idempotente e aditivo: gênero entra em modo "add" (nunca remove), série e
+# autor só são escritos onde o livro ainda não os tem. Sem --apply só mostra o
+# plano. Lê o mapa livro→caminho do banco (ssh, somente leitura) e escreve só
+# pela API do BookOrbit, com o login do próprio usuário: a senha é lida sem eco
+# e o token fica só em memória.
+
+set -euo pipefail
+
+BOOKORBIT_URL="${BOOKORBIT_URL:-https://bookorbit.tuts-awards.com}"
+BOOKORBIT_SSH="${BOOKORBIT_SSH:-pi01}"
+BOOKORBIT_DB_CONTAINER="${BOOKORBIT_DB_CONTAINER:-bookorbit-db}"
+
+# 1ª pasta da biblioteca → gênero. Pasta fora do mapa (ex.: "Unknown Author")
+# não gera gênero.
+GENRE_MAP='{"Filosofia":"Filosofia","Religião":"Religião","Literatura":"Literatura","Computação":"Computação","Artigos":"Artigos"}'
+
+# Por série: autor e gênero que valem quando o BookOrbit não tem coisa melhor.
+SERIES_OVERRIDES='{"Bleach":{"author":"Tite Kubo","genre":"Mangá"}}'
+
+APPLY=false
+
+usage() {
+  echo "uso: bookorbit-organize [--apply]"
+  echo "  sem --apply: só mostra o plano"
+  echo "  env: BOOKORBIT_URL, BOOKORBIT_USER, BOOKORBIT_SSH"
+}
+
+case "${1:-}" in
+  --apply) APPLY=true ;;
+  "") ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    usage >&2
+    exit 1
+    ;;
+esac
+
+for cmd in jq curl ssh; do
+  command -v "$cmd" &>/dev/null || {
+    echo "ERRO: '$cmd' não encontrado" >&2
+    exit 1
+  }
+done
+
+# --- 1. estado atual (banco, leitura) ----------------------------------------
+SQL="select coalesce(json_agg(json_build_object(
+  'id', b.book_id,
+  'path', b.rel_path,
+  'authors', (select coalesce(json_agg(a.name), '[]'::json) from book_authors ba join authors a on a.id = ba.author_id where ba.book_id = b.book_id),
+  'has_series', exists(select 1 from book_series_memberships m where m.book_id = b.book_id)
+)), '[]'::json)
+from (select distinct on (book_id) book_id, rel_path from book_files order by book_id, sort_order, id) b;"
+
+# shellcheck disable=SC2029 # o nome do container deve expandir aqui, no cliente
+BOOKS=$(ssh "$BOOKORBIT_SSH" "docker exec -i $BOOKORBIT_DB_CONTAINER psql -U bookorbit -d bookorbit -At" <<<"$SQL")
+
+# --- 2. plano ------------------------------------------------------------------
+PLAN=$(jq -c --argjson gm "$GENRE_MAP" --argjson so "$SERIES_OVERRIDES" '
+  map(
+    (.path | split("/")) as $seg
+    | ($seg | last | sub("\\.[^.]+$"; "")) as $stem
+    | ($stem | capture("^(?<name>.+?) - (?:Volume|Vol\\.?|Tomo|Livro) ?0*(?<idx>[0-9]+(?:\\.[0-9]+)?)")? // null) as $fn
+    | (if ($seg | length) >= 3 then {name: $seg[1], idx: ($fn.idx // null)}
+       elif $fn then {name: $fn.name, idx: $fn.idx}
+       else null end) as $series
+    | ($series.name // "") as $sname
+    | {
+        id, path, has_series, authors,
+        genres: ([$gm[$seg[0]], ($so[$sname].genre // null)] | map(select(. != null)) | unique),
+        series: (if $series != null and (.has_series | not) then $series else null end),
+        author: (if ((.authors | length) == 0 or ((.authors | length) == 1 and .authors[0] == "Unknown Author")) and $so[$sname].author != null
+                 then $so[$sname].author else null end)
+      }
+  )' <<<"$BOOKS")
+
+echo "== plano =="
+jq -r '.[] | select((.genres | length) > 0 or .series != null or .author != null)
+  | "#\(.id) \(.path)\n    gênero: \(.genres | join(", "))"
+    + (if .series != null then "\n    série:  \(.series.name)" + (if .series.idx then " #\(.series.idx)" else "" end) else "" end)
+    + (if .author != null then "\n    autor:  \(.author)" else "" end)' <<<"$PLAN"
+echo
+jq -r '"livros: \(length)  com gênero a somar: \(map(select(.genres|length>0))|length)  série a gravar: \(map(select(.series!=null))|length)  autor a corrigir: \(map(select(.author!=null))|length)"' <<<"$PLAN"
+
+if [[ "$APPLY" != true ]]; then
+  echo "(dry-run: nada foi escrito; rode com --apply)"
+  exit 0
+fi
+
+# --- 3. login ------------------------------------------------------------------
+# Sessão pronta (cookie jar, ex.: aberta por magic link): pula o login.
+# Senão a senha é lida do terminal, nunca de argumento nem de env: sem TTY
+# (ex.: `!` dentro do Claude Code) não há como pedi-la sem expô-la, então para.
+COOKIE_JAR="${BOOKORBIT_COOKIE_JAR:-}"
+TOKEN=""
+if [[ -z "$COOKIE_JAR" ]]; then
+  if [[ ! -r /dev/tty ]] || ! { : </dev/tty; } 2>/dev/null; then
+    echo "ERRO: --apply precisa de um terminal para pedir a senha. Rode num terminal comum." >&2
+    exit 1
+  fi
+  USER_NAME="${BOOKORBIT_USER:-}"
+  [[ -n "$USER_NAME" ]] || read -r -p "Usuário do BookOrbit: " USER_NAME </dev/tty
+  read -r -s -p "Senha: " PASS </dev/tty
+  echo
+
+  LOGIN=$(jq -n --arg u "$USER_NAME" --arg p "$PASS" '{username:$u,password:$p,clientKind:"native",deviceLabel:"bookorbit-organize"}' |
+    curl -fsS -X POST "$BOOKORBIT_URL/api/v1/auth/login" -H 'Content-Type: application/json' -d @-) || {
+    echo "ERRO: login falhou" >&2
+    exit 1
+  }
+  unset PASS
+  TOKEN=$(jq -r '.accessToken // empty' <<<"$LOGIN")
+  [[ -n "$TOKEN" ]] || {
+    echo "ERRO: a resposta do login não trouxe accessToken" >&2
+    exit 1
+  }
+fi
+
+api() { # api METHOD PATH JSON
+  local auth=(-H "Authorization: Bearer $TOKEN")
+  [[ -z "$COOKIE_JAR" ]] || auth=(-b "$COOKIE_JAR")
+  curl -sS -X "$1" "$BOOKORBIT_URL/api/v1$2" "${auth[@]}" \
+    -H 'Content-Type: application/json' -d "$3" -w '\n%{http_code}' |
+    awk '{l[NR]=$0} END{c=l[NR]; if (c !~ /^2/) {for(i=1;i<NR;i++) print l[i] > "/dev/stderr"; print "HTTP " c > "/dev/stderr"; exit 1}}'
+}
+
+# --- 4. aplicar ----------------------------------------------------------------
+echo "== aplicando =="
+
+# gênero: um bulk-edit por gênero, modo add
+while IFS= read -r genre; do
+  ids=$(jq -c --arg g "$genre" '[.[] | select(.genres | index($g)) | .id]' <<<"$PLAN")
+  body=$(jq -nc --argjson ids "$ids" --arg g "$genre" '{bookIds:$ids, fields:{genres:{mode:"add", values:[$g]}}}')
+  api POST /books/bulk-edit-metadata "$body" >/dev/null
+  echo "gênero '$genre': $(jq length <<<"$ids") livro(s)"
+done < <(jq -r '[.[].genres[]] | unique[]' <<<"$PLAN")
+
+# autor: um bulk-edit por autor, modo replace
+while IFS= read -r author; do
+  ids=$(jq -c --arg a "$author" '[.[] | select(.author == $a) | .id]' <<<"$PLAN")
+  body=$(jq -nc --argjson ids "$ids" --arg a "$author" '{bookIds:$ids, fields:{authors:{mode:"replace", values:[$a]}}}')
+  api POST /books/bulk-edit-metadata "$body" >/dev/null
+  echo "autor '$author': $(jq length <<<"$ids") livro(s)"
+done < <(jq -r '[.[].author | select(. != null)] | unique[]' <<<"$PLAN")
+
+# série: por livro, porque o índice muda de um para o outro
+while IFS= read -r row; do
+  id=$(jq -r .id <<<"$row")
+  body=$(jq -c '{seriesName: .series.name} + (if .series.idx then {seriesIndex: .series.idx} else {} end)' <<<"$row")
+  api PATCH "/books/$id/metadata" "$body" >/dev/null
+  echo "série #$id: $body"
+done < <(jq -c '.[] | select(.series != null)' <<<"$PLAN")
+
+echo "feito."
