@@ -17,8 +17,9 @@ Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em
 - **Listar**: `freitask list [--json] [--archived]`.
 - **Comentar / registrar progresso**: edite o corpo da task (linhas 4+ são texto
   livre) e a descrição em itálico da linha 3. Nunca escreva em `## Histórico`.
-- **Mudar o status**: troque o callout da linha 1 (`todo`, `done`…; vocabulário
-  em `.freitask/status.json`).
+- **Mudar o status**: `freitask set <id> --status <fase>` (ou troque o callout
+  da linha 1 à mão; vocabulário em `freitask statuses`). `done` não se escreve
+  assim: é o que `freitask archive <id> done` grava.
 - **Fechar**: `freitask archive <id> done|dropped|failed`. Nunca `mv`/`rm`.
 - **Renomear**: `freitask rename <id> <novo-id>`.
 - **Ao terminar**: `freitask doctor`. Saída 0 = consistente.

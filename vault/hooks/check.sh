@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck shell=bash
-# Checks READ-ONLY do pacote 'vault': repositório de checkpoints, timer e
-# integridade dos dados do freitask (via `freitask doctor`).
+# Checks READ-ONLY do pacote 'vault': repositório de checkpoints, timer, clone
+# do freitask e a TUI, e integridade dos dados (via `freitask doctor`).
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -12,8 +12,8 @@ VAULT_WORK_TREE="$HOME/ObsidianVault"
 
 log_info "--- Vault do Obsidian ---"
 
-# Sem o vault principal, 1-5 perdem o objeto mas não o hook inteiro: os
-# binários no PATH e os vaults extras (6) continuam valendo — uma máquina só
+# Sem o vault principal, 1-3 e 5-6 perdem o objeto mas não o hook inteiro: os
+# binários no PATH e os vaults extras (7) continuam valendo — uma máquina só
 # com o enter-hackathon ainda precisa ser checada.
 HAS_VAULT=true
 if [[ ! -d "$VAULT_WORK_TREE" ]]; then
@@ -70,7 +70,26 @@ if [[ "$HAS_VAULT" == true && -f "$ST_CONFIG" ]] && ! grep -q '<versioning>[^<]*
   log_optional "Syncthing sem versionamento na pasta do vault (undo depende só dos checkpoints)."
 fi
 
-# 4. Integridade dos dados do freitask ---------------------------------------
+# 4. Clone do freitask e a TUI ---------------------------------------------
+# O clone é o motor da CLI: sem ele `freitask` não roda, então é falha. A TUI
+# (`freitask` sem argumentos) é conveniência, e a falta dela é só aviso.
+FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
+if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
+  log_success "freitask encontrado: $FREITASK_REPO"
+else
+  log_missing "freitask não encontrado em $FREITASK_REPO"
+  echo "    -> setup.sh clona de git@github.com:FreitasVarejo/freitask.nvim.git"
+  echo "    -> Clone noutro lugar? Exporte FREITASK_REPO em ~/.bashrc.local"
+  fail_check
+fi
+if command -v freitask-tui &>/dev/null || [[ -x "${CARGO_HOME:-$HOME/.cargo}/bin/freitask-tui" ]]; then
+  log_success "freitask-tui instalado"
+else
+  log_warn "freitask-tui não instalado (\`freitask\` sem argumentos não abre a TUI)"
+  echo "    -> ~/dotfiles/setup.sh (precisa de cargo: $PM_INSTALL cargo)"
+fi
+
+# 5. Integridade dos dados do freitask ---------------------------------------
 # O doctor FALHA, ao contrário do vault-lint (ADR 0009): achado `error`
 # pendente é fail_check, `warn` é aviso. O nível vem do --json; achado já
 # reparado (`fixed`) não conta para nenhum dos dois.
@@ -110,11 +129,11 @@ elif command -v freitask &>/dev/null; then
 else
   log_missing "CLI 'freitask' não encontrada no PATH"
   echo "    -> Aplicar os dotfiles: ~/dotfiles/setup.sh"
-  echo "    -> A CLI também precisa do clone de freitask.nvim (ver o check do nvim)."
+  echo "    -> A CLI também precisa do clone do freitask (ver acima)."
   fail_check
 fi
 
-# 5. Contrato do vault (vault-lint) ------------------------------------------
+# 6. Contrato do vault (vault-lint) ------------------------------------------
 # Sempre AVISO, nunca fail_check: ponteiro morto e ADR desatualizado não
 # impedem ninguém de trabalhar, e um healthcheck vermelho por isso ensina a
 # ignorar o vermelho. A decisão é a ADR 0009 em projects/workflow-ia/decisoes/.
@@ -143,7 +162,7 @@ else
   log_optional "bookorbit-organize não encontrado no PATH (rode ~/dotfiles/setup.sh)."
 fi
 
-# 6. Vaults extras -----------------------------------------------------------
+# 7. Vaults extras -----------------------------------------------------------
 for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
   [[ -f "$env_file" ]] || continue
   name=$(basename "$env_file" .env)

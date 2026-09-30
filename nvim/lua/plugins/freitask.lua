@@ -1,46 +1,27 @@
--- Freitask: task tracking baseado em Obsidian, dirigido por Snacks.picker.
+-- Freitask: a TUI `freitask-tui` num terminal flutuante, do tamanho do lazygit.
 --
--- O código vive em ~/dev/freitask.nvim (repo próprio) desde que passou de
--- 3.000 linhas: era um aplicativo hospedado dentro do dotfiles, com testes e
--- CLI, e o histórico dele se misturava ao de config de shell e tmux.
+-- O picker Snacks e o form que moravam no plugin freitask.nvim saíram: navegar
+-- e mexer nas tasks é a TUI, que roda igual fora do Neovim (`freitask` no
+-- terminal). O Neovim não carrega mais Lua nenhum do repo do freitask — quem
+-- usa o repo é a CLI, que roda o motor sob `nvim -l`.
 --
--- Carregado por `dir=` em vez de por URL: é um clone local que eu edito, então
--- um `Lazy update` não deve nem tentar buscar dele. Se o clone não existir,
--- o spec se desativa em silêncio em vez de derrubar o startup do Neovim —
--- `nvim/hooks/check.sh` é quem reclama da ausência.
+-- Fica fora do <leader>o de propósito: aquele grupo é do obsidian.nvim. Abrir
+-- uma task de dentro da TUI a abre AQUI, no Neovim pai (via $NVIM), e fecha o
+-- float; o `checktime` do LazyVim no TermClose recarrega o que ela mudou.
 --
--- UI: picker de 2 níveis (projetos → tasks). Criação (<C-t>) e edição (<C-e> ou
--- <leader>oe sobre um callout, em CURRENT.md ou no arquivo da task) usam o MESMO
--- form flutuante posicional. Ver docs/ no repo do plugin.
-
--- O mesmo knob dos hooks e da CLI: FREITASK_REPO cobre a máquina em que o
--- clone mora noutro lugar (no notebook, ~/dev). Vai em ~/.bashrc.local, que
--- fica fora do repo.
-local repo = vim.fn.expand(vim.env.FREITASK_REPO or "~/dev/freitask.nvim")
-
-if vim.fn.isdirectory(repo) ~= 1 then
-  return {}
-end
+-- O regen do CURRENT.md ao salvar uma task à mão mora em config/autocmds.lua.
 
 return {
-  dir = repo,
-  name = "freitask.nvim",
-  dependencies = { "folke/snacks.nvim" },
-  event = "VeryLazy",
-  -- `config`, não `init`: o init do lazy.nvim roda ANTES do plugin ser
-  -- carregado, e é o carregamento que põe `dir` no runtimepath. Quando o
-  -- freitask morava dentro de nvim/lua/ o require funcionava em qualquer
-  -- momento; agora não mais.
-  config = function()
-    require("freitask").setup_autocmd()
-  end,
-  keys = {
-    {
-      "<leader>ob",
-      function()
-        require("freitask").open_projects()
-      end,
-      desc = "Freitask (Obsidian)",
+  {
+    "folke/snacks.nvim",
+    keys = {
+      {
+        "<leader>k",
+        function()
+          Snacks.terminal("freitask", { win = { style = "lazygit" } })
+        end,
+        desc = "Freitask",
+      },
     },
   },
 }

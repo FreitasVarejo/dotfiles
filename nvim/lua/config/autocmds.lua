@@ -44,3 +44,25 @@ vim.api.nvim_create_autocmd("TextYankPost", {
     end
   end,
 })
+
+-- Freitask: salvar uma task à mão regenera o CURRENT.md. Era o autocmd do
+-- plugin freitask.nvim, que o Neovim não carrega mais (ver
+-- plugins/freitask.lua); agora é a CLI, em segundo plano. `*` casa `/` em
+-- pattern de autocmd, então as arquivadas também chegam aqui — e não estão no
+-- painel, por isso são puladas.
+vim.api.nvim_create_autocmd("BufWritePost", {
+  group = vim.api.nvim_create_augroup("freitask", { clear = true }),
+  pattern = vim.fn.expand("~/ObsidianVault/projects") .. "/*/tasks/*.md",
+  callback = function(args)
+    if args.match:find("/tasks/archived/", 1, true) or vim.fn.executable("freitask") == 0 then
+      return
+    end
+    vim.system({ "freitask", "rebuild" }, { text = true }, function(r)
+      if r.code ~= 0 then
+        vim.schedule(function()
+          vim.notify("freitask rebuild falhou: " .. vim.trim(r.stderr or ""), vim.log.levels.WARN)
+        end)
+      end
+    end)
+  end,
+})

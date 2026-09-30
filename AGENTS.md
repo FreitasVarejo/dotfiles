@@ -52,16 +52,23 @@ at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations
 ## Freitask / daily notes (Obsidian)
 
 Task/daily-note tracking over `~/ObsidianVault/projects/<project>/tasks/`. **The code lives in its
-own repo** at `~/dev/freitask.nvim` — this repo only carries the lazy.nvim
-spec (`nvim/lua/plugins/freitask.lua`, loaded via `dir=`) and the CLI wrapper
-(`vault/.local/bin/freitask`). **Full guide:**
-`~/dev/freitask.nvim/docs/freitask.md`; **module map, dependency rules and
+own repo** at `~/dev/freitask.nvim` — the engine (Lua, run by the CLI under `nvim -l`) and
+the TUI (`tui/`, Rust, talks to the engine only through the CLI). Neovim no longer loads
+any of it. This repo only carries the wiring:
+
+- the CLI wrapper `vault/.local/bin/freitask` — with no arguments in a terminal it
+  opens the TUI (`freitask-tui`);
+- `vault/hooks/setup.sh` clones the repo and `cargo install`s the TUI; `vault/hooks/check.sh`
+  checks both;
+- in Neovim, `<leader>k` opens the TUI in a float (`nvim/lua/plugins/freitask.lua`) and saving
+  a task runs `freitask rebuild` (`nvim/lua/config/autocmds.lua`).
+
+**Full guide:** `~/dev/freitask.nvim/docs/freitask.md`; **module map, dependency rules and
 how to test:** `~/dev/freitask.nvim/docs/freitask-internals.md`.
 
-Changes to task behaviour go in that repo, not here. What belongs here is only
-the wiring: where the clone lives, and how the CLI finds it (`FREITASK_REPO`).
-`FREITASK_REPO` is the single knob: the lazy.nvim spec, both nvim hooks and the
-CLI honour it, defaulting to `~/dev/freitask.nvim`. On a machine where the
+Changes to task behaviour go in that repo, not here. `FREITASK_REPO` is the single knob
+for where the clone lives: the vault hooks and the CLI honour it, defaulting to
+`~/dev/freitask.nvim`. On a machine where the
 clone lives elsewhere (the notebook keeps repos in `~/dev`), export it from
 `~/.bashrc.local` — it is per-machine state, so it never goes in the repo.
 
@@ -284,6 +291,7 @@ Required tools (checked by `healthcheck.sh`):
 - **System:** git, stow, curl, make, gcc
 - **CLI:** tmux, rg (ripgrep), fd (>= 8.4 for Snacks picker), bat, fzf, zoxide, starship
 - **Editor:** nvim (v0.9+)
+- **Freitask:** the clone at `$FREITASK_REPO`; `cargo` only for the TUI (a missing TUI is a warning)
 - **Tmux:** TPM (Tmux Plugin Manager)
 - **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
 - **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),

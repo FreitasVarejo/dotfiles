@@ -1,13 +1,16 @@
 #!/bin/bash
 # shellcheck shell=bash
 # Setup do pacote 'vault': cria os repositórios de checkpoints dos vaults do
-# Obsidian (fora das pastas sincronizadas) e ativa os timers que os alimentam.
+# Obsidian (fora das pastas sincronizadas), ativa os timers que os alimentam e
+# põe no lugar o freitask (clone do repo e a TUI compilada).
 #
 #   - vault pessoal (~/ObsidianVault)            -> vault-checkpoint.timer
 #   - vaults extras (~/.config/vault-checkpoint/<nome>.env, stowados deste
 #     pacote)                                     -> vault-checkpoint@<nome>.timer
+#   - freitask: clone em $FREITASK_REPO e `cargo install` da TUI
 #
-# Idempotente: repetir não recria repo, não duplica exclude nem remoto.
+# Idempotente: repetir não recria repo, não duplica exclude nem remoto, não
+# mexe num clone existente e só recompila a TUI quando o fonte mudou.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -128,3 +131,43 @@ EXCL
 
   enable_timer "vault-checkpoint@$name.timer"
 done
+
+# 3. Freitask: clone e TUI ----------------------------------------------------
+# O clone é o motor da CLI `freitask` (este pacote stowa o shim). Se ele já
+# existe, não é tocado: quem decide quando dar `git pull` é o usuário.
+FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
+FREITASK_REMOTE="git@github.com:FreitasVarejo/freitask.nvim.git"
+
+echo ""
+log_info "--- Freitask ---"
+if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
+  log_success "freitask já clonado: $FREITASK_REPO"
+elif command -v git &>/dev/null; then
+  mkdir -p "$(dirname "$FREITASK_REPO")"
+  if git clone --quiet "$FREITASK_REMOTE" "$FREITASK_REPO"; then
+    log_success "freitask clonado em $FREITASK_REPO"
+  else
+    log_warn "Falha ao clonar o freitask de $FREITASK_REMOTE"
+  fi
+else
+  log_warn "git não encontrado; não foi possível clonar o freitask"
+fi
+
+# A TUI (`freitask` sem argumentos) é conveniência: sem ela a CLI segue
+# inteira, então falta de cargo é aviso. Recompila só quando algum fonte é mais
+# novo que o binário instalado — `cargo install` refaz o build toda vez.
+TUI_SRC="$FREITASK_REPO/tui"
+TUI_BIN="${CARGO_HOME:-$HOME/.cargo}/bin/freitask-tui"
+if [[ ! -f "$TUI_SRC/Cargo.toml" ]]; then
+  log_warn "Clone do freitask sem tui/ (desatualizado?); TUI não instalada"
+elif ! command -v cargo &>/dev/null; then
+  log_warn "cargo não encontrado; TUI do freitask não instalada"
+  echo "    -> $PM_INSTALL cargo && ~/dotfiles/setup.sh"
+elif [[ -x "$TUI_BIN" && -z "$(find "$TUI_SRC/src" "$TUI_SRC/Cargo.toml" "$TUI_SRC/Cargo.lock" -newer "$TUI_BIN" -print -quit)" ]]; then
+  log_success "freitask-tui em dia: $TUI_BIN"
+elif cargo install --quiet --locked --path "$TUI_SRC"; then
+  log_success "freitask-tui instalado: $TUI_BIN"
+else
+  log_warn "cargo install da TUI falhou"
+  echo "    -> Rode à mão para ver o erro: cargo install --locked --path \"$TUI_SRC\""
+fi

@@ -1,15 +1,18 @@
 #!/bin/bash
 # freitask — CLI de tasks do vault do Obsidian.
 #
-# Shim sobre lua/freitask/cli.lua do repo do plugin, que por sua vez é um shim
-# sobre o módulo freitask. Toda a regra vive num lugar só; aqui não há lógica de
-# negócio nenhuma, de propósito.
+# Shim sobre lua/freitask/cli.lua do repo do freitask, que por sua vez é um
+# shim sobre o módulo freitask. Toda a regra vive num lugar só; aqui não há
+# lógica de negócio nenhuma, de propósito. Sem argumentos, num terminal, abre a
+# TUI (freitask-tui), que também só fala com o motor por este executável.
 #
-# Existe para que quem não é o Neovim — Obsidian, scripts, agentes de IA —
-# tenha um caminho certo que seja mais fácil que `mv`.
+# Existe para que ninguém — você no terminal, o Obsidian, scripts, agentes de
+# IA — precise do Neovim aberto, e para que o caminho certo seja mais fácil
+# que `mv`.
 #
-# Este executável fica no dotfiles, e não no repo do plugin, porque é o dotfiles
-# que sabe onde o clone foi parar; FREITASK_REPO cobre quem clonou noutro lugar.
+# Este executável fica no dotfiles, e não no repo do freitask, porque é o
+# dotfiles que sabe onde o clone foi parar; FREITASK_REPO cobre quem clonou
+# noutro lugar.
 
 set -euo pipefail
 
@@ -27,6 +30,24 @@ fi
 # pelo --clean/--headless daqui pra baixo, que é só para a CLI de dados.
 if [[ "${1:-}" == "current" ]]; then
   exec nvim "$VAULT/CURRENT.md"
+fi
+
+# Sem argumentos NUM TERMINAL: a TUI (freitask-tui, crate tui/ do repo). Sem
+# terminal — script, agente, pipe — segue caindo no usage com exit 2 lá
+# embaixo: nada pode travar esperando uma tela que ninguém vê. A TUI só fala
+# com o motor chamando este mesmo executável COM argumentos, então não há laço.
+if [[ $# -eq 0 && -t 0 && -t 1 ]] || [[ "${1:-}" == "tui" ]]; then
+  [[ "${1:-}" == "tui" ]] && shift
+  TUI=$(command -v freitask-tui || true)
+  # ~/.cargo/bin nem sempre está no PATH (cargo da distro, sem rustup).
+  CARGO_TUI="${CARGO_HOME:-$HOME/.cargo}/bin/freitask-tui"
+  [[ -z "$TUI" && -x "$CARGO_TUI" ]] && TUI="$CARGO_TUI"
+  if [[ -z "$TUI" ]]; then
+    echo "freitask: freitask-tui não instalado" >&2
+    echo "  -> cargo install --path \"$FREITASK_REPO/tui\" (ou ~/dotfiles/setup.sh)" >&2
+    exit 2
+  fi
+  exec "$TUI" "$@"
 fi
 
 if [[ ! -f "$CLI_LUA" ]]; then
