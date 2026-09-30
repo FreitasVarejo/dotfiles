@@ -526,7 +526,9 @@ gh_json() {
           --json number,title,headRefName,updatedAt,isDraft,reviewDecision,author 2>/dev/null) || p='[]'
     i=$(timeout 25 gh issue list --repo "$slug" --state open --limit 60 \
           --json number,title,labels,updatedAt 2>/dev/null) || i='[]'
-    prs=$(jq -s --arg r "$slug" 'add // [] | map(. + {repo: $r})' <(echo "$prs") <(echo "$p" | jq --arg r "$slug" 'map(. + {repo:$r})'))
+    # Só o lote novo ganha o slug: marcar o acumulado relabelaria os PRs dos
+    # repos anteriores com o do último.
+    prs=$(jq -s 'add // []' <(echo "$prs") <(echo "$p" | jq --arg r "$slug" 'map(. + {repo:$r})'))
     # Label que pede humano: derivada por padrão no nome, não por lista fixa.
     issues=$(jq -s 'add // []' <(echo "$issues") <(
       echo "$i" | jq --arg r "$slug" '
