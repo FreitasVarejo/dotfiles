@@ -4,7 +4,6 @@ test.sh
 nvim
 
 spell/*.spl
-lazy-lock.json
 
 # Build artifacts
 node_modules/
