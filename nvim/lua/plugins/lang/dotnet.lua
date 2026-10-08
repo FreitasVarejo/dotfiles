@@ -2,15 +2,11 @@ return {
   {
     "nvim-treesitter/nvim-treesitter",
     opts = {
+      -- html, javascript, json, yaml e xml já são default do LazyVim.
       ensure_installed = {
         "c_sharp",
         "razor",
-        "html",
         "css",
-        "javascript",
-        "json",
-        "yaml",
-        "xml",
       },
     },
   },
@@ -123,6 +119,15 @@ return {
 
       -- Com filewatching = "off" o servidor não observa nada; o save avisa
       -- do arquivo para completion e go-to-definition o enxergarem.
+      -- build/run/test/clean da solution no <localleader> (config/dotnet.lua).
+      vim.api.nvim_create_autocmd("FileType", {
+        group = vim.api.nvim_create_augroup("dotnet_keymaps", { clear = true }),
+        pattern = { "cs", "razor" },
+        callback = function(args)
+          require("config.dotnet").keymaps(args.buf)
+        end,
+      })
+
       local group = vim.api.nvim_create_augroup("roslyn_watched_files", { clear = true })
       vim.api.nvim_create_autocmd("BufNewFile", {
         group = group,
@@ -160,11 +165,6 @@ return {
       { "<leader>rt", "<cmd>Roslyn target<cr>", desc = "Roslyn: escolher solution" },
       { "<leader>rr", "<cmd>lsp restart roslyn<cr>", desc = "Roslyn: reiniciar" },
     },
-  },
-
-  {
-    "gpanders/editorconfig.nvim",
-    event = "BufReadPre",
   },
 
   {

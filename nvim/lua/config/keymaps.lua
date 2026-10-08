@@ -22,34 +22,8 @@ vim.keymap.set("n", "<C-Down>", "<cmd>resize -2<cr>", { desc = "Decrease window 
 vim.keymap.set("n", "<C-Left>", "<cmd>vertical resize -2<cr>", { desc = "Decrease window width" })
 vim.keymap.set("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increase window width" })
 
--- Toggle LSP inlay hints (Neovim 0.10+)
-vim.keymap.set("n", "<leader>uh", function()
-  if vim.lsp.inlay_hint and vim.lsp.inlay_hint.is_enabled then
-    local enabled = vim.lsp.inlay_hint.is_enabled({ bufnr = 0 })
-    vim.lsp.inlay_hint.enable(not enabled, { bufnr = 0 })
-  end
-end, { desc = "Toggle Inlay Hints" })
+-- ESLint fix (o comando do eslint LSP do nvim-lspconfig, buffer-local)
+vim.keymap.set("n", "<leader>el", "<cmd>LspEslintFixAll<cr>", { desc = "ESLint Fix All" })
 
--- ESLint fix
-vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })
-
--- C# / .NET specific keymaps: agem na solution do buffer, não no cwd
--- (config/dotnet.lua)
-vim.keymap.set("n", "<leader>cs", function()
-  require("config.dotnet").solution_cmd("build")
-end, { desc = "C# Build Solution" })
-
-vim.keymap.set("n", "<leader>cr", function()
-  require("config.dotnet").run()
-end, { desc = "C# Run Project" })
-
-vim.keymap.set("n", "<leader>ct", function()
-  require("config.dotnet").solution_cmd("test")
-end, { desc = "C# Run Tests" })
-
-vim.keymap.set("n", "<leader>cc", function()
-  require("config.dotnet").solution_cmd("clean")
-end, { desc = "C# Clean Solution" })
-
--- Show LSP status (Neovim 0.12+) - replacement for deprecated :LspInfo
-vim.keymap.set("n", "<leader>ls", "<cmd>LspStatus<cr>", { desc = "Show LSP Status" })
+-- Build/run/test/clean de C# moram em config/dotnet.lua, no <localleader> do
+-- buffer cs/razor.

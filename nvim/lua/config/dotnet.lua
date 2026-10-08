@@ -89,4 +89,24 @@ function M.run()
   end
 end
 
+--- Build/run/test/clean no <localleader> do buffer: as teclas <leader>c* são
+--- do LazyVim, que no LspAttach põe Rename e Run Codelens buffer-local por
+--- cima de qualquer mapeamento global.
+---@param bufnr integer
+function M.keymaps(bufnr)
+  local function map(lhs, fn, desc)
+    vim.keymap.set("n", "<localleader>" .. lhs, fn, { buffer = bufnr, desc = desc })
+  end
+  map("b", function()
+    M.solution_cmd("build")
+  end, "dotnet build (solution)")
+  map("r", M.run, "dotnet run (*.Host)")
+  map("t", function()
+    M.solution_cmd("test")
+  end, "dotnet test (solution)")
+  map("c", function()
+    M.solution_cmd("clean")
+  end, "dotnet clean (solution)")
+end
+
 return M
