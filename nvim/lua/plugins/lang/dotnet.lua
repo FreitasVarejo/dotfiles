@@ -29,6 +29,18 @@ return {
       -- continua configurado para o <leader>uh ligar no buffer quando preciso.
       opts.inlay_hints = opts.inlay_hints or {}
       opts.inlay_hints.exclude = vim.list_extend(opts.inlay_hints.exclude or {}, { "cs", "razor" })
+      -- Em C#, virtual text só de Warning para cima; Hint e Info do Roslyn
+      -- poluem cada linha. A config de diagnóstico é global (não há escopo por
+      -- buffer), então o filtro é uma função que olha o filetype.
+      local virtual_text = opts.diagnostics.virtual_text
+      if type(virtual_text) == "table" then
+        local cs_virtual_text = vim.tbl_extend("force", virtual_text, {
+          severity = { min = vim.diagnostic.severity.WARN },
+        })
+        opts.diagnostics.virtual_text = function(_, bufnr)
+          return vim.bo[bufnr].filetype == "cs" and cs_virtual_text or virtual_text
+        end
+      end
       return opts
     end,
   },

@@ -12,17 +12,6 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "cs" },
-  callback = function()
-    vim.diagnostic.config({
-      virtual_text = {
-        severity = { min = vim.diagnostic.severity.WARN },
-      },
-    }, { scope = "local" })
-  end,
-})
-
 vim.api.nvim_create_autocmd("User", {
   pattern = "LazyDone",
   callback = function()
