@@ -1,8 +1,9 @@
 # AGENTS.md - Dotfiles Repository Guide
 
 Personal dotfiles using **GNU Stow** for symlink management. Each top-level directory
-(bash, git, nvim, tmux, yazi, vault, claude) is a "stow package" that mirrors
-`$HOME` structure.
+(bash, git, nvim, tmux, yazi, vault, ssh) is a "stow package" that mirrors
+`$HOME` structure. The exception is `agents`, a **hook-only package** (empty target
+in `STOW_TARGETS`): nothing in it mirrors `$HOME`, so `setup.sh` only runs its setup hook.
 
 ## Architecture: thin orchestrators + per-package hooks
 
@@ -24,9 +25,9 @@ precommit.sh           # pre-commit gate over every shell/lua file git knows abo
   a plugin, registering MCP servers) belongs in `setup.sh`, not `check.sh`.
 - `hooks/` directories are excluded from stow via each package's `.stow-local-ignore`.
 - Install hints use `$PM_INSTALL` (auto-detected dnf/apt/pacman/brew), never hardcoded `apt`.
-- The Claude Code MCP server map lives in `claude/hooks/mcp-servers.sh` (sourced by the
-  `claude` check and setup hooks). An MCP registered by hand on one machine and absent
-  from the map is a local experiment: no healthcheck, no reproduction (ADR 0011 in the vault).
+- The agents' MCP servers are one file each in `agents/mcp/<name>.json` (the why of each
+  in `agents/mcp/README.md`). An MCP registered by hand on one machine and absent from
+  that directory is a local experiment: no healthcheck, no reproduction (ADR 0011 in the vault).
 - Contracts (`AGENTS.md`, `docs/agents/`) hold **pointers and rules only** — never counts,
   copies of state ("82 ADRs", "5 skills"), or claims about what a tool can do. Anything that
   needs a number is a derived check (ADR 0009 in the vault); anything about a tool's
@@ -296,24 +297,26 @@ Required tools (checked by `healthcheck.sh`):
 - **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
 - **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
   requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
-- **Claude Code (`claude/` package):** stowed to `$HOME`. Two things live there:
-  - `claude/.claude/skills/<skill>/` → `~/.claude/skills/<skill>`, one symlink **per skill**,
-    never `~/.claude` (stateful: `~/.claude.json`, history, trust) nor `~/.claude/skills`
-    as a whole (Claude Code writes `synced/` there; a folded symlink would put it inside
-    this repo — `claude/hooks/setup.sh` unfolds it). Cursor CLI on the work WSL reads the
-    same directory, so one install serves both agents. `claude/hooks/check.sh` fails when a
-    package skill isn't visible and when a skill cites another that isn't in the package.
-  - `claude/hooks/mcp-servers.sh`: the MCP map, registered at user scope by
-    `claude/hooks/setup.sh` via `claude mcp add-json` (`git`, `docker`, `github`, `ssh`).
-    Not a stowed file — Claude Code keeps user-scope MCP config inside the stateful
-    `~/.claude.json`, so it's registered imperatively.
+- **AI agents (`agents/` package, ADR 0024):** serves Claude Code (personal machines) and
+  Cursor CLI (work WSL). Not stowed — every target is a file the agents also write, so the
+  setup hook links or merges instead (`agents/hooks/lib.sh` says where each agent reads from):
+  - `agents/skills/<skill>/` → `~/.claude/skills/<skill>`, one symlink **per skill** made by
+    `agents/hooks/setup.sh`, never `~/.claude` (stateful: `~/.claude.json`, history, trust)
+    nor `~/.claude/skills` as a whole (Claude Code writes `synced/` there). Cursor CLI reads
+    the same directory. `agents/hooks/check.sh` fails when a package skill isn't visible and
+    when a skill cites another that isn't in the package.
+  - `agents/mcp/<name>.json`: registered in Claude Code via `claude mcp add-json` (user scope)
+    and merged into Cursor's MCP config on machines where Cursor is installed.
+  - `agents/permissions/deny.json`: what no agent may read or run (the secrets below),
+    merged into each present agent's `permissions.deny`.
+  - Merges only add or update what the repo declares; anything the machine added stays.
 - **Skills policy** (ADRs 0004, 0006, 0007, 0010 in
   `~/ObsidianVault/projects/workflow-ia/decisoes/`): third-party skills are **vendored**
   as copies with `metadata.upstream` / `upstream-commit` in the SKILL.md frontmatter —
   never `npx`, marketplace plugin or submodule. A skill is global only when it was really
   used in two repos and names no project noun; otherwise it stays in the repo's `.claude/`.
   `metadata.surfaces` (`code`, `web`, `code,web`) says where a skill runs:
-  `claude/hooks/build-web-zip.sh` zips the `web` ones for manual upload to claude.ai, and the
+  `agents/hooks/build-web-zip.sh` zips the `web` ones for manual upload to claude.ai, and the
   copy claude.ai syncs back to `~/.claude/skills/synced/` is the mirror `check.sh` compares
   against (warning "re-subir" on drift). Don't rewrite a vendored skill in the vendoring
   commit; rewriting is its own task.
@@ -325,9 +328,9 @@ Required tools (checked by `healthcheck.sh`):
   `bash/.bashrc` instead sources `~/.bashrc.local` if it exists — that file lives outside
   the repo and is never committed. Per-machine state goes there (e.g. `FREITASK_REPO`).
 - **Do not export `GITHUB_TOKEN`.** The `github` MCP server mints its header from
-  `gh auth token` (see `claude/hooks/mcp-servers.sh`), so the PAT never has to sit in the
+  `gh auth token` (see `agents/mcp/README.md`), so the PAT never has to sit in the
   environment — and an exported secret is inherited by every child process, agents included.
-  `claude/hooks/check.sh` warns when it finds one. Authenticate with `gh auth login` instead.
+  `agents/hooks/check.sh` warns when it finds one. Authenticate with `gh auth login` instead.
 
 ## Agent skills
 

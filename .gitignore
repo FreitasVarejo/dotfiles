@@ -5,5 +5,6 @@ fzf
 history.txt
 .mcp-ssh.lock
 mcp-ssh.lock
-# Se o stow dobrar ~/.claude/skills, o claude.ai sincroniza para dentro do repo
+# Máquina que ainda tenha ~/.claude/skills dobrado pelo stow do antigo pacote
+# 'claude': o claude.ai sincroniza para dentro do repo até o setup desdobrar.
 claude/.claude/skills/synced/

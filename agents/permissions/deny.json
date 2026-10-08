@@ -1,0 +1,4 @@
+{
+  "read": ["~/.bashrc.local", "~/.config/gh/hosts.yml"],
+  "shell": ["env", "printenv:*", "gh auth token"]
+}

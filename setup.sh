@@ -18,6 +18,8 @@ HAS_BACKUP=false
 
 # Mapa pacote -> diretório de destino do stow. Única fonte de verdade dos
 # pacotes; os hooks (check/setup) vivem dentro de cada pasta de pacote.
+# Destino vazio = pacote só de hook: nada é stowado nem vai para backup, e só o
+# <pkg>/hooks/setup.sh roda (o 'agents' é assim: linka skills e mescla JSON).
 declare -A STOW_TARGETS
 STOW_TARGETS=(
   [bash]="$HOME"
@@ -26,7 +28,7 @@ STOW_TARGETS=(
   [git]="$HOME/.config/git"
   [yazi]="$HOME/.config/yazi"
   [vault]="$HOME"
-  [claude]="$HOME"
+  [agents]=""
   [ssh]="$HOME"
 )
 
@@ -99,6 +101,12 @@ log_info "Starting dotfiles deployment..."
 
 for pkg_name in "${!STOW_TARGETS[@]}"; do
   local_target="${STOW_TARGETS[$pkg_name]}"
+
+  if [[ -z "$local_target" ]]; then
+    log_info "Processing package: $pkg_name (só hook, sem stow)"
+    run_package_setup_hook "$pkg_name"
+    continue
+  fi
 
   log_info "Processing package: $pkg_name -> $local_target"
 

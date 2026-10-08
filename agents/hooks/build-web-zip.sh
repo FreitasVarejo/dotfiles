@@ -1,11 +1,11 @@
 #!/bin/bash
 # shellcheck shell=bash
 # Gera um zip por skill marcada `web` (metadata.surfaces no SKILL.md), a partir
-# do mesmo claude/.claude/skills/ que o stow instala — fonte única (ADR 0007 e
+# do mesmo agents/skills/ que o setup linka — fonte única (ADR 0007 e
 # 0010 do projeto workflow-ia). O upload no claude.ai (Settings > Skills) é
 # manual; o check.sh avisa quando a cópia sincronizada divergir do repo.
 #
-# Uso: claude/hooks/build-web-zip.sh [dir-de-saida]
+# Uso: agents/hooks/build-web-zip.sh [dir-de-saida]
 #      (padrão: ${XDG_CACHE_HOME:-~/.cache}/dotfiles/claude-skills-web)
 
 set -euo pipefail
@@ -13,8 +13,8 @@ set -euo pipefail
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
 . "$DOTFILES_DIR/lib/common.sh"
-# shellcheck source=./mcp-servers.sh
-. "$(dirname "${BASH_SOURCE[0]}")/mcp-servers.sh"
+# shellcheck source=./lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 OUT_DIR="${1:-${XDG_CACHE_HOME:-$HOME/.cache}/dotfiles/claude-skills-web}"
 mkdir -p "$OUT_DIR"
@@ -25,8 +25,8 @@ if ! command -v python3 &>/dev/null; then
 fi
 
 count=0
-while IFS= read -r skill_dir; do
-  skill=$(basename "$skill_dir")
+while IFS= read -r skill; do
+  skill_dir="$AGENTS_SKILLS_DIR/$skill"
   surfaces=$(skill_surfaces "$skill_dir")
   [[ ",$surfaces," == *,web,* ]] || continue
   out="$OUT_DIR/$skill.zip"
@@ -39,10 +39,10 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
 PYEOF
   log_success "$skill -> $out"
   count=$((count + 1))
-done < <(find "$CLAUDE_PKG_SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
+done < <(package_skills)
 
 if ((count == 0)); then
-  log_warn "Nenhuma skill marcada 'web' em $CLAUDE_PKG_SKILLS_DIR."
+  log_warn "Nenhuma skill marcada 'web' em $AGENTS_SKILLS_DIR."
 else
   echo ""
   log_info "$count zip(s) em $OUT_DIR. Suba em claude.ai > Settings > Skills; o healthcheck avisa quando divergir."
