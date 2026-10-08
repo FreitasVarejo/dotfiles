@@ -31,16 +31,29 @@ return {
       opts.inlay_hints.exclude = vim.list_extend(opts.inlay_hints.exclude or {}, { "cs", "razor" })
       -- Em C#, virtual text só de Warning para cima; Hint e Info do Roslyn
       -- poluem cada linha. A config de diagnóstico é global (não há escopo por
-      -- buffer), então o filtro é uma função que olha o filetype.
-      local virtual_text = opts.diagnostics.virtual_text
-      if type(virtual_text) == "table" then
-        local cs_virtual_text = vim.tbl_extend("force", virtual_text, {
-          severity = { min = vim.diagnostic.severity.WARN },
-        })
-        opts.diagnostics.virtual_text = function(_, bufnr)
-          return vim.bo[bufnr].filetype == "cs" and cs_virtual_text or virtual_text
-        end
-      end
+      -- buffer), então o filtro é uma função que olha o filetype. Montada só
+      -- depois de o LazyVim aplicar opts.diagnostics: é no config dele que
+      -- prefix = "icons" vira função, e ele só faz isso numa tabela.
+      vim.api.nvim_create_autocmd("User", {
+        pattern = "LazyLoad",
+        callback = function(ev)
+          if ev.data ~= "nvim-lspconfig" then
+            return
+          end
+          local virtual_text = vim.diagnostic.config().virtual_text
+          if type(virtual_text) == "table" then
+            local cs_virtual_text = vim.tbl_extend("force", virtual_text, {
+              severity = { min = vim.diagnostic.severity.WARN },
+            })
+            vim.diagnostic.config({
+              virtual_text = function(_, bufnr)
+                return vim.bo[bufnr].filetype == "cs" and cs_virtual_text or virtual_text
+              end,
+            })
+          end
+          return true
+        end,
+      })
       return opts
     end,
   },
