@@ -5,14 +5,18 @@ local M = {}
 
 local skip_dirs = { bin = true, obj = true, node_modules = true }
 
---- .sln/.slnx mais próxima subindo a partir do buffer: a mesma regra do
---- root_dir do roslyn_ls, então é a solution que o servidor carregou.
+--- A solution que o roslyn.nvim travou (<leader>rt), se o arquivo existe;
+--- senão a .sln/.slnx/.slnf mais próxima subindo a partir do buffer.
 ---@param bufnr? integer
 ---@return string?
 function M.solution(bufnr)
+  local locked = vim.g.roslyn_nvim_selected_solution
+  if locked and vim.uv.fs_stat(locked) then
+    return locked
+  end
   local name = vim.api.nvim_buf_get_name(bufnr or 0)
   return vim.fs.find(function(n)
-    return n:match("%.slnx?$") ~= nil
+    return n:match("%.slnx?$") ~= nil or n:match("%.slnf$") ~= nil
   end, {
     path = name ~= "" and vim.fs.dirname(name) or vim.fn.getcwd(),
     upward = true,
