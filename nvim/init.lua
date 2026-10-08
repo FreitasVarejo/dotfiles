@@ -23,7 +23,7 @@ do
     vim.env.DOTNET_ROOT = vim.env.HOME .. "/.dotnet"
   end
 
-  -- Node do nvm para o vtsls/eslint, sem depender do shell ter carregado o
+  -- Node do nvm para o tsgo/eslint, sem depender do shell ter carregado o
   -- nvm. alias/default pode ser uma versão (v22.3.0, 22) ou outro alias
   -- (lts/krypton, que é um arquivo em alias/ com a versão); segue a cadeia e,
   -- se nada casar com uma versão instalada, usa a mais nova instalada.

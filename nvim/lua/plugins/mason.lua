@@ -17,17 +17,16 @@ return {
     },
     ensure_installed = {
       -- TypeScript / JavaScript
-      "vtsls",           -- TypeScript language server
+      "tsgo",            -- TypeScript language server (TS 7 nativo)
       "prettier",        -- Code formatter
 
       -- C# / .NET
       -- tree-sitter-cli: install via cargo or ~/.local/bin, not Mason prebuilt
-      "roslyn",          -- Roslyn C# language server (also handles formatting)
+      "roslyn",          -- Roslyn C# language server (format desligado: ver lang/dotnet.lua)
       "netcoredbg",      -- .NET debugger
 
        -- Linting
        "eslint-lsp",      -- ESLint language server
-       "eslint_d",        -- Fast eslint runner
        "shellcheck",      -- Shell script linter
        "shfmt",           -- Shell script formatter
 
