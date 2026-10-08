@@ -34,3 +34,7 @@ if vim.env.SSH_TTY or vim.env.SSH_CONNECTION then
     paste = { ["+"] = paste_local, ["*"] = paste_local },
   }
 end
+
+-- ESLint só diagnostica; quem formata é o Prettier. O extra linting.eslint lê
+-- este global quando carrega, e options.lua roda antes do lazy.
+vim.g.lazyvim_eslint_auto_format = false

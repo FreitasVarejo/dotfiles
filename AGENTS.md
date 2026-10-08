@@ -297,6 +297,11 @@ Required tools (checked by `healthcheck.sh`):
 - **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
 - **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
   requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
+  The client is `seblyng/roslyn.nvim` (`nvim/lua/plugins/lang/dotnet.lua`), with
+  `filewatching = "off"` plus a `didChangeWatchedFiles` notification on save — keep it off:
+  watching `bin/`/`obj/` makes the server reanalyse the solution on every build.
+  `nvim/hooks/setup.sh` raises the inotify limit so the server doesn't fail to load a big
+  solution; the editor still doesn't watch.
 - **AI agents (`agents/` package, ADR 0024):** serves Claude Code (personal machines) and
   Cursor CLI (work WSL). Not stowed — every target is a file the agents also write, so the
   setup hook links or merges instead (`agents/hooks/lib.sh` says where each agent reads from):

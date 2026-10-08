@@ -33,21 +33,22 @@ end, { desc = "Toggle Inlay Hints" })
 -- ESLint fix
 vim.keymap.set("n", "<leader>el", "<cmd>EslintFixAll<cr>", { desc = "ESLint Fix All" })
 
--- C# / .NET specific keymaps
+-- C# / .NET specific keymaps: agem na solution do buffer, não no cwd
+-- (config/dotnet.lua)
 vim.keymap.set("n", "<leader>cs", function()
-  vim.cmd("!dotnet build")
+  require("config.dotnet").solution_cmd("build")
 end, { desc = "C# Build Solution" })
 
 vim.keymap.set("n", "<leader>cr", function()
-  vim.cmd("!dotnet run")
+  require("config.dotnet").run()
 end, { desc = "C# Run Project" })
 
 vim.keymap.set("n", "<leader>ct", function()
-  vim.cmd("!dotnet test")
+  require("config.dotnet").solution_cmd("test")
 end, { desc = "C# Run Tests" })
 
 vim.keymap.set("n", "<leader>cc", function()
-  vim.cmd("!dotnet clean")
+  require("config.dotnet").solution_cmd("clean")
 end, { desc = "C# Clean Solution" })
 
 -- Show LSP status (Neovim 0.12+) - replacement for deprecated :LspInfo

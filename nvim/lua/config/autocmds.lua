@@ -12,17 +12,6 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "cs" },
-  callback = function()
-    vim.diagnostic.config({
-      virtual_text = {
-        severity = { min = vim.diagnostic.severity.WARN },
-      },
-    }, { scope = "local" })
-  end,
-})
-
 vim.api.nvim_create_autocmd("User", {
   pattern = "LazyDone",
   callback = function()
@@ -64,5 +53,27 @@ vim.api.nvim_create_autocmd("BufWritePost", {
         end)
       end
     end)
+  end,
+})
+
+-- O editorconfig (end_of_line = crlf) põe fileformat=dos ao abrir, e o save
+-- reescreveria em CRLF um arquivo que o git guarda em LF. Antes de gravar, se o
+-- arquivo em disco é LF, ele continua LF; arquivo novo ou já CRLF segue o
+-- editorconfig.
+vim.api.nvim_create_autocmd("BufWritePre", {
+  group = vim.api.nvim_create_augroup("keep_lf", { clear = true }),
+  callback = function(args)
+    if vim.bo[args.buf].fileformat ~= "dos" then
+      return
+    end
+    local f = io.open(args.match, "rb")
+    if not f then
+      return
+    end
+    local head = f:read(65536) or ""
+    f:close()
+    if head:find("\n", 1, true) and not head:find("\r\n", 1, true) then
+      vim.bo[args.buf].fileformat = "unix"
+    end
   end,
 })
