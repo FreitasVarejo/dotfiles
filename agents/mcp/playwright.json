@@ -1,0 +1,5 @@
+{
+  "type": "stdio",
+  "command": "/usr/bin/npx",
+  "args": ["-y", "@playwright/mcp@0.0.83", "--headless", "--browser", "chromium", "--isolated"]
+}

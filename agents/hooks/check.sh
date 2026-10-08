@@ -147,12 +147,31 @@ else
     log_optional "Sem Cursor: registro de MCP nele não verificado."
   fi
 fi
-# Lido do arquivo, e não de `claude mcp list`, que health-checka cada servidor
-# pela rede para responder uma pergunta local.
-if command -v python3 &>/dev/null && command -v claude &>/dev/null &&
-  agent_config mcp-registered "$CLAUDE_MCP_CONFIG" 2>/dev/null | grep -qx obsidian; then
-  log_warn "MCP server 'obsidian' (Local REST API) ainda registrado; saiu do workflow (ADR 0008)."
-  echo "    -> Remover: claude mcp remove obsidian --scope user"
+# MCPs que saíram do workflow. O setup só acrescenta e nunca remove (ADR 0024),
+# então o resto que ficou numa máquina é limpo à mão; aqui ele só é apontado.
+# nome -> ADR que o tirou.
+declare -A RETIRED_MCP=(
+  [obsidian]="0008"
+  [git]="0025" [github]="0025" [ssh]="0025" [docker]="0025"
+)
+
+# report_retired <agente> <arquivo> <como-remover> — lido do arquivo, e não de
+# `claude mcp list`, que health-checka cada servidor pela rede para responder
+# uma pergunta local.
+report_retired() {
+  local agent="$1" file="$2" how="$3" name
+  while IFS= read -r name; do
+    [[ -n "${RETIRED_MCP[$name]:-}" ]] || continue
+    log_warn "$agent: MCP '$name' ainda registrado; saiu do workflow (ADR ${RETIRED_MCP[$name]})."
+    echo "    -> Remover: ${how//<nome>/$name}"
+  done < <(agent_config mcp-registered "$file" 2>/dev/null)
+}
+
+if command -v python3 &>/dev/null; then
+  command -v claude &>/dev/null &&
+    report_retired claude "$CLAUDE_MCP_CONFIG" "claude mcp remove <nome> --scope user"
+  [[ -f "$CURSOR_MCP_CONFIG" ]] &&
+    report_retired cursor "$CURSOR_MCP_CONFIG" "apagar '<nome>' de ${CURSOR_MCP_CONFIG/#$HOME/\~}"
 fi
 
 # Duas perguntas DIFERENTES, e confundi-las dá falso negativo: o `gh` prefere
@@ -163,12 +182,12 @@ fi
 # em vez de defini-la vazia: "vazia" e "ausente" não são a mesma coisa para
 # todo programa, e aqui a pergunta é sobre ausência.
 if ! command -v gh &>/dev/null; then
-  log_optional "Sem gh: credencial do MCP 'github' não verificada."
+  log_optional "Sem gh: credencial do GitHub não verificada."
 elif env -u GITHUB_TOKEN gh auth status &>/dev/null; then
-  log_success "gh tem credencial própria (o MCP 'github' a busca por 'gh auth token')"
+  log_success "gh tem credencial própria (é por ela que os agentes falam com o GitHub)"
 else
   log_warn "gh sem credencial própria. Rode 'gh auth login --skip-ssh-key'."
-  echo "    -> o MCP 'github' monta o header com 'gh auth token'; sem isso ele falha com 401."
+  echo "    -> os agentes falam com o GitHub pelo 'gh'; sem credencial, cada chamada falha."
 fi
 
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then

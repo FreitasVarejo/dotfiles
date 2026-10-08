@@ -332,8 +332,8 @@ Required tools (checked by `healthcheck.sh`):
   (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't hold untracked secrets.
   `bash/.bashrc` instead sources `~/.bashrc.local` if it exists — that file lives outside
   the repo and is never committed. Per-machine state goes there (e.g. `FREITASK_REPO`).
-- **Do not export `GITHUB_TOKEN`.** The `github` MCP server mints its header from
-  `gh auth token` (see `agents/mcp/README.md`), so the PAT never has to sit in the
+- **Do not export `GITHUB_TOKEN`.** Agents reach GitHub through `gh`, which reads its own
+  credential from `~/.config/gh/hosts.yml`, so the PAT never has to sit in the
   environment — and an exported secret is inherited by every child process, agents included.
   `agents/hooks/check.sh` warns when it finds one. Authenticate with `gh auth login` instead.
 

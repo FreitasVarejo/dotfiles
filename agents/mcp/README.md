@@ -12,19 +12,30 @@ máquina e ausente daqui é experimento local, sem healthcheck nem reprodução,
 setup não o remove (ADR 0011 do projeto workflow-ia, no vault). Para promover,
 basta um arquivo aqui e um ADR dizendo por quê.
 
+**MCP só entra onde o shell não alcança** (ADR 0025). git, GitHub, ssh e Docker
+vão pela CLI (`git`, `gh`, `ssh`, `docker`), que o agente já roda pelo shell.
+Os MCPs que só embrulhavam essas CLIs saíram, e o `check.sh` avisa enquanto
+algum deles continuar registrado numa máquina.
+
 O JSON não aceita comentário, então o porquê fica aqui:
 
+- **`playwright`** dá ao agente um navegador (Chromium headless, perfil
+  isolado). Isso o shell não oferece. A versão fica fixa porque cada uma pede a
+  sua revisão do Chromium, que precisa estar baixada na máquina:
+
+  ```bash
+  /usr/bin/npx -y -p @playwright/mcp@0.0.83 playwright install chromium
+  ```
+
+  Quem trocar a versão no JSON troca também neste comando. O `command` é
+  `/usr/bin/npx`, e não `npx`, porque o wrapper do nvm quebra fora de shell
+  interativo. O viewport fica no default: um projeto que precise de outro (o
+  bjj-vision usa 390×844) declara um `playwright` no `.mcp.json` dele, e o
+  escopo de projeto vence o de user.
 - **`${HOME}`** é o único placeholder. O `lib.sh` o troca pelo `$HOME` de quem
   roda o hook, porque o agente precisa de path absoluto. Nada mais é expandido.
-- **`github`**: o header vem de um `headersHelper` que roda `gh auth token` no
-  momento da conexão. O segredo fica em `~/.config/gh/hosts.yml`, lido sob
-  demanda, em vez de ir para um `export GITHUB_TOKEN`, que todo processo filho
-  herda, agentes incluídos. Um `env` num transcript bastava para vazá-lo.
-  `headersHelper` só existe no Claude Code, então o setup **não** leva este
-  servidor para o Cursor e avisa. Como autenticá-lo lá sem exportar o token é
-  pendência.
-- **`ssh`** aponta para um clone local em `~/mcp-servers/mcp-ssh`, que não é
-  pacote npm publicado: foi clonado e buildado à mão com `npm run build`.
+- **Chave só do Claude Code** (hoje, `headersHelper`): um servidor que dependa
+  dela **não** vai para o Cursor, porque lá subiria sem ela. O setup avisa e pula.
 - **Não há MCP de Obsidian local.** Onde o vault está em disco, o agente lê e
   escreve os `.md` direto. O único MCP de Obsidian é o `obsidian-web-mcp` do
   pi01, para o claude.ai, que não tem disco (ADR 0008).

@@ -103,8 +103,8 @@ def save(path, data):
 def repo_servers(mcp_dir):
     """{nome: spec} de <mcp-dir>/*.json, com ${HOME} trocado pelo $HOME.
 
-    Só esse literal é substituído: o $(gh auth token) do github.json roda no
-    headersHelper, na hora da conexão, e tem de chegar ao Claude Code intacto.
+    Só esse literal é substituído: um $(...) num headersHelper roda na hora da
+    conexão e tem de chegar ao Claude Code intacto.
     Qualquer formatação vale (uma linha ou várias): quem lê é o parser.
     """
     servers = {}
