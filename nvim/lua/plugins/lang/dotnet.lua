@@ -43,8 +43,29 @@ return {
             dotnet_compiler_diagnostics_scope = "openFiles",
           },
         },
-        lsp_format = "prefer",
+        -- Sem format do Roslyn: o save não passa o arquivo pelo formatter do
+        -- servidor, que lê o .editorconfig (end_of_line = crlf, git em LF).
+        -- Sem registro dinâmico, ele não reanuncia o que o on_attach tira.
+        capabilities = {
+          textDocument = {
+            formatting = { dynamicRegistration = false },
+            rangeFormatting = { dynamicRegistration = false },
+            onTypeFormatting = { dynamicRegistration = false },
+          },
+        },
       }
+      opts.setup = opts.setup or {}
+      opts.setup.roslyn_ls = function()
+        Snacks.util.lsp.on({ name = "roslyn_ls" }, function(_, client)
+          client.server_capabilities.documentFormattingProvider = false
+          client.server_capabilities.documentRangeFormattingProvider = false
+          client.server_capabilities.documentOnTypeFormattingProvider = nil
+        end)
+      end
+      -- Inlay hints pesam numa solution de dezenas de projetos; ficam
+      -- configurados acima para o <leader>uh ligar no buffer quando preciso.
+      opts.inlay_hints = opts.inlay_hints or {}
+      opts.inlay_hints.exclude = vim.list_extend(opts.inlay_hints.exclude or {}, { "cs" })
       return opts
     end,
   },
@@ -74,11 +95,31 @@ return {
             name = "Launch file",
             request = "launch",
             program = function()
-              return vim.fn.input("Path to dll: ", vim.fn.getcwd() .. "/", "file")
+              local sln = require("config.dotnet").solution()
+              local dir = sln and vim.fs.dirname(sln) or vim.fn.getcwd()
+              return vim.fn.input("Path to dll: ", dir .. "/", "file")
             end,
             cwd = "${workspaceFolder}",
           },
         }
+      end
+      -- Um launch por *.Host.dll de Debug debaixo da solution do buffer, com
+      -- cwd no projeto do host (onde estão os appsettings) e não no cwd do nvim.
+      dap.providers.configs["dotnet-solution"] = function(bufnr)
+        local dotnet = require("config.dotnet")
+        local sln = vim.bo[bufnr].filetype == "cs" and dotnet.solution(bufnr)
+        if not sln then
+          return {}
+        end
+        return vim.tbl_map(function(dll)
+          return {
+            type = "netcoredbg",
+            name = "Launch " .. vim.fn.fnamemodify(dll, ":t:r"),
+            request = "launch",
+            program = dll,
+            cwd = (dll:gsub("/bin/Debug/[^/]+/[^/]+$", "")),
+          }
+        end, dotnet.host_dlls(sln))
       end
     end,
   },
