@@ -8,3 +8,6 @@ mcp-ssh.lock
 # Máquina que ainda tenha ~/.claude/skills dobrado pelo stow do antigo pacote
 # 'claude': o claude.ai sincroniza para dentro do repo até o setup desdobrar.
 claude/.claude/skills/synced/
+
+# Cache de bytecode: os scripts Python (travas, skills) rodam direto do repo.
+__pycache__/
