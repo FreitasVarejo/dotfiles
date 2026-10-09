@@ -5,6 +5,7 @@
 
 # Source global definitions
 if [ -f /etc/bashrc ]; then
+    # shellcheck source=/dev/null  # do sistema, fora do repo (o Ubuntu nem tem)
     . /etc/bashrc
 fi
 
