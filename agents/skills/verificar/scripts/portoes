@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Roda os portões do repo para o que mudou e, se nenhum falhar, grava o carimbo.
+
+Lê o bloco ```portoes de docs/agents/verificacao.md: uma linha por portão, com
+globs separados por `|` (o `*` atravessa `/`), dois espaços ou mais, e o
+comando, que roda na raiz do repo. Roda os portões cujo glob casa algum caminho
+mudado (git diff HEAD mais os não rastreados). Comando ausente (saída 127) conta
+como pulado, e aparece no relatório.
+
+O log inteiro de cada portão fica em <git-dir>/verificar/; aqui sai só o fim.
+Saída 0 = nenhum portão falhou (carimbo gravado); 1 = algum falhou; 2 = sem
+repo ou sem adaptador.
+"""
+
+import fnmatch
+import os
+import re
+import subprocess
+import sys
+
+ADAPTER = os.path.join("docs", "agents", "verificacao.md")
+TRAVA = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)), "..", "..", "..", "travas", "verificacao-no-stop"
+)
+
+
+def sh(*args, cwd=None):
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True)
+
+
+def gates(adapter):
+    text = open(adapter, encoding="utf-8").read()
+    block = re.search(r"^```portoes[^\n]*\n(.*?)^```", text, re.S | re.M)
+    if not block:
+        return []
+    out = []
+    for line in block.group(1).splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = re.split(r"\s{2,}|\t+", line, maxsplit=1)
+        if len(parts) != 2:
+            print("Linha de portão sem glob e comando separados por dois espaços: %r" % line)
+            continue
+        out.append((parts[0].split("|"), parts[1].strip()))
+    return out
+
+
+def changed(root):
+    names = sh("git", "diff", "--name-only", "HEAD", cwd=root).stdout.split("\n")
+    names += sh("git", "ls-files", "--others", "--exclude-standard", cwd=root).stdout.split("\n")
+    return sorted({n for n in names if n})
+
+
+def tail(text, n):
+    lines = text.rstrip().split("\n")
+    return "\n".join(lines[-n:])
+
+
+def main():
+    top = sh("git", "rev-parse", "--show-toplevel")
+    if top.returncode != 0:
+        print("Fora de um repo git: nada a verificar por portão.")
+        return 2
+    root = top.stdout.strip()
+    adapter = os.path.join(root, ADAPTER)
+    if not os.path.isfile(adapter):
+        print("Sem %s: este repo não optou pela verificação." % ADAPTER)
+        return 2
+    paths = changed(root)
+    print("Repo: %s" % root)
+    print(sh("git", "status", "-sb", cwd=root).stdout.split("\n")[0])
+    if not paths:
+        print("Nada mudou em relação ao HEAD.")
+    else:
+        print("Mudou (%d): %s" % (len(paths), ", ".join(paths[:40]) + (" …" if len(paths) > 40 else "")))
+    logdir = os.path.join(sh("git", "rev-parse", "--absolute-git-dir", cwd=root).stdout.strip(), "verificar")
+    os.makedirs(logdir, exist_ok=True)
+    failed, seen = False, set()
+    for i, (globs, command) in enumerate(gates(adapter)):
+        if command in seen or not any(fnmatch.fnmatch(p, g) for p in paths for g in globs):
+            continue
+        seen.add(command)
+        r = subprocess.run(["bash", "-c", command], cwd=root, capture_output=True, text=True)
+        log = os.path.join(logdir, "%02d.log" % i)
+        with open(log, "w", encoding="utf-8") as fh:
+            fh.write("$ %s\n%s%s" % (command, r.stdout, r.stderr))
+        output = r.stdout + r.stderr
+        if r.returncode == 0:
+            print("\n== ok: %s" % command + ("\n" + tail(output, 5) if output.strip() else ""))
+        elif r.returncode == 127:
+            print("\n== PULADO (comando ausente): %s\n%s" % (command, tail(output, 3)))
+        else:
+            failed = True
+            print("\n== FALHOU (saída %d): %s\n%s\n(log inteiro: %s)" % (r.returncode, command, tail(output, 30), log))
+    if not seen:
+        print("\nNenhum portão casa o que mudou.")
+    if failed:
+        print("\nCarimbo NÃO gravado: há portão falhando.")
+        return 1
+    try:
+        r = subprocess.run([TRAVA, "carimba", root], capture_output=True, text=True)
+    except OSError as exc:
+        print("\nPortões verdes, mas a trava que grava o carimbo não está em %s (%s)." % (TRAVA, exc))
+        return 0
+    if r.returncode == 0:
+        print("\nCarimbo gravado: este estado do repo está verificado.")
+    else:
+        print("\nPortões verdes, mas o carimbo falhou: %s" % (r.stderr.strip() or r.returncode))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Trava da verificação (ADR 0030): mudança desta sessão só encerra verificada.
+
+  verificacao-no-stop marca          PreToolUse: guarda a linha de base do repo
+                                     na primeira vez que a sessão o toca.
+  verificacao-no-stop carimba <raiz> A skill `verificar`, com os portões verdes,
+                                     grava o estado atual como verificado.
+  verificacao-no-stop                Stop: repo que a sessão mudou e que não tem
+                                     carimbo do estado atual bloqueia o fim do turno.
+
+Só vale para repo que optou: o que tem docs/agents/verificacao.md. O estado é o
+`git diff HEAD` mais os não rastreados (caminho, tamanho e mtime, nunca o
+conteúdo: há repo com mídia não rastreada). A linha de base existe para que a
+sujeira que já estava lá antes da sessão não a obrigue a verificar nada. Bloqueia
+uma vez: com `stop_hook_active`, o turno já é a continuação pedida.
+"""
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+ADAPTER = os.path.join("docs", "agents", "verificacao.md")
+FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
+
+
+def git(root, *args):
+    return subprocess.run(["git", "-C", root, *args], capture_output=True)
+
+
+def repo_root(path):
+    """Raiz do repo que contém `path` (que pode ainda não existir), ou None."""
+    path = os.path.realpath(os.path.expanduser(path))
+    while path and not os.path.isdir(path):
+        path = os.path.dirname(path)
+    if not path:
+        return None
+    r = git(path, "rev-parse", "--show-toplevel")
+    return r.stdout.decode().strip() if r.returncode == 0 else None
+
+
+def opted_in(root):
+    return root is not None and os.path.isfile(os.path.join(root, ADAPTER))
+
+
+def state(root):
+    """Hash do que mudou em relação ao HEAD, ou None se o repo não tem HEAD."""
+    diff = git(root, "diff", "--binary", "HEAD")
+    if diff.returncode != 0:
+        return None
+    h = hashlib.sha256(diff.stdout)
+    others = git(root, "ls-files", "--others", "--exclude-standard", "-z").stdout
+    for rel in sorted(p for p in others.split(b"\0") if p):
+        try:
+            st = os.lstat(os.path.join(root.encode(), rel))
+        except OSError:
+            continue
+        h.update(b"\0%s\0%d\0%d" % (rel, st.st_size, st.st_mtime_ns))
+    return h.hexdigest()
+
+
+def stamp_path(root):
+    gd = git(root, "rev-parse", "--absolute-git-dir").stdout.decode().strip()
+    return os.path.join(gd, "verificar.carimbo")
+
+
+def runtime_dir():
+    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return os.path.join(base, "claude-travas")
+
+
+def baseline_path(session_id, root):
+    sid = re.sub(r"[^A-Za-z0-9_-]", "_", session_id)
+    key = hashlib.sha1(root.encode()).hexdigest()[:16]
+    return os.path.join(runtime_dir(), "verif-%s-%s" % (sid, key))
+
+
+def read(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return None
+
+
+def mark(data):
+    tool, tool_input = data.get("tool_name"), data.get("tool_input") or {}
+    if tool in FILE_TOOLS:
+        target = tool_input.get("file_path") or tool_input.get("notebook_path")
+    elif tool == "Bash":
+        target = data.get("cwd")
+    else:
+        return
+    root = repo_root(target) if target else None
+    if not opted_in(root):
+        return
+    path = baseline_path(data["session_id"], root)
+    if os.path.exists(path):
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("%s\n%s\n" % (root, state(root) or ""))
+
+
+def carimba(root):
+    root = repo_root(root)
+    if root is None:
+        sys.exit("verificacao-no-stop: não é um repo git")
+    with open(stamp_path(root), "w", encoding="utf-8") as fh:
+        fh.write((state(root) or "") + "\n")
+
+
+def stop(data):
+    prefix = os.path.basename(baseline_path(data["session_id"], "x")).rsplit("-", 1)[0] + "-"
+    try:
+        names = [n for n in os.listdir(runtime_dir()) if n.startswith(prefix)]
+    except OSError:
+        return
+    pending = []
+    for name in names:
+        lines = (read(os.path.join(runtime_dir(), name)) or "").split("\n")
+        root, baseline = lines[0], (lines[1] if len(lines) > 1 else "")
+        if not opted_in(root):
+            continue
+        now = state(root)
+        if now is None or now == baseline or now == read(stamp_path(root)):
+            continue
+        pending.append(root)
+    if not pending or data.get("stop_hook_active"):
+        return
+    reason = (
+        "Esta sessão mudou código sem verificação em: " + ", ".join(pending) + ". "
+        "Antes de encerrar, rode a skill `verificar` (/verificar): ela roda os portões "
+        "de docs/agents/verificacao.md, confere o diff e grava o carimbo."
+    )
+    json.dump({"decision": "block", "reason": reason}, sys.stdout, ensure_ascii=False)
+
+
+def main():
+    if sys.argv[1:2] == ["carimba"] and len(sys.argv) == 3:
+        return carimba(sys.argv[2])
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    if not data.get("session_id"):
+        return
+    if sys.argv[1:] == ["marca"]:
+        mark(data)
+    else:
+        stop(data)
+
+
+if __name__ == "__main__":
+    main()

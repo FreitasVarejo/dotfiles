@@ -5,6 +5,12 @@
       "hooks": [
         { "type": "command", "command": "'${TRAVAS_DIR}/tasks-so-pelo-freitask'", "timeout": 10 }
       ]
+    },
+    {
+      "matcher": "Edit|Write|NotebookEdit|Bash",
+      "hooks": [
+        { "type": "command", "command": "'${TRAVAS_DIR}/verificacao-no-stop' marca", "timeout": 30 }
+      ]
     }
   ],
   "PostToolUse": [
@@ -18,7 +24,8 @@
   "Stop": [
     {
       "hooks": [
-        { "type": "command", "command": "'${TRAVAS_DIR}/doctor-no-stop'", "timeout": 60 }
+        { "type": "command", "command": "'${TRAVAS_DIR}/doctor-no-stop'", "timeout": 60 },
+        { "type": "command", "command": "'${TRAVAS_DIR}/verificacao-no-stop'", "timeout": 30 }
       ]
     }
   ]
