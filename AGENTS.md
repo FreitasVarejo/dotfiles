@@ -1,9 +1,9 @@
 # AGENTS.md - Dotfiles Repository Guide
 
 Personal dotfiles using **GNU Stow** for symlink management. Each top-level directory
-(bash, git, nvim, tmux, yazi, vault, ssh) is a "stow package" that mirrors
-`$HOME` structure. The exception is `agents`, a **hook-only package** (empty target
-in `STOW_TARGETS`): nothing in it mirrors `$HOME`, so `setup.sh` only runs its setup hook.
+(bash, git, nvim, tmux, yazi, vault, ssh) is a "stow package" that mirrors its target in
+`STOW_TARGETS` (`setup.sh`). The exception is `agents`, a **hook-only package** (empty
+target): nothing in it is stowed, so `setup.sh` only runs its setup hook.
 
 ## Architecture: thin orchestrators + per-package hooks
 
@@ -24,23 +24,15 @@ precommit.sh           # pre-commit gate over every shell/lua file git knows abo
   with `exit "$CHECK_FAILED"`. Anything that mutates state (writing git config, installing
   a plugin, registering MCP servers) belongs in `setup.sh`, not `check.sh`.
 - `hooks/` directories are excluded from stow via each package's `.stow-local-ignore`.
-- Install hints use `$PM_INSTALL` (auto-detected dnf/apt/pacman/brew), never hardcoded `apt`.
-- The agents' MCP servers are one file each in `agents/mcp/<name>.json` (the why of each
-  in `agents/mcp/README.md`). An MCP registered by hand on one machine and absent from
-  that directory is a local experiment: no healthcheck, no reproduction (ADR 0011 in the vault).
-- Contracts (`AGENTS.md`, `docs/agents/`) hold **pointers and rules only** — never counts,
-  copies of state ("82 ADRs", "5 skills"), or claims about what a tool can do. Anything that
-  needs a number is a derived check (ADR 0009 in the vault); anything about a tool's
-  capability is a pointer to `--help` (ADR 0014). Future tense about our own tooling is the
-  smell: either it exists and reads in the present, or it isn't mentioned.
-- `vault-lint` reports the rot it can see — dead `~/…` pointers, whole-superseded notes (ADR or
-  not) still marked `vigente`, dangling wikilinks. It cannot see a stale capability claim; that one is
-  on whoever writes the contract.
+- Rules that only matter inside one package or file type live in `.claude/rules/<x>.md`
+  with `paths:`, and load when a matching file is touched. Never put an `AGENTS.md` or
+  `CLAUDE.md` inside a stow package: it would be stowed into its target (`$HOME` for
+  some). The why: ADR 0029 in `~/ObsidianVault/projects/workflow-ia/decisoes/`.
 
 ## Quick Reference
 
 ```bash
-./healthcheck.sh                    # Check dependencies (runs all per-package check hooks)
+./healthcheck.sh                    # Check dependencies (runs all per-package check hooks); the required tools are whatever it checks
 ./setup.sh                          # Apply configs via stow + run setup hooks (backups if needed)
 ./precommit.sh                      # REQUIRED before any commit; must exit 0
 ./precommit.sh --list               # what it covers (derived from git, not from a glob)
@@ -48,14 +40,11 @@ precommit.sh           # pre-commit gate over every shell/lua file git knows abo
 
 **No formal tests** - config repo. `setup.sh` creates timestamped backup of conflicts
 at `$HOME/dotfiles_backup_TIMESTAMP/`. Validate each change matches expectations.
-(The freitask test suite lives in its own repo: `~/dev/freitask.nvim/tests/run.sh`.)
 
-## Freitask / daily notes (Obsidian)
+## Freitask and the vault: wiring only
 
-Task/daily-note tracking over `~/ObsidianVault/projects/<project>/tasks/`. **The code lives in its
-own repo** at `~/dev/freitask.nvim` — the engine (Lua, run by the CLI under `nvim -l`) and
-the TUI (`tui/`, Rust, talks to the engine only through the CLI). Neovim no longer loads
-any of it. This repo only carries the wiring:
+The freitask code lives in its own repo, `~/dev/freitask.nvim`, with its own contract.
+Changes to task behaviour go there. This repo only carries the wiring:
 
 - the CLI wrapper `vault/.local/bin/freitask` — with no arguments in a terminal it
   opens the TUI (`freitask-tui`);
@@ -64,218 +53,23 @@ any of it. This repo only carries the wiring:
 - in Neovim, `<leader>k` opens the TUI in a float (`nvim/lua/plugins/freitask.lua`) and saving
   a task runs `freitask rebuild` (`nvim/lua/config/autocmds.lua`).
 
-**Full guide:** `~/dev/freitask.nvim/docs/freitask.md`; **module map, dependency rules and
-how to test:** `~/dev/freitask.nvim/docs/freitask-internals.md`.
+`FREITASK_REPO` (default `~/dev/freitask.nvim`) is the single knob for where the clone
+lives; the vault hooks and the CLI honour it. A per-machine override goes in
+`~/.bashrc.local`, never in the repo.
 
-Changes to task behaviour go in that repo, not here. `FREITASK_REPO` is the single knob
-for where the clone lives: the vault hooks and the CLI honour it, defaulting to
-`~/dev/freitask.nvim`. On a machine where the
-clone lives elsewhere (the notebook keeps repos in `~/dev`), export it from
-`~/.bashrc.local` — it is per-machine state, so it never goes in the repo.
+The vault rules (tasks move only through `freitask`, `daily/`, sync conflicts) are the
+vault's own contract: `~/ObsidianVault/AGENTS.md`.
 
-**The vault has its own contract**, colocated with the data, for agents pointed
-at the vault rather than at this repo: [`~/ObsidianVault/AGENTS.md`](file:///home/freitaspinhe/ObsidianVault/AGENTS.md).
+`vault-checkpoint.timer` snapshots the vault into a git repo whose `GIT_DIR` lives outside
+the synced folder (`~/.local/state/obsidian-vault.git`); inspect or undo with `vaultgit`.
+Never commit it by hand.
 
-**Never `mv`, `rm` or hand-edit to move/rename/archive a task.** Use the CLI —
-it is the only thing that keeps the four coupled invariants in sync at once:
-
-```bash
-freitask archive <id> done|dropped|failed   # or unarchive / rename / list
-freitask doctor [--fix]                     # verify; --fix repairs what is derivable
-```
-
-Invariants an agent must not break:
-
-- One file per task: `projects/<project>/tasks/<id>.md`, or
-  `projects/<project>/tasks/archived/<type>/<id>.md` when archived (`done|dropped|failed`).
-  **Being archived is the PATH**, not a frontmatter flag.
-- The top of the file is a callout: `> [!<callout>] <title>` /
-  `> [[projects/<project>/tasks/<id>|<id>]]` / optional `> _state description_` (italic
-  is what identifies it, not position — omit the line entirely if empty) /
-  lines 4+ free text, preserved verbatim.
-  **Status is EXCLUSIVELY the callout type** (mapped via `.freitask/status.json`):
-  six execution phases plus `done`, ordered `todo` → `abstract` (refining) →
-  `example` (implementing) → `question` (in review) → `warning` (blocked) →
-  `check` (ready) → `done` (archived). Never write a status number anywhere.
-  Ownership is a separate, orthogonal axis in the frontmatter (`dono` / `desde` /
-  `dominio`) — see the vault's `AGENTS.md`.
-- `<id>` = filename = git branch name (no `feat/`); line 2's wikilink target is
-  the vault-relative path with `<id>` as alias — there is no separate `Branch:`
-  line, and the frontmatter `id:` must match the filename.
-- Renaming an id **breaks external backlinks irrecoverably** unless done through
-  `freitask rename` / `M.apply_edit`, which call `M.retarget_links`. Archiving
-  by hand is only _repairable_ damage (`freitask doctor --fix`) — still use the CLI.
-- Archiving/unarchiving append a dated line to the `## Histórico` footer. Do not
-  write there by hand: the path stays the source of truth, and a history line
-  without the corresponding move is just text lying about where the file is.
-- `CURRENT.md` is generated (auto-regenerated on task save; previous day archived
-  to `daily/`); only its `## Notas Avulsas` is hand-editable. `daily/` and
-  `templates/` are reserved, not projects — and `daily/` must never be rewritten.
-- `*.sync-conflict-*.md` (Syncthing, the vault syncs with a phone) are ignored by
-  the tool on purpose and reported by `doctor`. Never resolve one unattended.
-- Reuse `require("freitask").parse_block` / `serialize_block` (round-trip safe,
-  handles YAML frontmatter + legacy formats) instead of ad-hoc regex.
-  `serialize_block` needs `model.project` (and `model.archived`) to emit the link.
-- `path.split_task_path(path)` → `project, id, archived` is the single guard for
-  "is this a task file?". Extend it rather than adding a new `match` at a use site.
-
-Safety net: `vault-checkpoint.timer` snapshots the vault every 15 min into a git
-repo whose `GIT_DIR` lives **outside** the synced folder
-(`~/.local/state/obsidian-vault.git`), so git and Syncthing never share a byte.
-Inspect/undo with `vaultgit log|restore`. Never commit it by hand.
-
-Contract watchdog: `vault-lint` (read-only) reports three kinds of rot across the
-vault and every repo that carries a contract — a `~/…` path cited in an
-`AGENTS.md`/`CLAUDE.md`/`docs/agents/` file that no longer exists, a note (ADR
-or not) superseded _inteira_ — read from `supersede:` on the new one or
-`supersedida-por:` on the old one — still marked `status: vigente`, and a
-wikilink with no target. It is deliberately **separate from `freitask doctor`**
-(that one owns the task domain and fails) and it runs as a **warning only** — a
-dead pointer blocks nobody, and a healthcheck that goes red over one teaches you
-to ignore red (ADR 0009 in the vault). `vault-lint --json` is there for the
-nightly round. Links inside code spans and fences are format examples, not
-pointers, and `daily/` is a frozen record the contract forbids rewriting: both
-are out of scope by design.
-
-## Code Style Guidelines
-
-### Shell Scripts (Bash)
-
-```bash
-#!/bin/bash
-
-# Color-coded logging (standard pattern used throughout)
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log_info() { echo -e "${BLUE}[INFO] $1${NC}"; }
-log_success() { echo -e "${GREEN}[OK] $1${NC}"; }
-log_warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
-log_error() { echo -e "${RED}[ERROR] $1${NC}"; }
-
-# Command existence checks
-if command -v tool_name &>/dev/null; then
-    # tool exists
-fi
-```
-
-- Use `[[ ]]` for conditionals, not `[ ]`
-- Check command existence before use
-- Use `exit 1` for fatal errors with helpful messages
-- Comments: Portuguese or English both acceptable
-- **CRITICAL:** Loop over arrays with `for var in "${array[@]}"`, never `for i in "{array[@]}"`
-- **NOTE:** Avoid bare-function syntax like `??()` / `!?()` in files sourced via
-  `bash --rcfile` — bash 5.2 parser quirk in 2026.0+ requires `eval` if needed.
-
-### Neovim Lua (LazyVim)
-
-**Indentation:** 2 spaces
-
-**Plugin specs** (one file per plugin/group in `lua/plugins/`):
-
-```lua
-return {
-  {
-    "author/plugin-name",
-    event = "VeryLazy",  -- lazy loading: event, cmd, keys, or ft
-    opts = { },
-    keys = {
-      { "<leader>xx", "<cmd>Command<cr>", desc = "Description" },
-    },
-  },
-}
-```
-
-**Options, keymaps, autocmds:**
-
-```lua
-vim.opt.setting = value
-vim.opt_local.setting = value  -- buffer-local
-
-vim.keymap.set("n", "<leader>key", function()
-  -- action
-end, { desc = "Description of keymap" })
-
-vim.api.nvim_create_autocmd("FileType", {
-  pattern = { "markdown" },
-  callback = function()
-    vim.opt_local.wrap = true
-  end,
-})
-
--- Lazy extras that re-register default keys (e.g. editor.snacks_picker binds
--- <leader>e / <leader>E) can't be overridden in keymaps.lua because both load
--- on VeryLazy in undefined order. Hook LazyDone and delete them after the fact.
-vim.api.nvim_create_autocmd("User", {
-  pattern = "LazyDone",
-  callback = function()
-    pcall(vim.keymap.del, "n", "<leader>e")
-    pcall(vim.keymap.del, "n", "<leader>E")
-  end,
-})
-```
-
-**File organization:**
-
-- `lua/config/options.lua` - Vim options
-- `lua/config/keymaps.lua` - Key mappings
-- `lua/config/autocmds.lua` - Autocommands
-- `lua/config/lazy.lua` - Plugin manager bootstrap
-- `lua/plugins/*.lua` - Plugin specifications
-
-**Notable non-default options** (`lua/config/options.lua`):
-
-- `timeoutlen = 300` — wait time (ms) for a mapped key sequence to complete; lower
-  than the default 1000 for snappier `<leader>`-prefixed keymaps.
-- `ttimeoutlen = 100` — wait time (ms) for terminal/keyboard codes (e.g. ESC in
-  insert mode); low value makes `<Esc>` feel instantaneous when it isn't part of
-  a mapping, while still leaving 100 ms for arrow-key / function-key sequences.
-- `swapfile = false` — disables `.swp` files; rely on git + undo (`vim.opt.undofile`)
-  for recovery.
-
-### Tmux Configuration
-
-```tmux
-# --- SECTION NAME ---
-bind key command
-unbind key
-
-# Plugins (TPM)
-set -g @plugin 'author/plugin-name'
-set -g @plugin_option 'value'
-```
-
-### Git Configuration
-
-```ini
-[alias]
-  co = checkout
-  st = status -sb
-  # Shell commands use ! prefix
-  lg = !git log --graph --all --pretty=format:'...'
-```
-
-## Naming Conventions
-
-| Type             | Convention                | Example                             |
-| ---------------- | ------------------------- | ----------------------------------- |
-| Stow packages    | lowercase, singular       | `bash`, `nvim`, `tmux`              |
-| Shell functions  | snake_case                | `log_info`, `backup_file`           |
-| Shell variables  | UPPER_SNAKE_CASE          | `BACKUP_DIR`, `ALL_GOOD`            |
-| Lua variables    | snake_case                | `lazypath`, `git_name`              |
-| Lua plugin files | kebab-case or single word | `tmux-navigator.lua`, `writing.lua` |
-
-## Error Handling
-
-**Shell:** Check command existence, use `exit 1` for fatal errors, provide hints.
-**Lua:** Use `pcall()` or conditionals for optional features; degrade gracefully.
+`vault-lint` is the contract watchdog (`vault-lint --help`). It warns and never fails:
+a dead pointer blocks nobody (ADR 0009).
 
 ## Adding New Configurations
 
-1. Create stow package directory: `mkdir new-tool`
+1. Create stow package directory: `mkdir new-tool` (lowercase, singular)
 2. Mirror the target path structure inside it
 3. Add configuration files
 4. Add the package to the `STOW_TARGETS` map in `setup.sh` (the one central list)
@@ -284,62 +78,6 @@ set -g @plugin_option 'value'
 6. If it needs imperative post-stow setup, create `new-tool/hooks/setup.sh`
 7. Create `new-tool/.stow-local-ignore` containing `hooks` so the hook dir isn't symlinked
 8. Run `./setup.sh` to apply
-
-## Dependencies
-
-Required tools (checked by `healthcheck.sh`):
-
-- **System:** git, stow, curl, make, gcc
-- **CLI:** tmux, rg (ripgrep), fd (>= 8.4 for Snacks picker), bat, fzf, zoxide, starship
-- **Editor:** nvim (v0.9+)
-- **Freitask:** the clone at `$FREITASK_REPO`; `cargo` only for the TUI (a missing TUI is a warning)
-- **Tmux:** TPM (Tmux Plugin Manager)
-- **Yazi:** catppuccin-mocha flavor (`cd ~/dotfiles/yazi && ya pkg install`)
-- **C#:** Roslyn LSP via Mason (custom registry `github:Crashdummyy/mason-registry`),
-  requires `.NET SDK` on PATH (`~/.dotnet`); `csharp-ls` is an alternative but not required.
-  The client is `seblyng/roslyn.nvim` (`nvim/lua/plugins/lang/dotnet.lua`), with
-  `filewatching = "off"` plus a `didChangeWatchedFiles` notification on save — keep it off:
-  watching `bin/`/`obj/` makes the server reanalyse the solution on every build.
-  `nvim/hooks/setup.sh` raises the inotify limit so the server doesn't fail to load a big
-  solution; the editor still doesn't watch.
-- **AI agents (`agents/` package, ADR 0024):** serves Claude Code (personal machines) and
-  Cursor CLI (work WSL). Not stowed — every target is a file the agents also write, so the
-  setup hook links or merges instead (`agents/hooks/lib.sh` says where each agent reads from):
-  - `agents/skills/<skill>/` → `~/.claude/skills/<skill>`, one symlink **per skill** made by
-    `agents/hooks/setup.sh`, never `~/.claude` (stateful: `~/.claude.json`, history, trust)
-    nor `~/.claude/skills` as a whole (Claude Code writes `synced/` there). Cursor CLI reads
-    the same directory. `agents/hooks/check.sh` fails when a package skill isn't visible and
-    when a skill cites another that isn't in the package.
-  - `agents/mcp/<name>.json`: registered in Claude Code via `claude mcp add-json` (user scope)
-    and merged into Cursor's MCP config on machines where Cursor is installed.
-  - `agents/permissions/deny.json`: what no agent may read or run (the secrets below),
-    merged into each present agent's `permissions.deny`.
-  - `agents/instructions/user.md` → `~/.claude/CLAUDE.md`, and `agents/instructions/machines/<hostname>.md`
-    → `rules/maquina.md` under `~/.claude/`, on the host with that name (ADR 0026). One symlink per
-    file, made by the setup hook only where `claude` exists; `agents/hooks/check.sh` fails when a
-    link is missing. A line goes in `user.md` only when it holds in two repos and names no project noun.
-  - Merges only add or update what the repo declares; anything the machine added stays.
-- **Skills policy** (ADRs 0004, 0006, 0007, 0010 in
-  `~/ObsidianVault/projects/workflow-ia/decisoes/`): third-party skills are **vendored**
-  as copies with `metadata.upstream` / `upstream-commit` in the SKILL.md frontmatter —
-  never `npx`, marketplace plugin or submodule. A skill is global only when it was really
-  used in two repos and names no project noun; otherwise it stays in the repo's `.claude/`.
-  `metadata.surfaces` (`code`, `web`, `code,web`) says where a skill runs:
-  `agents/hooks/build-web-zip.sh` zips the `web` ones for manual upload to claude.ai, and the
-  copy claude.ai syncs back to `~/.claude/skills/synced/` is the mirror `check.sh` compares
-  against (warning "re-subir" on drift). Don't rewrite a vendored skill in the vendoring
-  commit; rewriting is its own task.
-- **No local Obsidian MCP** (ADR 0008): where the vault is on disk (notebook, pi01, work
-  WSL) agents read and write the `.md` files directly. The only Obsidian MCP is
-  `obsidian-web-mcp` on pi01, for claude.ai, which has no disk.
-- **Secrets:** `~/.bashrc.d` is itself the stowed repo directory
-  (`~/.bashrc.d` -> `dotfiles/bash/.bashrc.d`), so it can't hold untracked secrets.
-  `bash/.bashrc` instead sources `~/.bashrc.local` if it exists — that file lives outside
-  the repo and is never committed. Per-machine state goes there (e.g. `FREITASK_REPO`).
-- **Do not export `GITHUB_TOKEN`.** Agents reach GitHub through `gh`, which reads its own
-  credential from `~/.config/gh/hosts.yml`, so the PAT never has to sit in the
-  environment — and an exported secret is inherited by every child process, agents included.
-  `agents/hooks/check.sh` warns when it finds one. Authenticate with `gh auth login` instead.
 
 ## Agent skills
 

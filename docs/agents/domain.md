@@ -22,21 +22,6 @@ and its docs are in `~/dev/freitask.nvim`, and the vault carries its own contrac
 `~/ObsidianVault/AGENTS.md`. Follow those pointers rather than re-deriving that domain from
 the wiring kept here.
 
-## File structure
-
-```
-/
-├── AGENTS.md                         ← the operational contract
-├── docs/
-│   └── agents/                       ← this configuration
-├── lib/
-└── <stow-package>/
-    └── hooks/{check,setup}.sh
-```
-
-Single-context: one contract, no `CONTEXT-MAP.md`, no per-context subtree. If the repo ever
-splits into genuinely separate contexts, add the map and update this file.
-
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in a task title, a refactor proposal, a hypothesis,

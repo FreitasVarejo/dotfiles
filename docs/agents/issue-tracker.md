@@ -8,21 +8,10 @@ Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em
 
 ## Convenções
 
-- **Criar uma task**: `freitask new <projeto> <id> "<título>" [--desc "<estado>"]`.
-  **Nunca escreva o arquivo à mão** — a CLI serializa o bloco pelo mesmo código
-  que o Neovim usa e regenera o `CURRENT.md`, que é o que se perde criando o
-  `.md` na mão. `<id>` é kebab-case, igual ao nome do arquivo e ao nome da
-  branch git (sem `feat/`). Argumentos exatos: `freitask help`.
-- **Ler uma task**: `cat ~/ObsidianVault/projects/workflow-ia/tasks/<id>.md`.
-- **Listar**: `freitask list [--json] [--archived]`.
-- **Comentar / registrar progresso**: edite o corpo da task (linhas 4+ são texto
-  livre) e a descrição em itálico da linha 3. Nunca escreva em `## Histórico`.
-- **Mudar o status**: `freitask set <id> --status <fase>` (ou troque o callout
-  da linha 1 à mão; vocabulário em `freitask statuses`). `done` não se escreve
-  assim: é o que `freitask archive <id> done` grava.
-- **Fechar**: `freitask archive <id> done|dropped|failed`. Nunca `mv`/`rm`.
-- **Renomear**: `freitask rename <id> <novo-id>`.
-- **Ao terminar**: `freitask doctor`. Saída 0 = consistente.
+- Criar, listar, mudar de fase, fechar e renomear: pela CLI (`freitask help`).
+- Ler uma task é ler o arquivo.
+- Comentar ou registrar progresso: no corpo da task (linhas 4+) e na descrição em
+  itálico da linha 3. Nunca em `## Histórico`.
 
 ## Pull requests como superfície de triagem
 
