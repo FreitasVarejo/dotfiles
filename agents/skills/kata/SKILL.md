@@ -1,6 +1,6 @@
 ---
 name: kata
-description: Kata de arquitetura solo sobre os enunciados em `katas/` de uma pasta de livro do `study/` do vault. O Claude é o cliente durante a discussão e as outras equipes no review, depois vota e registra a tentativa. Não ensina nem sugere estilo antes do review. Argumentos: a pasta do livro e o kata (ou "sorteia").
+description: "Kata de arquitetura solo sobre os enunciados em `katas/` de uma pasta de livro do `study/` do vault. O Claude é o cliente durante a discussão e as outras equipes no review, depois vota e registra a tentativa. Não ensina nem sugere estilo antes do review. Argumentos: a pasta do livro e o kata (ou \"sorteia\")."
 disable-model-invocation: true
 metadata:
   surfaces: "code"

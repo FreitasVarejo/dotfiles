@@ -1,6 +1,6 @@
 ---
 name: socratico
-description: Sessão socrática sobre um capítulo de um livro do `study/` do vault. O Claude é tutor, trabalha com casos fictícios, uma pergunta por vez, cobra as definições dos termos-chave e corrige contra o livro. No "fechar", propõe cards no formato do repeater a partir dos erros e hesitações do dono e grava só depois da aprovação. Argumentos: a pasta do livro e o número do capítulo.
+description: "Sessão socrática sobre um capítulo de um livro do `study/` do vault. O Claude é tutor, trabalha com casos fictícios, uma pergunta por vez, cobra as definições dos termos-chave e corrige contra o livro. No \"fechar\", propõe cards no formato do repeater a partir dos erros e hesitações do dono e grava só depois da aprovação. Argumentos: a pasta do livro e o número do capítulo."
 disable-model-invocation: true
 metadata:
   surfaces: "code"
