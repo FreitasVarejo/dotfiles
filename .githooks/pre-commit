@@ -1,0 +1,5 @@
+#!/bin/bash
+# Portão do commit neste repo: o mesmo ./precommit.sh que o AGENTS.md exige.
+# Ligado por core.hooksPath (git/hooks/setup.sh); vale para agente e para o dono
+# (ADR 0028). Pular de propósito: git commit --no-verify.
+exec "$(git rev-parse --show-toplevel)/precommit.sh"

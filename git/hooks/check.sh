@@ -1,7 +1,8 @@
 #!/bin/bash
 # shellcheck shell=bash
-# Check do pacote 'git': identidade global e helper de credenciais. READ-ONLY —
-# se faltar, apenas avisa (a configuração interativa vive em git/hooks/setup.sh).
+# Check do pacote 'git': identidade global, helper de credenciais e o portão de
+# commit deste repo. READ-ONLY. Identidade e credencial só avisam (a
+# configuração interativa vive em git/hooks/setup.sh); portão faltando é vermelho.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -37,6 +38,16 @@ fi
 if [ -s "$HOME/.git-credentials" ]; then
   log_warn "\$HOME/.git-credentials tem conteúdo — são tokens em TEXTO PLANO."
   echo "    -> Resíduo do helper 'store'. Revogue os tokens e apague o arquivo."
+fi
+
+echo ""
+log_info "--- Portão de commit (.githooks/) ---"
+if [[ "$(git -C "$DOTFILES_DIR" config --get core.hooksPath)" == ".githooks" ]]; then
+  log_success "core.hooksPath = .githooks: o commit roda ./precommit.sh"
+else
+  log_missing "core.hooksPath não aponta para .githooks: commit sem ./precommit.sh"
+  echo "    -> Rodar: ./setup.sh"
+  fail_check
 fi
 
 exit "$CHECK_FAILED"
