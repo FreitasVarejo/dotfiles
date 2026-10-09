@@ -17,6 +17,10 @@ the repo declares; whatever the machine added stays.
   hand and absent from this directory is a local experiment (ADR 0011).
 - `permissions/deny.json`: what no agent may read or run, merged into each present
   agent's `permissions.deny`.
+- `travas/`: one script per trava plus `travas.json` in Claude Code's `hooks` format
+  (ADR 0028). A trava is for a rule whose breach is irreparable and cheap to detect;
+  the rule's text stays where it lives (the vault's `AGENTS.md` is the floor for
+  channels without hooks). A trava with no tool to call does nothing (ADR 0027).
 - `settings/claude.json`: keys only Claude Code reads (`skillOverrides`, `autoMode`, …),
   merged key by key into its `settings.json` (ADR 0028). `autoMode` holds no project
   fact: the classifier reads it only from user scope, so it reaches every repo.

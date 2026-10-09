@@ -5,7 +5,7 @@
 #   - linka as instruções de usuário (instructions/) no Claude Code;
 #   - registra os MCP servers de mcp/ no Claude Code e no Cursor;
 #   - mescla permissions/deny.json no deny do Claude Code e do Cursor;
-#   - mescla settings/claude.json no settings.json do Claude Code.
+#   - mescla settings/claude.json e as travas de travas/ no settings.json do Claude Code.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -221,6 +221,20 @@ apply_claude_settings() {
   fi
 }
 
+# apply_travas — registra os hooks de travas/ no settings.json do Claude Code.
+apply_travas() {
+  local out event verdict
+  if ! out=$(agent_config hooks-apply claude "$CLAUDE_SETTINGS" "$AGENTS_TRAVAS_FILE"); then
+    log_warn "claude: travas não registradas em ${CLAUDE_SETTINGS/#$HOME/\~} (erro acima)"
+  elif [[ -z "$out" ]]; then
+    log_success "claude: travas em dia (${CLAUDE_SETTINGS/#$HOME/\~})"
+  else
+    while IFS=$'\t' read -r event verdict; do
+      log_success "claude: travas $event ($verdict)"
+    done <<<"$out"
+  fi
+}
+
 log_info "Linkando as skills..."
 link_skills
 
@@ -255,6 +269,7 @@ echo ""
 log_info "Mesclando settings/claude.json..."
 if command -v claude &>/dev/null; then
   apply_claude_settings
+  apply_travas
 else
-  log_optional "claude não encontrado, pulando o settings do Claude Code"
+  log_optional "claude não encontrado, pulando o settings e as travas do Claude Code"
 fi

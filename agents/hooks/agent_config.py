@@ -13,7 +13,8 @@ Chamado pelos hooks do pacote 'agents' (lib.sh). Regras que valem para tudo:
   Tratá-lo como vazio faria o apply gravar por cima e apagar a config de quem
   só errou uma vírgula — e faria o plan dizer "em dia" sobre o que nem leu.
 
-Saída 2 = arquivo do REPO inválido (mcp/*.json, deny.json, settings/*.json);
+Saída 2 = arquivo do REPO inválido (mcp/*.json, deny.json, settings/*.json,
+travas/travas.json);
 saída 3 = arquivo do AGENTE ilegível. A mensagem vai para stderr.
 
 Uso:
@@ -25,6 +26,8 @@ Uso:
   agent_config.py deny-apply <claude|cursor> <arquivo> <deny.json>
   agent_config.py settings-plan  claude <arquivo> <fragmento.json>  (chave\\tadd|update)
   agent_config.py settings-apply claude <arquivo> <fragmento.json>
+  agent_config.py hooks-plan  claude <arquivo> <travas.json>   (evento\\tadd|update|remove)
+  agent_config.py hooks-apply claude <arquivo> <travas.json>
 """
 
 import glob
@@ -216,6 +219,14 @@ def read_rule(agent, path):
     return "Read(%s)" % path
 
 
+def edit_rule(agent, path):
+    if agent == "cursor":
+        return "Write(%s)" % os.path.expanduser(path)
+    # O Claude Code só consulta Edit(...) para o Edit e o Write: um Write(...)
+    # seria aceito e nunca usado.
+    return "Edit(%s)" % path
+
+
 def deny_rules(agent, deny_path):
     # O deny do repo é a lista que protege os segredos: ausente ou quebrado é
     # erro, nunca "nada a negar" — senão o check diria "em dia" sobre o vazio.
@@ -225,11 +236,12 @@ def deny_rules(agent, deny_path):
     except (OSError, ValueError) as exc:
         raise repo_error("%s inválido (%s)" % (deny_path, exc))
     if not isinstance(spec, dict) or not all(
-        isinstance(spec.get(k, []), list) for k in ("read", "shell")
+        isinstance(spec.get(k, []), list) for k in ("read", "shell", "edit")
     ):
-        raise repo_error('%s: esperado {"read": [...], "shell": [...]}' % deny_path)
+        raise repo_error('%s: esperado {"read": [...], "shell": [...], "edit": [...]}' % deny_path)
     rules = [read_rule(agent, p) for p in spec.get("read", [])]
     rules += [shell_rule(agent, c) for c in spec.get("shell", [])]
+    rules += [edit_rule(agent, p) for p in spec.get("edit", [])]
     if not rules:
         raise repo_error("%s não nega nada" % deny_path)
     return rules
@@ -340,6 +352,101 @@ def settings_apply(agent, path, fragment_path):
         print("%s\t%s" % (key, v))
 
 
+# --- Travas (hooks do Claude Code) ---------------------------------------------
+# travas/travas.json declara os hooks no formato do settings.json, com
+# ${TRAVAS_DIR} no lugar do caminho do pacote (ADR 0028). Hook é nosso quando o
+# comando aponta para dentro de travas/: esses o repo atualiza e remove; os
+# outros, da máquina, ficam onde estão.
+
+
+def repo_travas(agent, travas_path):
+    if agent != "claude":
+        raise repo_error("travas/ declara hooks no formato do Claude Code; o Cursor não tem par.")
+    travas_dir = os.path.dirname(os.path.realpath(travas_path))
+    try:
+        with open(travas_path, encoding="utf-8") as fh:
+            spec = json.loads(fh.read().replace("${TRAVAS_DIR}", travas_dir))
+    except (OSError, ValueError) as exc:
+        raise repo_error("%s inválido (%s)" % (travas_path, exc))
+    if not isinstance(spec, dict) or not spec or not all(isinstance(v, list) for v in spec.values()):
+        raise repo_error('%s: esperado {"<Evento>": [grupos de hooks]}' % travas_path)
+    return travas_dir, spec
+
+
+def is_ours(hook, travas_dir):
+    return isinstance(hook, dict) and (travas_dir + "/") in str(hook.get("command", ""))
+
+
+def current_hooks(data, path):
+    hooks = data.get("hooks")
+    if hooks is None:
+        return {}
+    if not isinstance(hooks, dict):
+        raise agent_error("%s: 'hooks' não é objeto" % path)
+    return hooks
+
+
+def ours_by_event(hooks, travas_dir):
+    """{evento: [grupo só com os nossos hooks]}, na ordem em que estão."""
+    found = {}
+    for event, groups in hooks.items():
+        for group in groups if isinstance(groups, list) else []:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                continue
+            mine = [h for h in group["hooks"] if is_ours(h, travas_dir)]
+            if mine:
+                found.setdefault(event, []).append(dict(group, hooks=mine))
+    return found
+
+
+def hooks_diff(want, have):
+    diffs = []
+    for event in sorted(set(want) | set(have)):
+        w, h = want.get(event), have.get(event)
+        if w != h:
+            diffs.append((event, "remove" if w is None else "add" if h is None else "update"))
+    return diffs
+
+
+def hooks_plan(agent, path, travas_path):
+    travas_dir, want = repo_travas(agent, travas_path)
+    have = ours_by_event(current_hooks(load_agent(path), path), travas_dir)
+    for event, v in hooks_diff(want, have):
+        print("%s\t%s" % (event, v))
+
+
+def hooks_apply(agent, path, travas_path):
+    travas_dir, want = repo_travas(agent, travas_path)
+    data = load_agent(path)
+    hooks = current_hooks(data, path)
+    diffs = hooks_diff(want, ours_by_event(hooks, travas_dir))
+    if not diffs:
+        return
+    # Os nossos saem de onde estiverem (grupo que fica vazio sai junto) e a
+    # versão do repo entra no fim de cada evento.
+    for event in list(hooks):
+        if not isinstance(hooks[event], list):
+            continue
+        kept = []
+        for group in hooks[event]:
+            if isinstance(group, dict) and isinstance(group.get("hooks"), list):
+                rest = [h for h in group["hooks"] if not is_ours(h, travas_dir)]
+                if group["hooks"] and not rest:
+                    continue
+                group = dict(group, hooks=rest)
+            kept.append(group)
+        if kept:
+            hooks[event] = kept
+        else:
+            del hooks[event]
+    for event, groups in want.items():
+        hooks.setdefault(event, []).extend(groups)
+    data["hooks"] = hooks
+    save(path, data)
+    for event, v in diffs:
+        print("%s\t%s" % (event, v))
+
+
 def main(argv):
     cmd, args = (argv[0], argv[1:]) if argv else ("", [])
     if cmd == "mcp-servers" and len(args) == 1:
@@ -354,6 +461,8 @@ def main(argv):
             "deny-apply": deny_apply,
             "settings-plan": settings_plan,
             "settings-apply": settings_apply,
+            "hooks-plan": hooks_plan,
+            "hooks-apply": hooks_apply,
         }.get(cmd)
         if handler:
             return handler(*args)

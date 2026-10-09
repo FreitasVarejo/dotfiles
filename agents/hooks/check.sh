@@ -3,8 +3,8 @@
 # Checks READ-ONLY do pacote 'agents': skills visíveis para os agentes (Claude
 # Code e Cursor CLI leem o mesmo ~/.claude/skills), referências entre skills,
 # espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
-# permissions/deny.json em cada agente presente, o settings/claude.json e as
-# instruções de usuário de instructions/ no Claude Code.
+# permissions/deny.json em cada agente presente, o settings/claude.json, as
+# travas de travas/ e as instruções de usuário de instructions/ no Claude Code.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -248,6 +248,26 @@ else
   log_warn "claude: settings fora do repo em $(wc -l <<<"$diff") chave(s)"
   while IFS=$'\t' read -r key verdict; do echo "    -> $key ($verdict)"; done <<<"$diff"
   echo "    -> Aplicar: ./setup.sh"
+fi
+
+# 5c. Travas ---------------------------------------------------------------------
+# Hook de travas/ é garantia, não preferência (ADR 0028): faltar é vermelho, e o
+# conserto é o setup.sh.
+echo ""
+log_info "--- Travas do Claude Code (agents/travas/) ---"
+if ! command -v python3 &>/dev/null; then
+  log_optional "Sem python3: travas não verificadas (e elas mesmas não rodam)."
+elif ! command -v claude &>/dev/null; then
+  log_optional "Sem Claude Code: travas não verificadas."
+elif ! diff=$(agent_config hooks-plan claude "$CLAUDE_SETTINGS" "$AGENTS_TRAVAS_FILE"); then
+  config_failed $? "claude: travas"
+elif [[ -z "$diff" ]]; then
+  log_success "claude: travas registradas (${CLAUDE_SETTINGS/#$HOME/\~})"
+else
+  log_missing "claude: travas fora do repo em $(wc -l <<<"$diff") evento(s)"
+  while IFS=$'\t' read -r event verdict; do echo "    -> $event ($verdict)"; done <<<"$diff"
+  echo "    -> Aplicar: ./setup.sh"
+  fail_check
 fi
 
 # 6. Instruções de usuário -------------------------------------------------------

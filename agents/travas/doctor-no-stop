@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Trava "ao terminar, `freitask doctor`": dois hooks, um script.
+
+  doctor-no-stop marca   PostToolUse: marca a sessão que tocou o vault.
+  doctor-no-stop         Stop: sessão marcada só encerra com o doctor limpo.
+
+Toca o vault: Edit/Write com caminho nele, ou Bash rodado nele ou que o cita.
+O marcador é por session_id, em $XDG_RUNTIME_DIR (some no logout). Bloqueia uma
+vez só: com `stop_hook_active`, o turno já é a continuação que este hook pediu,
+e bloquear de novo viraria laço. Sem `freitask` na máquina, não faz nada (ADR
+0027).
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+VAULT = os.path.realpath(os.path.expanduser(os.environ.get("TRAVAS_VAULT", "~/ObsidianVault")))
+FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
+
+
+def marker(session_id):
+    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return os.path.join(base, "claude-travas", "vault-" + re.sub(r"[^A-Za-z0-9_-]", "_", session_id))
+
+
+def inside_vault(path):
+    if not path:
+        return False
+    path = os.path.realpath(os.path.expanduser(path))
+    return path == VAULT or path.startswith(VAULT + os.sep)
+
+
+def touched_vault(data):
+    tool, tool_input = data.get("tool_name"), data.get("tool_input") or {}
+    if tool in FILE_TOOLS:
+        return inside_vault(tool_input.get("file_path") or tool_input.get("notebook_path"))
+    if tool == "Bash":
+        command = tool_input.get("command") or ""
+        return inside_vault(data.get("cwd")) or "ObsidianVault" in command or re.search(r"\bfreitask\b", command)
+    return False
+
+
+def mark(data):
+    if touched_vault(data):
+        path = marker(data["session_id"])
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").close()
+
+
+def stop(data):
+    path = marker(data["session_id"])
+    if not os.path.exists(path) or shutil.which("freitask") is None:
+        return
+    result = subprocess.run(["freitask", "doctor"], capture_output=True, text=True, timeout=50)
+    if result.returncode == 0:
+        os.remove(path)
+        return
+    if data.get("stop_hook_active"):
+        return
+    report = (result.stdout + result.stderr).strip()[-3000:]
+    reason = (
+        "O `freitask doctor` falhou depois de esta sessão mexer no vault:\n\n" + report + "\n\n"
+        "Conserte (`freitask doctor --fix` repara o que é derivável) ou diga ao dono o que "
+        "sobrou. Sync-conflict não se resolve sozinho."
+    )
+    json.dump({"decision": "block", "reason": reason}, sys.stdout, ensure_ascii=False)
+
+
+def main():
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    if not data.get("session_id") or not os.path.isdir(VAULT):
+        return
+    if sys.argv[1:] == ["marca"]:
+        mark(data)
+    else:
+        stop(data)
+
+
+if __name__ == "__main__":
+    main()

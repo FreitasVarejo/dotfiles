@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+"""Trava PreToolUse (Bash): task do vault só se move ou se apaga pelo freitask.
+
+Nega `mv`, `rm`, `rmdir`, `unlink`, `git mv` e `git rm` cujo alvo resolve para
+dentro de projects/<projeto>/tasks/ do vault, ou para um ancestral que a
+contém. O alvo é o reflexo do agente, não um adversário: `find -delete` ou um
+script passam por fora (ADR 0028). Sem vault na máquina, não faz nada.
+
+Entrada: o JSON do hook no stdin. Saída: nada (deixa seguir) ou o JSON de
+`permissionDecision: deny`, cujo motivo chega ao agente.
+"""
+
+import json
+import os
+import shlex
+import sys
+
+VAULT = os.path.realpath(os.path.expanduser(os.environ.get("TRAVAS_VAULT", "~/ObsidianVault")))
+MOVE_OR_REMOVE = {"mv", "rm", "rmdir", "unlink"}
+GIT_MOVE_OR_REMOVE = {"mv", "rm"}
+# Palavras que só prefixam o comando de verdade (`sudo rm …`, `nice -n 5 mv …`).
+PREFIXES = {"sudo", "doas", "command", "builtin", "exec", "nice", "nohup", "time", "env"}
+
+REASON = (
+    "Task do vault não se move, renomeia, arquiva nem apaga à mão: use "
+    "`freitask archive|unarchive|rename|delete` (sintaxe em `freitask help`). "
+    "Mover à mão deixa backlink irreparável; as regras estão em ~/ObsidianVault/AGENTS.md."
+)
+
+
+def simple_commands(command):
+    """Cada comando simples como lista de palavras, já sem aspas.
+
+    Quebra de linha vira separador: um script de várias linhas é uma sequência
+    de comandos, não um comando só com argumentos demais.
+    """
+    lexer = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    words = []
+    try:
+        for tok in lexer:
+            if tok and set(tok) <= set(";&|()"):
+                if words:
+                    yield words
+                words = []
+            else:
+                words.append(tok)
+    except ValueError:
+        # Aspas sem fechar: o shell também recusaria o comando.
+        return
+    if words:
+        yield words
+
+
+def resolve(arg, base):
+    arg = arg.replace("${HOME}", "~").replace("$HOME", "~")
+    path = os.path.expanduser(arg)
+    if not os.path.isabs(path):
+        path = os.path.join(base, path)
+    return os.path.realpath(path)
+
+
+def guarded(path):
+    """O caminho é task, a pasta tasks/ ou algo que a contém (projeto, projects/, o vault)."""
+    rel = os.path.relpath(path, VAULT)
+    if rel == os.curdir:
+        return True
+    parts = rel.split(os.sep)
+    if parts[0] != "projects":
+        return False
+    return len(parts) <= 2 or parts[2] == "tasks"
+
+
+def strip_prefixes(words):
+    i = 0
+    while i < len(words):
+        word = words[i]
+        name, eq, _ = word.partition("=")
+        if eq and name.isidentifier():
+            i += 1
+        elif os.path.basename(word) in PREFIXES:
+            i += 1
+            while i < len(words) and (words[i].startswith("-") or words[i].isdigit()):
+                i += 1
+        else:
+            break
+    return words[i:]
+
+
+def targets(words, cwd):
+    words = strip_prefixes(words)
+    if not words:
+        return []
+    name, args = os.path.basename(words[0]), words[1:]
+    if name == "git":
+        base, i = cwd, 0
+        while i < len(args) and args[i].startswith("-"):
+            if args[i] == "-C" and i + 1 < len(args):
+                base = resolve(args[i + 1], base)
+                i += 2
+            elif args[i] in ("-c", "--git-dir", "--work-tree") and i + 1 < len(args):
+                i += 2
+            else:
+                i += 1
+        if i >= len(args) or args[i] not in GIT_MOVE_OR_REMOVE:
+            return []
+        return [resolve(a, base) for a in args[i + 1:] if not a.startswith("-")]
+    if name in MOVE_OR_REMOVE:
+        return [resolve(a, cwd) for a in args if not a.startswith("-")]
+    return []
+
+
+def main():
+    if not os.path.isdir(VAULT):
+        return
+    try:
+        data = json.load(sys.stdin)
+    except ValueError:
+        return
+    if data.get("tool_name") != "Bash":
+        return
+    command = (data.get("tool_input") or {}).get("command") or ""
+    cwd = data.get("cwd") or os.getcwd()
+    for words in simple_commands(command):
+        if words[0] == "cd":
+            cwd = resolve(words[1] if len(words) > 1 else "~", cwd)
+            continue
+        if any(guarded(t) for t in targets(words, cwd)):
+            json.dump(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": REASON,
+                    }
+                },
+                sys.stdout,
+                ensure_ascii=False,
+            )
+            return
+
+
+if __name__ == "__main__":
+    main()
