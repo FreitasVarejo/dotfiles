@@ -8,6 +8,7 @@
 #
 #   shell  shebang bash/sh ou extensão .sh  -> shellcheck -x -P SCRIPTDIR
 #   lua    *.lua                            -> luac -p
+#   python *.py ou shebang python            -> ast.parse (só sintaxe, sem __pycache__)
 #   tmux   tmux/tmux.conf                   -> source-file -n num socket privado
 #   nvim   config real                      -> nvim --headless +checkhealth
 #
@@ -39,12 +40,15 @@ cd "$DOTFILES_DIR" || exit 1
 
 SHELL_FILES=()
 LUA_FILES=()
+PY_FILES=()
 while IFS= read -r f; do
   [[ -f "$f" ]] || continue
   if [[ "$f" == *.lua ]]; then
     LUA_FILES+=("$f")
   elif [[ "$f" == *.sh ]] || head -n1 "$f" 2>/dev/null | grep -qE '^#!.*[/ ](ba)?sh\b'; then
     SHELL_FILES+=("$f")
+  elif [[ "$f" == *.py ]] || head -n1 "$f" 2>/dev/null | grep -qE '^#!.*python'; then
+    PY_FILES+=("$f")
   fi
 done < <(git ls-files --cached --others --exclude-standard | sort -u)
 
@@ -55,6 +59,8 @@ if [[ "$LIST_ONLY" == true ]]; then
   printf '  %s\n' "${SHELL_FILES[@]}"
   echo "## lua (${#LUA_FILES[@]})"
   printf '  %s\n' "${LUA_FILES[@]}"
+  echo "## python (${#PY_FILES[@]})"
+  printf '  %s\n' "${PY_FILES[@]}"
   echo "## tmux"
   echo "  $TMUX_CONF"
   echo "## nvim"
@@ -83,6 +89,18 @@ if have luac lua; then
     log_success "luac: ${#LUA_FILES[@]} arquivos"
   else
     log_error "luac falhou"
+    fail_check
+  fi
+fi
+
+if ((${#PY_FILES[@]})) && have python3 python; then
+  # ast.parse e não py_compile: este não deixa __pycache__ dentro do repo.
+  if python3 -I -c 'import ast, sys
+for f in sys.argv[1:]:
+    ast.parse(open(f, encoding="utf-8").read(), f)' "${PY_FILES[@]}"; then
+    log_success "python: ${#PY_FILES[@]} arquivos"
+  else
+    log_error "python: erro de sintaxe"
     fail_check
   fi
 fi
