@@ -5,14 +5,16 @@
                                      na primeira vez que a sessão o toca.
   verificacao-no-stop carimba <raiz> A skill `verificar`, com os portões verdes,
                                      grava o estado atual como verificado.
-  verificacao-no-stop                Stop: repo que a sessão mudou e que não tem
-                                     carimbo do estado atual bloqueia o fim do turno.
+  verificacao-no-stop                Stop: repo com mudança da sessão ainda não
+                                     comitada e sem carimbo do estado atual bloqueia
+                                     o fim do turno.
 
 Só vale para repo que optou: o que tem docs/agents/verificacao.md. O estado é o
 `git diff HEAD` mais os não rastreados (caminho, tamanho e mtime, nunca o
 conteúdo: há repo com mídia não rastreada). A linha de base existe para que a
-sujeira que já estava lá antes da sessão não a obrigue a verificar nada. Bloqueia
-uma vez: com `stop_hook_active`, o turno já é a continuação pedida.
+sujeira que já estava lá antes da sessão não a obrigue a verificar nada. Mudança
+comitada sai da trava: a rede para ela é o pre-commit do repo, se houver.
+Bloqueia uma vez: com `stop_hook_active`, o turno já é a continuação pedida.
 """
 
 import hashlib
@@ -47,11 +49,16 @@ def opted_in(root):
 
 
 def state(root):
-    """Hash do que mudou em relação ao HEAD, ou None se o repo não tem HEAD."""
+    """(hash, diff vazio?, não rastreados) do que mudou em relação ao HEAD.
+
+    Não rastreado entra como "caminho<TAB>tamanho<TAB>mtime". None se o repo não
+    tem HEAD.
+    """
     diff = git(root, "diff", "--binary", "HEAD")
     if diff.returncode != 0:
         return None
     h = hashlib.sha256(diff.stdout)
+    untracked = []
     others = git(root, "ls-files", "--others", "--exclude-standard", "-z").stdout
     for rel in sorted(p for p in others.split(b"\0") if p):
         try:
@@ -59,7 +66,8 @@ def state(root):
         except OSError:
             continue
         h.update(b"\0%s\0%d\0%d" % (rel, st.st_size, st.st_mtime_ns))
-    return h.hexdigest()
+        untracked.append("%s\t%d\t%d" % (rel.decode(errors="surrogateescape"), st.st_size, st.st_mtime_ns))
+    return h.hexdigest(), not diff.stdout, untracked
 
 
 def stamp_path(root):
@@ -80,7 +88,8 @@ def baseline_path(session_id, root):
 
 def read(path):
     try:
-        with open(path, encoding="utf-8") as fh:
+        # surrogateescape: a linha de base guarda nome de arquivo, que pode não ser UTF-8.
+        with open(path, encoding="utf-8", errors="surrogateescape") as fh:
             return fh.read().strip()
     except OSError:
         return None
@@ -101,16 +110,19 @@ def mark(data):
     if os.path.exists(path):
         return
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write("%s\n%s\n" % (root, state(root) or ""))
+    now = state(root)
+    with open(path, "w", encoding="utf-8", errors="surrogateescape") as fh:
+        # Linha 1 a raiz, linha 2 o hash, depois os não rastreados de antes da sessão.
+        fh.write("\n".join([root, now[0] if now else ""] + (now[2] if now else [])) + "\n")
 
 
 def carimba(root):
     root = repo_root(root)
     if root is None:
         sys.exit("verificacao-no-stop: não é um repo git")
+    now = state(root)
     with open(stamp_path(root), "w", encoding="utf-8") as fh:
-        fh.write((state(root) or "") + "\n")
+        fh.write((now[0] if now else "") + "\n")
 
 
 def stop(data):
@@ -122,11 +134,18 @@ def stop(data):
     pending = []
     for name in names:
         lines = (read(os.path.join(runtime_dir(), name)) or "").split("\n")
-        root, baseline = lines[0], (lines[1] if len(lines) > 1 else "")
+        root, baseline, before = lines[0], (lines[1] if len(lines) > 1 else ""), set(lines[2:])
         if not opted_in(root):
             continue
         now = state(root)
-        if now is None or now == baseline or now == read(stamp_path(root)):
+        if now is None:
+            continue
+        digest, diff_empty, untracked = now
+        # Sem diff e sem não rastreado novo: o que a sessão mudou foi comitado
+        # (ou desfeito). Sobra só o que já estava lá antes dela.
+        if diff_empty and set(untracked) <= before:
+            continue
+        if digest == baseline or digest == read(stamp_path(root)):
             continue
         pending.append(root)
     if not pending or data.get("stop_hook_active"):
