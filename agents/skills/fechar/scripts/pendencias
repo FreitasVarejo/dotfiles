@@ -1,0 +1,291 @@
+#!/usr/bin/env python3
+"""Fatos do disco para o fim de uma sessão (skill `fechar`, ADR 0031).
+
+  pendencias [--sessao <id>] [--repo <dir>]... [--horas <n>] [--sem-rede]
+
+Nada aqui é lista fixa (ADR 0017):
+- repos: os que a sessão tocou (marcadores das travas em
+  $XDG_RUNTIME_DIR/claude-travas/ com o id da sessão), o cwd e os de --repo;
+- outras máquinas: as notas de hosts/ do vault que não são esta, com o alias de
+  ssh tirado do H1, como faz o coletor da current-project-state;
+- vault: tasks mexidas na janela, posse, sync-conflict.
+
+Só lê. A exceção é o `git fetch`, que atualiza as refs remotas para "atrás do
+origin" não mentir; --sem-rede pula fetch, GitHub e ssh.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import socket
+import subprocess
+import time
+
+VAULT = os.path.realpath(os.path.expanduser(os.environ.get("FECHAR_VAULT", "~/ObsidianVault")))
+OPEN_ITEM = re.compile(r"^\s*- \[ \]", re.M)
+
+
+def run(args, cwd=None, timeout=30):
+    try:
+        r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+
+
+def git(root, *args, timeout=30):
+    return run(["git", "-C", root, *args], timeout=timeout)
+
+
+def runtime_dir():
+    import tempfile
+
+    return os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "claude-travas")
+
+
+def session_markers(sid):
+    if not sid:
+        return []
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", sid)
+    return glob.glob(os.path.join(runtime_dir(), "*-%s*" % safe))
+
+
+def repo_root(path):
+    rc, out = git(path, "rev-parse", "--show-toplevel")
+    return out if rc == 0 and out else None
+
+
+def slug(root):
+    _, url = git(root, "remote", "get-url", "origin")
+    m = re.match(r"^(?:git@github\.com:|https://github\.com/)([^/]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else ""
+
+
+def default_ref(root):
+    rc, out = git(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    return out if rc == 0 else ""
+
+
+def merged(root, ref, into):
+    return bool(into) and git(root, "merge-base", "--is-ancestor", ref, into)[0] == 0
+
+
+def committed(root, branch):
+    """A branch já recebeu commit próprio? Recém-criada também é ancestral da base."""
+    _, log = git(root, "reflog", "show", "--format=%gs", "refs/heads/" + branch)
+    return any(l.startswith(("commit", "merge", "cherry-pick", "rebase", "pull")) for l in log.split("\n"))
+
+
+def leftover(root, branch, base):
+    if not merged(root, branch, base):
+        return ""
+    if not committed(root, branch):
+        return " — sem commit próprio (recém-criada?)"
+    return " — já está em %s: pode sair" % base
+
+
+def report_repo(root, net):
+    lines = ["### %s" % root.replace(os.path.expanduser("~"), "~", 1)]
+    if net:
+        git(root, "fetch", "--quiet", "--prune", timeout=40)
+    _, branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+    _, porcelain = git(root, "status", "--porcelain")
+    dirty = [l for l in porcelain.split("\n") if l]
+    rc, counts = git(root, "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
+    if rc == 0:
+        behind, ahead = counts.split()
+        sync = "atrás %s, à frente %s do upstream" % (behind, ahead)
+    else:
+        sync = "sem upstream"
+    lines.append("branch %s · %s · %d arquivo(s) sem commit" % (branch, sync, len(dirty)))
+    lines += ["  %s" % l for l in dirty[:8]] + (["  …"] if len(dirty) > 8 else [])
+    base = default_ref(root)
+    _, refs = git(root, "for-each-ref", "--format=%(refname:short)\t%(upstream)", "refs/heads")
+    for line in refs.split("\n"):
+        name, _, upstream = line.partition("\t")
+        if not name or name == branch:
+            continue
+        tag = leftover(root, name, base)
+        if tag:
+            lines.append("branch local %s%s" % (name, tag))
+        elif not upstream:
+            lines.append("branch local %s sem upstream (nunca foi para o remoto)" % name)
+    _, wts = git(root, "worktree", "list", "--porcelain")
+    main = os.path.dirname(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")[1])
+    for block in wts.split("\n\n"):
+        path = re.search(r"^worktree (.+)$", block, re.M)
+        wbranch = re.search(r"^branch refs/heads/(.+)$", block, re.M)
+        if not path or path.group(1) in (main, root):
+            continue
+        b = wbranch.group(1) if wbranch else "(detached)"
+        tag = leftover(root, b, base) if wbranch else ""
+        lines.append("worktree %s [%s]%s" % (path.group(1).replace(os.path.expanduser("~"), "~", 1), b, tag))
+    s = slug(root)
+    if net and s:
+        rc, out = run(["gh", "pr", "list", "--repo", s, "--state", "open", "--limit", "20",
+                       "--json", "number,title,headRefName,isDraft"], timeout=25)
+        if rc != 0:
+            lines.append("PRs: não consultei (gh falhou)")
+        else:
+            for pr in json.loads(out or "[]"):
+                lines.append("PR aberto #%d [%s]%s %s" % (pr["number"], pr["headRefName"],
+                             " (rascunho)" if pr["isDraft"] else "", pr["title"]))
+        rc, out = run(["gh", "pr", "list", "--repo", s, "--state", "merged", "--limit", "10",
+                       "--json", "number,title,mergedAt"], timeout=25)
+        if rc == 0:
+            since = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 24 * 3600))
+            for pr in json.loads(out or "[]"):
+                if pr["mergedAt"] >= since:
+                    lines.append("PR mergeado nas últimas 24 h #%d %s" % (pr["number"], pr["title"]))
+    return lines, s
+
+
+def other_hosts():
+    hn = socket.gethostname().split(".")[0]
+    out = []
+    for note in sorted(glob.glob(os.path.join(VAULT, "hosts", "*.md"))):
+        h1 = next((l for l in open(note, encoding="utf-8") if l.startswith("# ")), "")
+        alias = h1[2:].split()[0] if h1[2:].split() else ""
+        if alias and alias != hn:
+            out.append(alias)
+    return out
+
+
+REMOTE = r"""
+for d in ~/dotfiles ~/dev/* ~/projects/*; do
+  [ -d "$d/.git" ] || [ -f "$d/.git" ] || continue
+  u=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
+  case "$u" in *"$1"|*"$1.git") ;; *) continue ;; esac
+  git -C "$d" fetch -q 2>/dev/null
+  echo "$d	$(git -C "$d" status -sb | head -1)	$(git -C "$d" status --porcelain | wc -l)"
+done
+"""
+
+
+def report_hosts(slugs, net):
+    lines = []
+    if not slugs:
+        return ["nenhum repo com remoto no GitHub para comparar"]
+    for alias in other_hosts():
+        if not net:
+            lines.append("%s: não consultei (--sem-rede)" % alias)
+            continue
+        found = False
+        for target in (alias, alias + "-local"):
+            got = []
+            ok = True
+            for s in slugs:
+                try:
+                    p = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", target,
+                                        "bash", "-s", "--", s], input=REMOTE, capture_output=True,
+                                       text=True, timeout=60)
+                except subprocess.TimeoutExpired:
+                    ok = False
+                    break
+                if p.returncode == 255:
+                    ok = False
+                    break
+                got += [l for l in p.stdout.split("\n") if l]
+            if not ok:
+                continue
+            found = True
+            if not got:
+                lines.append("%s: nenhum clone dos repos tocados" % target)
+            for l in got:
+                path, status, dirty = l.split("\t")
+                lines.append("%s:%s  %s  · %s arquivo(s) sem commit" % (target, path, status, dirty.strip()))
+            break
+        if not found:
+            lines.append("%s: não consultei (ssh não respondeu em %s nem %s-local)" % (alias, alias, alias))
+    return lines or ["nenhuma outra máquina em hosts/"]
+
+
+def task_info(path):
+    text = open(path, encoding="utf-8").read()
+    status = re.search(r"^> \[!(\w+)\]", text, re.M)
+    desc = re.search(r"^> _(.*)_\s*$", text, re.M)
+    dono = re.search(r"^dono:\s*(.+)$", text, re.M)
+    desde = re.search(r"^desde:\s*(.+)$", text, re.M)
+    return {
+        "status": status.group(1) if status else "?",
+        "desc": desc.group(1) if desc else "",
+        "abertos": len(OPEN_ITEM.findall(text)),
+        "dono": (dono.group(1).strip() + " desde " + (desde.group(1).strip() if desde else "?")) if dono else "",
+    }
+
+
+def report_vault(since):
+    lines = []
+    conflicts = [p for p in glob.glob(os.path.join(VAULT, "**", "*.sync-conflict-*"), recursive=True)]
+    lines.append("sync-conflict: %d%s" % (len(conflicts), " — não resolver sozinho" if conflicts else ""))
+    lines += ["  %s" % os.path.relpath(c, VAULT) for c in conflicts[:10]]
+    active = glob.glob(os.path.join(VAULT, "projects", "*", "tasks", "*.md"))
+    archived = glob.glob(os.path.join(VAULT, "projects", "*", "tasks", "archived", "*", "*.md"))
+    for path in sorted(active):
+        info = task_info(path)
+        if info["dono"]:
+            lines.append("posse: `%s` — %s" % (os.path.basename(path)[:-3], info["dono"]))
+    touched = [p for p in active + archived if os.path.getmtime(p) >= since]
+    lines.append("tasks mexidas na janela (%s em diante): %d" % (time.strftime("%d/%m %H:%M", time.localtime(since)), len(touched)))
+    for path in sorted(touched):
+        rel = os.path.relpath(path, os.path.join(VAULT, "projects"))
+        parts = rel.split(os.sep)
+        info = task_info(path)
+        where = "arquivada (%s)" % parts[3] if parts[2] == "archived" else info["status"]
+        flag = ""
+        if info["abertos"]:
+            flag = " — %d item(ns) aberto(s)%s" % (info["abertos"], ", ENTERRADO em archived/" if parts[2] == "archived" else "")
+        lines.append("  %s `%s` [%s]%s" % (parts[0], os.path.basename(path)[:-3], where, flag))
+        if info["desc"]:
+            lines.append("      _%s_" % info["desc"])
+    return lines
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # Sem valor quando o agente não substitui ${CLAUDE_SESSION_ID} (Cursor).
+    ap.add_argument("--sessao", nargs="?", const="", default="")
+    ap.add_argument("--repo", action="append", default=[])
+    ap.add_argument("--horas", type=float)
+    ap.add_argument("--sem-rede", action="store_true")
+    a = ap.parse_args()
+    net = not a.sem_rede
+
+    markers = session_markers(a.sessao)
+    roots = []
+    for m in markers:
+        if os.path.basename(m).startswith("verif-"):
+            first = open(m, encoding="utf-8", errors="surrogateescape").readline().strip()
+            roots.append(first)
+    for d in [os.getcwd()] + a.repo:
+        r = repo_root(os.path.expanduser(d))
+        if r:
+            roots.append(r)
+    roots = list(dict.fromkeys(r for r in roots if r and os.path.isdir(r)))
+    # Os marcadores dizem ONDE a sessão mexeu, não desde quando: o do vault é
+    # regravado a cada toque. A janela é fixa; quem filtra é a conversa.
+    since = time.time() - (a.horas if a.horas is not None else 12) * 3600
+
+    print("## sessão")
+    print("id %s · marcadores das travas: %d · vault tocado: %s" % (
+        a.sessao or "(não informado)", len(markers),
+        "sim" if any(os.path.basename(m).startswith("vault-") for m in markers) else "não sei"))
+    print("\n## repos")
+    slugs = []
+    for root in roots:
+        lines, s = report_repo(root, net)
+        print("\n".join(lines))
+        if s and s not in slugs:
+            slugs.append(s)
+    if not roots:
+        print("nenhum repo identificado; passe --repo <dir>")
+    print("\n## outras máquinas")
+    print("\n".join(report_hosts(slugs, net)))
+    print("\n## vault")
+    print("\n".join(report_vault(since)))
+
+
+if __name__ == "__main__":
+    main()

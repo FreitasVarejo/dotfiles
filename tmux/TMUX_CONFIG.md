@@ -1,1 +1,0 @@
-../../docs/TMUX_CONFIG.md
