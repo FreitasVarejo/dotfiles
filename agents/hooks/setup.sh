@@ -4,7 +4,8 @@
 #   - linka cada skill em cada diretório de skills dos agentes;
 #   - linka as instruções de usuário (instructions/) no Claude Code;
 #   - registra os MCP servers de mcp/ no Claude Code e no Cursor;
-#   - mescla permissions/deny.json no deny do Claude Code e do Cursor.
+#   - mescla permissions/deny.json no deny do Claude Code e do Cursor;
+#   - mescla settings/claude.json no settings.json do Claude Code.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -206,6 +207,20 @@ apply_deny() {
   fi
 }
 
+# apply_claude_settings — leva settings/claude.json ao settings.json do Claude Code.
+apply_claude_settings() {
+  local out key verdict
+  if ! out=$(agent_config settings-apply claude "$CLAUDE_SETTINGS" "$AGENTS_CLAUDE_SETTINGS_FILE"); then
+    log_warn "claude: settings não mesclado em ${CLAUDE_SETTINGS/#$HOME/\~} (erro acima)"
+  elif [[ -z "$out" ]]; then
+    log_success "claude: settings em dia (${CLAUDE_SETTINGS/#$HOME/\~})"
+  else
+    while IFS=$'\t' read -r key verdict; do
+      log_success "claude: settings $key ($verdict)"
+    done <<<"$out"
+  fi
+}
+
 log_info "Linkando as skills..."
 link_skills
 
@@ -234,4 +249,12 @@ if [[ -d "$CURSOR_HOME" ]]; then
   apply_deny cursor "$CURSOR_CLI_CONFIG"
 else
   log_optional "Sem ${CURSOR_HOME/#$HOME/\~}, pulando o deny do Cursor"
+fi
+
+echo ""
+log_info "Mesclando settings/claude.json..."
+if command -v claude &>/dev/null; then
+  apply_claude_settings
+else
+  log_optional "claude não encontrado, pulando o settings do Claude Code"
 fi

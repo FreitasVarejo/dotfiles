@@ -1,0 +1,29 @@
+{
+  "skillOverrides": {
+    "anthropic-skills:built-in-browser": "off",
+    "anthropic-skills:chapter-flashcards": "off",
+    "anthropic-skills:chrome-browser": "off",
+    "anthropic-skills:computer-use": "off",
+    "anthropic-skills:deep-research": "off",
+    "anthropic-skills:docs": "off",
+    "anthropic-skills:docx": "off",
+    "anthropic-skills:google-workspace": "off",
+    "anthropic-skills:grill-me": "off",
+    "anthropic-skills:grilling": "off",
+    "anthropic-skills:import-memory": "off",
+    "anthropic-skills:morning": "off",
+    "anthropic-skills:pdf": "off",
+    "anthropic-skills:pptx": "off",
+    "anthropic-skills:setup-writing-style": "off",
+    "anthropic-skills:skill-creator": "off",
+    "anthropic-skills:xlsx": "off"
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Organization: personal projects of a single owner, GitHub org FreitasVarejo. Primary use: software development, plus maintenance of the owner's dotfiles and notes",
+      "Source control: github.com/FreitasVarejo and all repos under it",
+      "Trusted repo: the owner's clones under ~/dev, ~/projects and ~/dotfiles on this machine; ~/ObsidianVault is the owner's notes vault (plain .md files synced by Syncthing)"
+    ]
+  }
+}

@@ -18,6 +18,9 @@ AGENTS_SKILLS_DIR="$AGENTS_PKG_DIR/skills"
 AGENTS_MCP_DIR="$AGENTS_PKG_DIR/mcp"
 # shellcheck disable=SC2034  # consumido pelos hooks via source
 AGENTS_DENY_FILE="$AGENTS_PKG_DIR/permissions/deny.json"
+# Fragmento do settings.json com chaves que só o Claude Code lê (ADR 0028).
+# shellcheck disable=SC2034  # consumido pelos hooks via source
+AGENTS_CLAUDE_SETTINGS_FILE="$AGENTS_PKG_DIR/settings/claude.json"
 AGENTS_CONFIG_PY="$AGENTS_PKG_DIR/hooks/agent_config.py"
 
 # Diretórios de onde os agentes leem skills de nível usuário. O Cursor CLI lê

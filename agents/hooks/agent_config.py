@@ -13,8 +13,8 @@ Chamado pelos hooks do pacote 'agents' (lib.sh). Regras que valem para tudo:
   Tratá-lo como vazio faria o apply gravar por cima e apagar a config de quem
   só errou uma vírgula — e faria o plan dizer "em dia" sobre o que nem leu.
 
-Saída 2 = arquivo do REPO inválido (mcp/*.json, deny.json); saída 3 = arquivo
-do AGENTE ilegível. A mensagem vai para stderr.
+Saída 2 = arquivo do REPO inválido (mcp/*.json, deny.json, settings/*.json);
+saída 3 = arquivo do AGENTE ilegível. A mensagem vai para stderr.
 
 Uso:
   agent_config.py mcp-servers <mcp-dir>                    (nome\\tjson-compacto)
@@ -23,6 +23,8 @@ Uso:
   agent_config.py mcp-apply cursor <arquivo> <mcp-dir>
   agent_config.py deny-plan  <claude|cursor> <arquivo> <deny.json>
   agent_config.py deny-apply <claude|cursor> <arquivo> <deny.json>
+  agent_config.py settings-plan  claude <arquivo> <fragmento.json>  (chave\\tadd|update)
+  agent_config.py settings-apply claude <arquivo> <fragmento.json>
 """
 
 import glob
@@ -273,6 +275,71 @@ def deny_apply(agent, path, deny_path):
         print(rule)
 
 
+# --- Settings do Claude Code ---------------------------------------------------
+# Chaves que só o Claude Code lê (skillOverrides, autoMode, …), declaradas num
+# fragmento do settings.json (ADR 0028). Mesclar segue a regra do arquivo:
+# objeto desce chave a chave, lista ganha o item que falta, escalar do repo
+# vence — e o que a máquina tem a mais fica.
+
+
+def repo_settings(agent, fragment_path):
+    if agent != "claude":
+        raise repo_error("settings/ declara chaves só do Claude Code; o Cursor não tem par.")
+    try:
+        with open(fragment_path, encoding="utf-8") as fh:
+            spec = json.loads(fh.read().replace("${HOME}", os.environ["HOME"]))
+    except (OSError, ValueError) as exc:
+        raise repo_error("%s inválido (%s)" % (fragment_path, exc))
+    if not isinstance(spec, dict) or not spec:
+        raise repo_error("%s: esperado um objeto JSON não vazio" % fragment_path)
+    return spec
+
+
+def settings_diff(want, have, prefix=""):
+    """[(chave, add|update)] onde a máquina ainda não contém o que o repo declara."""
+    diffs = []
+    for key, value in want.items():
+        path = prefix + key
+        if key not in have:
+            diffs.append((path, "add"))
+        elif isinstance(value, dict) and isinstance(have[key], dict):
+            diffs += settings_diff(value, have[key], path + ".")
+        elif isinstance(value, list) and isinstance(have[key], list):
+            if any(item not in have[key] for item in value):
+                diffs.append((path, "update"))
+        elif have[key] != value:
+            diffs.append((path, "update"))
+    return diffs
+
+
+def settings_merge(want, have):
+    for key, value in want.items():
+        if isinstance(value, dict) and isinstance(have.get(key), dict):
+            settings_merge(value, have[key])
+        elif isinstance(value, list) and isinstance(have.get(key), list):
+            have[key].extend([item for item in value if item not in have[key]])
+        else:
+            have[key] = value
+
+
+def settings_plan(agent, path, fragment_path):
+    want = repo_settings(agent, fragment_path)
+    for key, v in settings_diff(want, load_agent(path)):
+        print("%s\t%s" % (key, v))
+
+
+def settings_apply(agent, path, fragment_path):
+    want = repo_settings(agent, fragment_path)
+    data = load_agent(path)
+    diffs = settings_diff(want, data)
+    if not diffs:
+        return
+    settings_merge(want, data)
+    save(path, data)
+    for key, v in diffs:
+        print("%s\t%s" % (key, v))
+
+
 def main(argv):
     cmd, args = (argv[0], argv[1:]) if argv else ("", [])
     if cmd == "mcp-servers" and len(args) == 1:
@@ -285,6 +352,8 @@ def main(argv):
             "mcp-apply": mcp_apply,
             "deny-plan": deny_plan,
             "deny-apply": deny_apply,
+            "settings-plan": settings_plan,
+            "settings-apply": settings_apply,
         }.get(cmd)
         if handler:
             return handler(*args)

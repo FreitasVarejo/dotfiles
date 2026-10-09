@@ -3,8 +3,8 @@
 # Checks READ-ONLY do pacote 'agents': skills visíveis para os agentes (Claude
 # Code e Cursor CLI leem o mesmo ~/.claude/skills), referências entre skills,
 # espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
-# permissions/deny.json em cada agente presente e as instruções de usuário de
-# instructions/ no Claude Code.
+# permissions/deny.json em cada agente presente, o settings/claude.json e as
+# instruções de usuário de instructions/ no Claude Code.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -229,6 +229,25 @@ else
   else
     log_optional "Sem Cursor: deny dele não verificado."
   fi
+fi
+
+# 5b. Settings do Claude Code ---------------------------------------------------
+# settings/claude.json declara chaves que só o Claude Code lê (ADR 0028). Faltar
+# é aviso, como no deny: o setup.sh mescla.
+echo ""
+log_info "--- Settings do Claude Code (agents/settings/claude.json) ---"
+if ! command -v python3 &>/dev/null; then
+  log_optional "Sem python3: settings não comparado com o repo."
+elif ! command -v claude &>/dev/null; then
+  log_optional "Sem Claude Code: settings dele não verificado."
+elif ! diff=$(agent_config settings-plan claude "$CLAUDE_SETTINGS" "$AGENTS_CLAUDE_SETTINGS_FILE"); then
+  config_failed $? "claude: settings"
+elif [[ -z "$diff" ]]; then
+  log_success "claude: settings em dia (${CLAUDE_SETTINGS/#$HOME/\~})"
+else
+  log_warn "claude: settings fora do repo em $(wc -l <<<"$diff") chave(s)"
+  while IFS=$'\t' read -r key verdict; do echo "    -> $key ($verdict)"; done <<<"$diff"
+  echo "    -> Aplicar: ./setup.sh"
 fi
 
 # 6. Instruções de usuário -------------------------------------------------------
