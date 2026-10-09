@@ -6,7 +6,9 @@
 
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 
-_nvm_lazy_load() {
+# Sem '_' na frente de propósito: o snapshot de shell do Claude Code descarta
+# funções com '_', e os wrappers abaixo ficariam chamando um helper que sumiu.
+dotfiles_nvm_load() {
     # Remove nossos wrappers ANTES de carregar nvm.sh, porque nvm.sh
     # define 'nvm' como função e nossos unset no fim apagariam ela.
     for _cmd in nvm node npm npx pnpm corepack; do
@@ -23,15 +25,10 @@ _nvm_lazy_load() {
         corepack enable 2>/dev/null || true
     fi
 
-    unset -f _nvm_lazy_load
-}
-
-_nvm_wrap() {
-    _nvm_lazy_load
-    "$@"
+    unset -f dotfiles_nvm_load
 }
 
 for _cmd in nvm node npm npx pnpm corepack; do
-    eval "$_cmd() { _nvm_wrap $_cmd \"\$@\"; }"
+    eval "$_cmd() { dotfiles_nvm_load; $_cmd \"\$@\"; }"
 done
 unset _cmd
