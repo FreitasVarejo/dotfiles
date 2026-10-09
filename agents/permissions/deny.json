@@ -1,4 +1,5 @@
 {
   "read": ["~/.bashrc.local", "~/.config/gh/hosts.yml"],
-  "shell": ["env", "printenv:*", "gh auth token"]
+  "shell": ["env", "printenv:*", "gh auth token"],
+  "edit": ["~/ObsidianVault/daily/**", "~/ObsidianVault/**/*.sync-conflict-*"]
 }
