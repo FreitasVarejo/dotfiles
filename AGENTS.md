@@ -8,7 +8,7 @@ in `STOW_TARGETS`): nothing in it mirrors `$HOME`, so `setup.sh` only runs its s
 ## Architecture: thin orchestrators + per-package hooks
 
 `setup.sh` and `healthcheck.sh` are **thin orchestrators**. The actual validation and
-imperative setup logic lives *inside each package* under `<pkg>/hooks/`:
+imperative setup logic lives _inside each package_ under `<pkg>/hooks/`:
 
 ```
 lib/common.sh          # shared logging, package-manager detection (PM_INSTALL), check_cmd
@@ -104,7 +104,7 @@ Invariants an agent must not break:
   line, and the frontmatter `id:` must match the filename.
 - Renaming an id **breaks external backlinks irrecoverably** unless done through
   `freitask rename` / `M.apply_edit`, which call `M.retarget_links`. Archiving
-  by hand is only *repairable* damage (`freitask doctor --fix`) — still use the CLI.
+  by hand is only _repairable_ damage (`freitask doctor --fix`) — still use the CLI.
 - Archiving/unarchiving append a dated line to the `## Histórico` footer. Do not
   write there by hand: the path stays the source of truth, and a history line
   without the corresponding move is just text lying about where the file is.
@@ -127,7 +127,7 @@ Inspect/undo with `vaultgit log|restore`. Never commit it by hand.
 Contract watchdog: `vault-lint` (read-only) reports three kinds of rot across the
 vault and every repo that carries a contract — a `~/…` path cited in an
 `AGENTS.md`/`CLAUDE.md`/`docs/agents/` file that no longer exists, a note (ADR
-or not) superseded *inteira* — read from `supersede:` on the new one or
+or not) superseded _inteira_ — read from `supersede:` on the new one or
 `supersedida-por:` on the old one — still marked `status: vigente`, and a
 wikilink with no target. It is deliberately **separate from `freitask doctor`**
 (that one owns the task domain and fails) and it runs as a **warning only** — a
@@ -349,6 +349,6 @@ Work lives as freitask tasks in `~/ObsidianVault/projects/workflow-ia/tasks/`, n
 
 ### Domain docs
 
-The *why* lives in the vault, not here (ADR 0001): decisions in
+The _why_ lives in the vault, not here (ADR 0001): decisions in
 `~/ObsidianVault/projects/workflow-ia/decisoes/`, glossary in
 `~/ObsidianVault/projects/workflow-ia/glossario.md`. See `docs/agents/domain.md`.
