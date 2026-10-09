@@ -58,7 +58,9 @@ finding() { FINDINGS+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"$'\t'"${5:-1}"); }
 # Contrato é AGENTS.md / CLAUDE.md e o que está em docs/agents/ — o AGENTS.md
 # dos dotfiles trata os dois como o mesmo gênero. As instruções de usuário
 # (agents/instructions/, que viram ~/.claude/CLAUDE.md e ~/.claude/rules/) são
-# contrato também, e carregam em toda sessão (ADR 0026).
+# contrato também, e carregam em toda sessão (ADR 0026). Contrato por escopo de
+# carga (ADR 0029) também é contrato: AGENTS.md/CLAUDE.md aninhados, as regras
+# por caminho em .claude/rules/ e os subagents em .claude/agents/.
 contract_files() {
   local root=$1 f
   for f in "$root/AGENTS.md" "$root/CLAUDE.md"; do
@@ -70,7 +72,25 @@ contract_files() {
   if [[ -d "$root/agents/instructions" ]]; then
     find "$root/agents/instructions" -maxdepth 2 -name '*.md' -type f 2>/dev/null | sort
   fi
+  if [[ -d "$root/.claude/rules" ]]; then
+    find "$root/.claude/rules" -name '*.md' -type f 2>/dev/null | sort
+  fi
+  if [[ -d "$root/.claude/agents" ]]; then
+    find "$root/.claude/agents" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort
+  fi
+  nested_contracts "$root" | sort
   return 0
+}
+
+# AGENTS.md/CLAUDE.md abaixo da raiz. Poda o que é cópia ou dependência: uma
+# worktree em .claude/worktrees/ repetiria o contrato do próprio repo.
+nested_contracts() {
+  local root=$1 depth=${2:-}
+  find "$root" ${depth:+-maxdepth "$depth"} \
+    \( -name .git -o -name node_modules -o -name target -o -name .venv \
+       -o -name dist -o -name build -o -path "$root/.claude/worktrees" \) -prune \
+    -o -type f \( -name AGENTS.md -o -name CLAUDE.md \) \
+    ! -path "$root/AGENTS.md" ! -path "$root/CLAUDE.md" -print 2>/dev/null
 }
 
 # Raízes varridas: o vault, os dotfiles e todo repo em ~/dev e ~/projects que
@@ -82,7 +102,9 @@ lint_roots() {
   for parent in "$HOME/dotfiles" "$HOME"/dev/*/ "$HOME"/projects/*/; do
     dir=${parent%/}
     [[ -d "$dir" ]] || continue
-    [[ -f "$dir/AGENTS.md" || -f "$dir/CLAUDE.md" ]] || continue
+    # Monorepo com contrato só por app (apps/web/AGENTS.md) também é raiz.
+    [[ -f "$dir/AGENTS.md" || -f "$dir/CLAUDE.md" || -d "$dir/.claude/rules" ]] \
+      || [[ -n "$(nested_contracts "$dir" 3 | head -1)" ]] || continue
     printf '%s\n' "$dir"
   done
 }
