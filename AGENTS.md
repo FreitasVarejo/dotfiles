@@ -314,6 +314,10 @@ Required tools (checked by `healthcheck.sh`):
     and merged into Cursor's MCP config on machines where Cursor is installed.
   - `agents/permissions/deny.json`: what no agent may read or run (the secrets below),
     merged into each present agent's `permissions.deny`.
+  - `agents/instructions/user.md` → `~/.claude/CLAUDE.md`, and `agents/instructions/machines/<hostname>.md`
+    → `rules/maquina.md` under `~/.claude/`, on the host with that name (ADR 0026). One symlink per
+    file, made by the setup hook only where `claude` exists; `agents/hooks/check.sh` fails when a
+    link is missing. A line goes in `user.md` only when it holds in two repos and names no project noun.
   - Merges only add or update what the repo declares; anything the machine added stays.
 - **Skills policy** (ADRs 0004, 0006, 0007, 0010 in
   `~/ObsidianVault/projects/workflow-ia/decisoes/`): third-party skills are **vendored**

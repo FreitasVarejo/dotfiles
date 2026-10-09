@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 # Setup do pacote 'agents' (pacote só de hook: o setup.sh raiz não o stowa):
 #   - linka cada skill em cada diretório de skills dos agentes;
+#   - linka as instruções de usuário (instructions/) no Claude Code;
 #   - registra os MCP servers de mcp/ no Claude Code e no Cursor;
 #   - mescla permissions/deny.json no deny do Claude Code e do Cursor.
 
@@ -17,9 +18,7 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # links assim são do setup; qualquer outro é de alguém e não se mexe nele.
 points_into_repo() {
   local target base
-  target=$(readlink "$1")
-  [[ "$target" == /* ]] || target="$(dirname "$1")/$target"
-  target=$(realpath -m "$target")
+  target=$(link_target "$1")
   for base in "$AGENTS_SKILLS_DIR" "$AGENTS_LEGACY_SKILLS_DIR"; do
     [[ "$target" == "$base" || "$target" == "$base"/* ]] && return 0
   done
@@ -88,6 +87,46 @@ link_skills() {
     done
   done
   log_success "Skills do pacote linkadas em: ${AGENT_SKILL_DIRS[*]/#$HOME/\~}"
+}
+
+# link_instruction <fonte> <destino> — um symlink por arquivo (ADR 0026). Destino
+# que já existe e não é link do repo (arquivo escrito à mão, link alheio) não se
+# toca: o aviso diz o que fazer.
+link_instruction() {
+  local want="$1" link="$2"
+  if [[ -L "$link" && "$(readlink -f "$link")" == "$want" ]]; then
+    return 0
+  elif [[ -L "$link" ]] && ! points_into_instructions "$link"; then
+    log_warn "${link/#$HOME/\~} é symlink para fora do repo; não mexo"
+  elif [[ -e "$link" && ! -L "$link" ]]; then
+    log_warn "${link/#$HOME/\~} é arquivo real; não mexo (junte-o a ${want/#$HOME/\~} e apague)"
+  elif mkdir -p "$(dirname "$link")" && ln -sfn "$want" "$link"; then
+    log_success "instrução linkada: ${link/#$HOME/\~}"
+  else
+    log_warn "Falha ao linkar ${link/#$HOME/\~}"
+  fi
+}
+
+link_instructions() {
+  if ! command -v claude &>/dev/null; then
+    log_optional "claude não encontrado, pulando as instruções de usuário"
+    return
+  fi
+
+  local src dest
+  while IFS=$'\t' read -r src dest; do
+    [[ -n "$src" ]] && link_instruction "$src" "$dest"
+  done < <(instruction_links)
+
+  # Máquina sem arquivo próprio: o link de outra época (arquivo apagado ou
+  # renomeado) sai. Link que não é do repo fica como está.
+  if [[ -L "$CLAUDE_MACHINE_MD" ]] &&
+    [[ ! -f "$AGENTS_INSTRUCTIONS_DIR/machines/$AGENTS_MACHINE.md" ]] &&
+    points_into_instructions "$CLAUDE_MACHINE_MD"; then
+    rm "$CLAUDE_MACHINE_MD"
+    log_info "Link removido: ${CLAUDE_MACHINE_MD/#$HOME/\~} (sem machines/$AGENTS_MACHINE.md)"
+  fi
+  log_success "Instruções de usuário processadas (host: $AGENTS_MACHINE)"
 }
 
 register_claude_mcp_servers() {
@@ -169,6 +208,10 @@ apply_deny() {
 
 log_info "Linkando as skills..."
 link_skills
+
+echo ""
+log_info "Linkando as instruções de usuário..."
+link_instructions
 
 if ! command -v python3 &>/dev/null; then
   log_warn "python3 não encontrado; MCPs e permissões não foram aplicados."

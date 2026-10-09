@@ -2,8 +2,9 @@
 # shellcheck shell=bash
 # Checks READ-ONLY do pacote 'agents': skills visíveis para os agentes (Claude
 # Code e Cursor CLI leem o mesmo ~/.claude/skills), referências entre skills,
-# espelho das skills `web` no claude.ai, MCP servers de mcp/ e o deny de
-# permissions/deny.json em cada agente presente.
+# espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
+# permissions/deny.json em cada agente presente e as instruções de usuário de
+# instructions/ no Claude Code.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -227,6 +228,40 @@ else
     report_deny cursor "$CURSOR_CLI_CONFIG"
   else
     log_optional "Sem Cursor: deny dele não verificado."
+  fi
+fi
+
+# 6. Instruções de usuário -------------------------------------------------------
+# instructions/user.md vira ~/.claude/CLAUDE.md e, na máquina com arquivo em
+# machines/, o <host>.md vira ~/.claude/rules/maquina.md (ADR 0026). O pacote é
+# o dono dos links, como nas skills: faltar é vermelho e o conserto é o
+# setup.sh. Arquivo real no lugar do link é aviso: alguém o escreveu, e o
+# setup.sh não o sobrescreve.
+echo ""
+log_info "--- Instruções de usuário (agents/instructions/) ---"
+if ! command -v claude &>/dev/null; then
+  log_optional "Sem Claude Code: instruções de usuário não verificadas."
+else
+  mapfile -t INSTRUCTIONS < <(instruction_links)
+  for pair in "${INSTRUCTIONS[@]}"; do
+    IFS=$'\t' read -r src dest <<<"$pair"
+    if [[ -L "$dest" && "$(readlink -f "$dest")" == "$src" ]]; then
+      log_success "${dest/#$HOME/\~} -> ${src/#$HOME/\~}"
+    elif [[ -e "$dest" && ! -L "$dest" ]]; then
+      log_warn "${dest/#$HOME/\~} é arquivo real; ${src/#$HOME/\~} não chega ao agente"
+      echo "    -> Juntar o conteúdo ao arquivo do repo, apagar o real e rodar ./setup.sh"
+    else
+      log_missing "${dest/#$HOME/\~} não aponta para ${src/#$HOME/\~}"
+      echo "    -> Rodar: ./setup.sh"
+      fail_check
+    fi
+  done
+  if [[ ! -f "$AGENTS_INSTRUCTIONS_DIR/machines/$AGENTS_MACHINE.md" ]]; then
+    log_optional "Sem machines/$AGENTS_MACHINE.md: nenhuma regra específica desta máquina."
+    if [[ -L "$CLAUDE_MACHINE_MD" ]] && points_into_instructions "$CLAUDE_MACHINE_MD"; then
+      log_warn "${CLAUDE_MACHINE_MD/#$HOME/\~} sobrou de outra época"
+      echo "    -> Rodar: ./setup.sh"
+    fi
   fi
 fi
 

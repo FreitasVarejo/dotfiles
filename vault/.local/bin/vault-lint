@@ -56,7 +56,9 @@ finding() { FINDINGS+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"$'\t'"${5:-1}"); }
 
 # --- Check 1: caminho citado em contrato que não existe ---------------------
 # Contrato é AGENTS.md / CLAUDE.md e o que está em docs/agents/ — o AGENTS.md
-# dos dotfiles trata os dois como o mesmo gênero.
+# dos dotfiles trata os dois como o mesmo gênero. As instruções de usuário
+# (agents/instructions/, que viram ~/.claude/CLAUDE.md e ~/.claude/rules/) são
+# contrato também, e carregam em toda sessão (ADR 0026).
 contract_files() {
   local root=$1 f
   for f in "$root/AGENTS.md" "$root/CLAUDE.md"; do
@@ -64,6 +66,9 @@ contract_files() {
   done
   if [[ -d "$root/docs/agents" ]]; then
     find "$root/docs/agents" -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort
+  fi
+  if [[ -d "$root/agents/instructions" ]]; then
+    find "$root/agents/instructions" -maxdepth 2 -name '*.md' -type f 2>/dev/null | sort
   fi
   return 0
 }

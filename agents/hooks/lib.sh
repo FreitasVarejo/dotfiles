@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 #
 # Base comum dos hooks do pacote 'agents' (check.sh, setup.sh, build-web-zip.sh):
-# onde ficam skills, MCPs e permissões no repo, e onde cada agente os lê.
+# onde ficam skills, MCPs, permissões e instruções no repo, e onde cada agente os lê.
 #
 # O pacote não é stowado. Nada nele espelha $HOME: as skills são linkadas uma a
 # uma pelo setup.sh, e MCPs e permissões são mesclados em arquivos que os
@@ -34,6 +34,16 @@ CLAUDE_SYNCED_SKILLS_DIR="$HOME/.claude/skills/synced"
 # Links para cá ficaram pendurados com a mudança; o setup.sh os refaz.
 # shellcheck disable=SC2034  # consumido pelos hooks via source
 AGENTS_LEGACY_SKILLS_DIR="$(dirname "$AGENTS_PKG_DIR")/claude/.claude/skills"
+
+# Instruções de nível usuário do Claude Code (ADR 0026). instructions/user.md vira
+# ~/.claude/CLAUDE.md, e o arquivo de instructions/machines/ com o nome do host
+# vira ~/.claude/rules/maquina.md. Um symlink por arquivo, nunca ~/.claude, que
+# tem estado. O hostname vai sem domínio; AGENTS_MACHINE troca o host para testar
+# outra máquina sem mexer nesta.
+AGENTS_INSTRUCTIONS_DIR="$AGENTS_PKG_DIR/instructions"
+CLAUDE_USER_MD="${CLAUDE_USER_MD:-$HOME/.claude/CLAUDE.md}"
+CLAUDE_MACHINE_MD="${CLAUDE_MACHINE_MD:-$HOME/.claude/rules/maquina.md}"
+AGENTS_MACHINE="${AGENTS_MACHINE:-${HOSTNAME%%.*}}"
 
 # Config de MCP de escopo user de cada agente. A do Claude Code é lida direto,
 # e não pela saída de `claude mcp list`, por dois motivos: o `list` imprime nome
@@ -83,4 +93,31 @@ skill_surfaces() {
 # package_skills — nome de cada skill do pacote, uma por linha, ordenado.
 package_skills() {
   find "$AGENTS_SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+}
+
+# link_target <symlink> — destino absoluto e normalizado do link, mesmo
+# pendurado (`readlink -f` não serve: some com o que não existe).
+link_target() {
+  local target
+  target=$(readlink "$1")
+  [[ "$target" == /* ]] || target="$(dirname "$1")/$target"
+  realpath -m "$target"
+}
+
+# points_into_instructions <symlink> — o link aponta (mesmo pendurado) para algo
+# dentro de instructions/? Só links assim são do setup; qualquer outro é de
+# alguém e não se mexe nele.
+points_into_instructions() {
+  [[ "$(link_target "$1")" == "$AGENTS_INSTRUCTIONS_DIR"/* ]]
+}
+
+# instruction_links — "<fonte>\t<destino>" para cada instrução que existe no
+# repo para ESTA máquina: user.md sempre, e o arquivo de machines/ com o nome do
+# host, se houver. Máquina sem arquivo próprio não tem regra de máquina.
+instruction_links() {
+  local user="$AGENTS_INSTRUCTIONS_DIR/user.md"
+  local machine="$AGENTS_INSTRUCTIONS_DIR/machines/$AGENTS_MACHINE.md"
+  [[ -f "$user" ]] && printf '%s\t%s\n' "$user" "$CLAUDE_USER_MD"
+  [[ -f "$machine" ]] && printf '%s\t%s\n' "$machine" "$CLAUDE_MACHINE_MD"
+  return 0
 }
