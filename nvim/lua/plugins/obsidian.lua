@@ -56,6 +56,61 @@ local function new_note()
   end)
 end
 
+-- A link by name (`[[foo]]`) is found anywhere in the vault, so it survives the
+-- note moving to another folder; a link with a path breaks. This prompts for
+-- the note relative to the current note's folder (`../` climbs) and inserts
+-- `[[<name>]]` at the cursor. A note that does not exist is created after a
+-- confirmation, but never where the contract forbids (the header). Two notes
+-- with the same name: the link goes to the first one found.
+local function insert_link()
+  local name = vim.api.nvim_buf_get_name(0)
+  local rel = name ~= "" and vim.fs.relpath(vault, vim.fs.dirname(name)) or nil
+  if not rel then
+    return vim.notify("Not a note in the vault", vim.log.levels.WARN)
+  end
+  local base = rel == "." and "" or rel .. "/"
+
+  vim.ui.input({ prompt = "Link from " .. (base == "" and "the vault root" or base) .. ": " }, function(input)
+    input = input and vim.trim(input) or ""
+    if input == "" then
+      return
+    end
+    local target = vim.fs.normalize(base .. input):gsub("%.md$", "")
+    if target == ".." or vim.startswith(target, "../") or vim.startswith(target, "/") then
+      return vim.notify("That path leaves the vault", vim.log.levels.WARN)
+    end
+    local ok, obsidian = pcall(require, "obsidian")
+    if not ok then
+      return vim.notify("obsidian.nvim is not loaded", vim.log.levels.WARN)
+    end
+    local put = function(id)
+      vim.api.nvim_put({ "[[" .. id .. "]]" }, "c", true, true)
+    end
+
+    -- The file is named by `note_id_func` ("Foo Bar" -> "foo-bar.md").
+    local dir, title = vim.fs.dirname(target), vim.fs.basename(target)
+    for _, id in ipairs({ title, require("obsidian.builtin").title_to_slug(title) }) do
+      if vim.uv.fs_stat(vim.fs.joinpath(vault, dir, id .. ".md")) then
+        return put(id)
+      end
+    end
+
+    local closed = dir == "."
+    for _, folder in ipairs({ "tasks", "decisoes", "daily" }) do
+      closed = closed or vim.list_contains(vim.split(dir, "/"), folder)
+    end
+    if closed then
+      return vim.notify(("'%s' does not exist, and no new note goes there"):format(target), vim.log.levels.WARN)
+    end
+    if obsidian.api.confirm(("Create new note '%s'?"):format(target)) ~= "Yes" then
+      return
+    end
+    require("obsidian.actions").new(target, function(note)
+      put(note.id)
+    end)
+  end)
+end
+
 return {
   {
     "obsidian-nvim/obsidian.nvim",
@@ -68,6 +123,7 @@ return {
       { "<leader>oo", "<cmd>Obsidian quick_switch<cr>", desc = "Quick switch note" },
       { "<leader>os", "<cmd>Obsidian search<cr>", desc = "Search notes" },
       { "<leader>on", new_note, desc = "New note" },
+      { "<leader>oi", insert_link, desc = "Insert link from this note's folder" },
       { "<leader>oT", "<cmd>Obsidian template<cr>", desc = "Insert template" },
       { "<leader>ol", "<cmd>Obsidian links<cr>", desc = "Links in note" },
       { "<leader>ok", "<cmd>Obsidian backlinks<cr>", desc = "Backlinks" },
