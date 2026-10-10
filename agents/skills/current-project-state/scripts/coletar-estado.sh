@@ -734,8 +734,9 @@ gravar_registro() {
 coletor, que os recalcula em segundos; aqui fica só o que ele não sabe derivar.
 Quando este registro divergir do coletor, quem está errado é ele.
 
-Task é citada entre crases, nunca como wikilink com caminho: arquivar uma task
-muda o caminho dela, e o link quebrado vira erro irreparável no `freitask doctor`.
+Task é citada entre crases, nunca como wikilink: ao arquivar, o `freitask`
+reescreve os wikilinks de task do vault inteiro, inclusive no `estado-` da outra
+máquina, e este arquivo é só desta (ADR 0032 do workflow-ia).
 TXT
     printf '\n## Na sua fila desde\n'
     printf '<!-- gerado pelo coletor: não edite à mão. A data é quando ESTE registro\n'
