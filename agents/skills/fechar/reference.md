@@ -8,7 +8,7 @@ Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0031.
 | passo que depende do dono | "Para retomar" na task, em ordem | você |
 | posse que a sessão tomou | apagar `dono`, `desde` e `dominio` | você |
 | decisão de conversa ou adiamento | `estado-<host>.md`, pela `current-project-state` | o dono |
-| decisão firme e estrutural | proposta de ADR | o dono |
+| decisão que passa no critério de ADR da skill `domain-modeling` | proposta de ADR | o dono |
 | regra para agentes | proposta de mudança no contrato | o dono |
 | ponta solta sem task | task nova, pela skill `freitask` | o dono |
 | task terminada | `freitask archive <id> done`, depois do portão | o dono |
@@ -17,8 +17,9 @@ Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0031.
 
 - **O que o script ou o coletor recalcula:** commit, lista de arquivos, título
   de PR, contagem. Isso envelhece e passa a mentir.
-- **Task citada em nota gerada:** vai entre crases, nunca como wikilink com
-  caminho. Arquivar muda o caminho.
+- **Task como wikilink no `estado-<host>.md`:** lá ela vai entre crases, pela
+  regra da `current-project-state`. No corpo de task, o formato é o da skill
+  `freitask`.
 - **`## Histórico`:** é do freitask.
 - **`daily/`:** não se escreve.
 - **`*.sync-conflict-*`:** não se resolve; aponta-se.

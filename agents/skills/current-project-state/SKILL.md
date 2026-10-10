@@ -100,8 +100,8 @@ Isso reescreve o frontmatter e a fila em
 prosa das três seções seguintes. Depois, edite só essas três:
 
 - `## Decidido na conversa` — o que o dono resolveu e ainda não virou ADR. Uma
-  linha datada por decisão. Decisão firme e estrutural **não** mora aqui: vira
-  ADR em `decisoes/`.
+  linha datada por decisão. Decisão que passa no critério de ADR da skill
+  `domain-modeling` **não** mora aqui: vira ADR em `decisoes/`.
 - `## Adiado de propósito` — o que ele mandou deixar para depois, com o porquê.
   É o que impede a próxima rodada de cobrar de novo.
 - `## Leitura da última rodada` — uma ou duas frases sobre onde a frente está.
@@ -116,12 +116,13 @@ mentir; o coletor refaz tudo isso em 2 s e nunca erra.
 
 ## 6. Duas regras invioláveis
 
-**Task se cita entre crases, nunca como wikilink com caminho.** Arquivar uma
-task muda o caminho dela — no vault, estar arquivada *é* o caminho — e o check 8
-do `freitask doctor` marca link de task que não resolve como `error`
-**irreparável**. Os dois vigias ignoram o que está entre crases, então crase é
-imune por construção. ADR e nota de spec podem ir como `[[0057-...]]`: essas
-quase não mudam de nome.
+**No `estado-<host>.md`, task se cita entre crases, nunca como wikilink.** Ao
+arquivar, o `freitask` reescreve os wikilinks de task do vault inteiro na máquina
+que arquivou, e isso inclui o `estado-` da outra máquina: dois hosts escrevendo
+no mesmo arquivo é o `sync-conflict` que o registro por máquina existe para
+evitar. Id entre crases ele não toca. ADR e nota de spec podem ir como
+`[[0057-...]]`. A regra e o porquê: ADR 0032 em
+`~/ObsidianVault/projects/workflow-ia/decisoes/`.
 
 **Fora esse arquivo, não escreva em lugar nenhum.** Mudar fase de task,
 arquivar, renomear ou criar é trabalho do `freitask`, e o `AGENTS.md` do vault
