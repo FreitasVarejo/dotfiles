@@ -36,7 +36,7 @@ Never create `CONTEXT.md`, `CONTEXT-MAP.md` or `docs/adr/` in the repo: a second
 
 Write in the language the existing notes use.
 
-Create the files lazily, only when you have something to write. A project with no `glossario.md` gets one when its first term is resolved, shaped like another project's glossary in the vault. An empty `decisoes/` takes its format from the most recent ADR of another project.
+Create the files lazily, only when you have something to write. A project with no `glossario.md` gets one when its first term is resolved, shaped like another project's glossary in the vault. A project with no `decisoes/` gets the folder with its first ADR, numbered `0001`; while the folder is empty or missing, the format comes from the most recent ADR of another project.
 
 ## During the session
 
@@ -84,7 +84,7 @@ What tends to qualify:
 
 ## Writing an ADR
 
-- **Number**: the highest `NNNN` in `decisoes/` plus one. File name `NNNN-slug-in-kebab-case.md`.
+- **Number**: the highest `NNNN` in `decisoes/` plus one, or `0001` when there is none. File name `NNNN-slug-in-kebab-case.md`.
 - **Format by example**: open the most recent ADR in the folder and copy its shape: the frontmatter keys (`tipo`, `status`, `decidido-em`, `origem`, and `supersede` when it applies) and the sections it uses. Don't bring a template from elsewhere.
-- **An ADR is never edited once written.** To change a decision, write a new ADR that supersedes it. `supersede:` names the old one and how much of it goes: `"[[NNNN-slug]] — parcial: <which clause>"`, and the old one stays `vigente`; or `"[[NNNN-slug]] — inteira"`, and then the old one's frontmatter alone changes, to `status: supersedida` plus `supersedida-por: "[[new-slug]] — inteira"`. Look for an existing supersede in the folder and match it.
+- **An ADR's body is never edited once written.** To change a decision, write a new ADR that supersedes it. `supersede:` names the old one and how much of it goes: `"[[NNNN-slug]] — parcial: <which clause>"`, and the old one stays `vigente`; or `"[[NNNN-slug]] — inteira"`, and then the old one's frontmatter alone changes, to `status: supersedida` plus `supersedida-por: "[[new-slug]] — inteira"`. Look for an existing supersede in the folder and match it.
 - **If the decision contradicts an ADR in force**, say so to the user before writing, and make the new ADR supersede the clause it contradicts.
