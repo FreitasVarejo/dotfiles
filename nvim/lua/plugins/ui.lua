@@ -1,26 +1,9 @@
 return {
-  -- Disable built-in netrw so yazi owns directory listings.
-  -- Setting it here is sufficient for yazi-triggered opens; for
-  -- initial directory buffers, also handled by LazyVim by default.
+  -- Pasta aberta na linha de comando fica com o explorer do Snacks; o yazi é
+  -- só por tecla ou :Yazi (que o próprio plugin registra, com cwd/toggle/logs).
   {
     "mikavilpas/yazi.nvim",
     event = "VeryLazy",
-    config = function()
-      vim.g.loaded_netrwPlugin = 1
-      vim.api.nvim_create_user_command("Yazi", function(opts)
-        if opts.args and opts.args ~= "" then
-          require("yazi").yazi(nil, opts.args)
-        else
-          require("yazi").yazi()
-        end
-      end, { nargs = "?", desc = "Open yazi" })
-      vim.api.nvim_create_user_command("YaziCwd", function()
-        require("yazi").yazi(nil, vim.fn.getcwd())
-      end, { desc = "Open yazi at current working directory" })
-      vim.api.nvim_create_user_command("YaziToggle", function()
-        require("yazi").toggle()
-      end, { desc = "Toggle yazi" })
-    end,
     keys = {
       {
         "<leader>-",
@@ -44,11 +27,18 @@ return {
         desc = "Toggle the last yazi session",
       },
     },
+  },
+
+  {
+    "mason-org/mason.nvim",
     opts = {
-      open_for_directories = true,
-      change_neovim_cwd_on_close = true,
-      keymaps = {
-        show_help = "<f1>",
+      ui = {
+        border = "rounded",
+        icons = {
+          package_installed = "✓",
+          package_pending = "➜",
+          package_uninstalled = "✗",
+        },
       },
     },
   },

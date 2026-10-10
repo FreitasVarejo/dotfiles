@@ -1,4 +1,18 @@
 return {
+  -- O pacote `roslyn` (que o roslyn.nvim usa) vem do registro Crashdummyy.
+  -- `registries` não soma entre specs (não há opts_extend): a lista inteira
+  -- vale, por isso repete o oficial.
+  {
+    "mason-org/mason.nvim",
+    opts = {
+      registries = {
+        "github:Crashdummyy/mason-registry",
+        "github:mason-org/mason-registry",
+      },
+      ensure_installed = { "roslyn", "netcoredbg" },
+    },
+  },
+
   {
     "nvim-treesitter/nvim-treesitter",
     opts = {

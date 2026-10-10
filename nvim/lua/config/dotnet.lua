@@ -1,6 +1,5 @@
 -- Solution de trabalho de um buffer C#, para build/run/test/debug não
--- dependerem do cwd (o Yazi muda o cwd ao fechar, e a raiz de um monorepo
--- .NET costuma não ter solution).
+-- dependerem do cwd (a raiz de um monorepo .NET costuma não ter solution).
 local M = {}
 
 local skip_dirs = { bin = true, obj = true, node_modules = true }
