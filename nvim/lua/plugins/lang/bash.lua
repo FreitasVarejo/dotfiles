@@ -1,16 +1,4 @@
 return {
-  -- TreeSitter support for shell languages
-  {
-    "nvim-treesitter/nvim-treesitter",
-    opts = {
-      ensure_installed = {
-        "bash",        -- Bash scripting language
-        "fish",        -- Fish shell
-        "git_config",  -- Git configuration files
-      },
-    },
-  },
-
   -- Formatting with shfmt for shell scripts
   {
     "stevearc/conform.nvim",

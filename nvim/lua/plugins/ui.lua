@@ -1,22 +1,4 @@
 return {
-  -- Colorscheme
-  {
-    "folke/tokyonight.nvim",
-    lazy = true,
-    priority = 1000,
-    opts = function()
-      return {
-        transparent = false,
-      }
-    end,
-  },
-  {
-    "LazyVim/LazyVim",
-    opts = {
-      colorscheme = "tokyonight",
-    },
-  },
-
   -- Disable built-in netrw so yazi owns directory listings.
   -- Setting it here is sufficient for yazi-triggered opens; for
   -- initial directory buffers, also handled by LazyVim by default.
@@ -73,11 +55,7 @@ return {
 
   {
     "folke/snacks.nvim",
-    lazy = false,
-    priority = 1000,
     opts = {
-      picker = { enabled = true },
-      input = { enabled = true },
       image = { enabled = false },
       dashboard = {
         preset = {

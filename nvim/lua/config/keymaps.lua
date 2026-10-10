@@ -1,12 +1,11 @@
--- Keymaps are automatically loaded on the VeryLazy event
--- Default keymaps that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/keymaps.lua
--- Add any additional keymaps here
-
 local status_ok, discipline = pcall(require, "config.custom-mode.discipline")
 if status_ok then
   discipline.cowboy()
 end
 
+-- O extra snacks_explorer põe <leader>e/E ao carregar o snacks, antes deste
+-- arquivo. Num autocmd de User LazyDone não serve: sem arquivo na linha de
+-- comando o LazyVim só carrega o autocmds.lua no VeryLazy, depois do LazyDone.
 pcall(vim.keymap.del, "n", "<leader>e")
 pcall(vim.keymap.del, "n", "<leader>E")
 

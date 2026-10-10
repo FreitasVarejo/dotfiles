@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck shell=bash
-# Checks do pacote 'nvim': versão do Neovim, tree-sitter CLI, .NET SDK + Roslyn
-# LSP e os opcionais de preview de imagem. READ-ONLY: o warmup do lazy/Mason
+# Checks do pacote 'nvim': versão do Neovim, tree-sitter CLI e .NET SDK + Roslyn
+# LSP. READ-ONLY: o warmup do lazy/Mason
 # (que instala plugin) mora no setup.sh; a versão do fd que o Snacks exige é
 # checada no hook do bash.
 
@@ -15,14 +15,15 @@ if command -v nvim &>/dev/null; then
   CLEAN_VER="${NVIM_VER#v}"
   MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
   MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
-  if [ "$MAJOR" -gt 0 ] || { [ "$MAJOR" -eq 0 ] && [ "$MINOR" -ge 9 ]; }; then
+  # vim.lsp.config/vim.fs.relpath são da 0.11; o `:lsp restart` de lang/dotnet.lua, da 0.12.
+  if [ "$MAJOR" -gt 0 ] || { [ "$MAJOR" -eq 0 ] && [ "$MINOR" -ge 12 ]; }; then
     log_success "Neovim encontrado ($NVIM_VER)"
   else
-    log_warn "Neovim encontrado, mas versão antiga ($NVIM_VER). Recomendado v0.9+"
+    log_warn "Neovim encontrado, mas versão antiga ($NVIM_VER). Recomendado v0.12+"
   fi
 else
   log_missing "Neovim não encontrado."
-  echo "    -> Sugestão: Baixar a release mais recente do Github (v0.9+)"
+  echo "    -> Sugestão: Baixar a release mais recente do Github (v0.12+)"
   fail_check
 fi
 
@@ -47,7 +48,6 @@ if [ -d "$HOME/.dotnet" ]; then
   else
     log_warn "Roslyn não encontrado (C# no Neovim ficará sem LSP)."
     echo "    -> Instalar via Mason: nvim --headless '+MasonInstall roslyn' +qa"
-    echo "    -> Ou dotnet tool install --global csharp-ls"
   fi
 else
   log_warn ".NET SDK não encontrado."
@@ -64,13 +64,5 @@ else
   echo "    -> Baixe binário de: https://github.com/tree-sitter/tree-sitter/releases"
   echo "    -> Ou execute: cargo install tree-sitter-cli"
 fi
-
-echo ""
-log_info "--- Snacks.image optionals (preview de imagens inline) ---"
-log_optional "Estes são opcionais; o picker e dashboard funcionam sem eles."
-check_cmd "magick" "$PM_INSTALL imagemagick" "optional"
-check_cmd "gs" "$PM_INSTALL ghostscript" "optional"
-check_cmd "tectonic" "cargo install tectonic" "optional"
-check_cmd "mndc" "cargo install mandown" "optional"
 
 exit "$CHECK_FAILED"

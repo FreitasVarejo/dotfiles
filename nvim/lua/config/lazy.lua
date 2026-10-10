@@ -17,22 +17,14 @@ vim.opt.rtp:prepend(lazypath)
 require("lazy").setup({
   rocks = { enabled = false },
   spec = {
-    -- add LazyVim and import its plugins
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
-    -- Disable neo-tree before importing extras
-    { "nvim-neo-tree/neo-tree.nvim", enabled = false },
-    { "nvim-mini/mini.files", enabled = false },
-    -- import/override with your plugins
     { import = "plugins" },
     { import = "plugins.lang" },
   },
   defaults = {
     -- Lazy-load custom plugins by default (faster startup, especially on WSL)
     lazy = true,
-    -- It's recommended to leave version=false for now, since a lot the plugin that support versioning,
-    -- have outdated releases, which may break your Neovim install.
-    version = false, -- always use the latest git commit
-    -- version = "*", -- try installing the latest stable version for plugins that support semver
+    version = false,
   },
   checker = {
     -- Disabled: reduces background network noise on WSL and during long sessions
@@ -41,11 +33,8 @@ require("lazy").setup({
   },
   performance = {
     rtp = {
-      -- disable some rtp plugins
       disabled_plugins = {
         "gzip",
-        -- "matchit",
-        -- "matchparen",
         "netrwPlugin",
         "tarPlugin",
         "tohtml",

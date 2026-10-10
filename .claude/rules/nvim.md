@@ -9,6 +9,5 @@ paths:
   kebab-case or a single word; Lua variables `snake_case`.
 - Options, keymaps and autocmds go in `nvim/lua/config/{options,keymaps,autocmds}.lua`.
 - Optional features degrade gracefully (`pcall()` or a conditional), never an error at startup.
-- A Lazy extra that re-registers a default key can't be overridden in `keymaps.lua`: both
-  load on `VeryLazy` in undefined order. Delete the key on `User LazyDone` instead, as
-  `nvim/lua/config/autocmds.lua` does for `<leader>e`.
+- A key a Lazy extra registers is deleted in `~/dotfiles/nvim/lua/config/keymaps.lua`, as
+  `<leader>e` is; the why is in the comment there.
