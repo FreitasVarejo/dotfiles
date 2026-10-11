@@ -9,7 +9,8 @@
 # rodada, em projects/<projeto>/estado-<host>.md. Nunca toca em tasks/.
 #
 # Nada aqui é lista fixa. Projeto é pasta com `tasks/`; repo pertence ao
-# projeto quando o contrato dele cita `projects/<projeto>/`; host se vincula
+# projeto cujo `tasks/` o contrato dele aponta, ou, sem nenhum, ao que ele
+# cita em `projects/<projeto>/`; host se vincula
 # pela tag do frontmatter em `hosts/`. O mesmo princípio do `lint_roots()` do
 # vault-lint: derivado do disco, porque o clone já mudou de lugar uma vez.
 #
@@ -396,6 +397,11 @@ vault_json() {
 # Um repo pertence ao projeto quando o contrato dele aponta para a pasta do
 # projeto no vault — que é o elo que a ADR 0001 já mandou existir ("o repo
 # carrega contrato, o vault carrega o porquê"). Nenhuma lista fixa.
+#
+# Quem decide é o backlog: contrato que aponta o `tasks/` de algum projeto (o
+# issue tracker do repo) pertence só aos projetos apontados. Citar outro, como
+# uma ADR emprestada, não puxa o repo para lá. Sem `tasks/` nenhum, vale
+# qualquer citação.
 contrato_cita() {
   local dir=$1 arquivos=()
   local f
@@ -405,7 +411,11 @@ contrato_cita() {
       < <(find "$dir/docs/agents" -maxdepth 1 -name '*.md' -type f 2>/dev/null)
   fi
   [[ ${#arquivos[@]} -gt 0 ]] || return 1
-  grep -qlE "projects/$PROJETO([/[:space:]]|\$)" "${arquivos[@]}" 2>/dev/null
+  if grep -qE "projects/[a-z0-9][a-z0-9_.-]*/tasks" "${arquivos[@]}" 2>/dev/null; then
+    grep -qE "projects/$PROJETO/tasks" "${arquivos[@]}" 2>/dev/null
+  else
+    grep -qlE "projects/$PROJETO([/[:space:]]|\$)" "${arquivos[@]}" 2>/dev/null
+  fi
 }
 
 # Worktree e repo principal são o MESMO repo. Sem isto, os sete worktrees do
