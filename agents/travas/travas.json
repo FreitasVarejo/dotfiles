@@ -19,6 +19,20 @@
       "hooks": [
         { "type": "command", "command": "'${TRAVAS_DIR}/doctor-no-stop' marca", "timeout": 10 }
       ]
+    },
+    {
+      "matcher": "Bash",
+      "hooks": [
+        { "type": "command", "command": "'${TRAVAS_DIR}/verificacao-no-stop' pos-bash", "timeout": 30 }
+      ]
+    }
+  ],
+  "PostToolUseFailure": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        { "type": "command", "command": "'${TRAVAS_DIR}/verificacao-no-stop' pos-bash", "timeout": 30 }
+      ]
     }
   ],
   "Stop": [
