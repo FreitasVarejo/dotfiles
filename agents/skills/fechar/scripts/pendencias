@@ -49,7 +49,9 @@ def session_markers(sid):
     if not sid:
         return []
     safe = re.sub(r"[^A-Za-z0-9_-]", "_", sid)
-    return glob.glob(os.path.join(runtime_dir(), "*-%s*" % safe))
+    # Só os marcadores: as travas guardam também trava e foto de Bash ali.
+    return [m for m in glob.glob(os.path.join(runtime_dir(), "*-%s*" % safe))
+            if os.path.basename(m).startswith(("verif-", "vault-"))]
 
 
 def repo_root(path):
@@ -156,10 +158,30 @@ def other_hosts():
 REMOTE = r"""
 for d in ~/dotfiles ~/dev/* ~/projects/*; do
   [ -d "$d/.git" ] || [ -f "$d/.git" ] || continue
+  # Worktree vinculado sai pelo clone principal, na lista de baixo.
+  [ "$(git -C "$d" rev-parse --absolute-git-dir 2>/dev/null)" = \
+    "$(git -C "$d" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || continue
   u=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
   case "$u" in *"$1"|*"$1.git") ;; *) continue ;; esac
   git -C "$d" fetch -q 2>/dev/null
-  echo "$d	$(git -C "$d" status -sb | head -1)	$(git -C "$d" status --porcelain | wc -l)"
+  printf '%s\t%s\t%s\n' "$d" "$(git -C "$d" status -sb | head -1)" "$(git -C "$d" status --porcelain | wc -l)"
+  # Os worktrees além do principal, com o mesmo "pode sair" do lado local (leftover).
+  base=$(git -C "$d" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
+  git -C "$d" worktree list --porcelain | awk '
+    /^worktree /{n++; p=substr($0, 10)}
+    /^branch refs\/heads\//{if (n > 1) print p "\t" substr($0, 19)}
+    /^detached/{if (n > 1) print p "\t(detached)"}' |
+  while IFS="$(printf '\t')" read -r p b; do
+    tag=""
+    if [ "$b" != "(detached)" ] && [ -n "$base" ] && git -C "$d" merge-base --is-ancestor "$b" "$base" 2>/dev/null; then
+      if git -C "$d" reflog show --format=%gs "refs/heads/$b" 2>/dev/null | grep -qE '^(commit|merge|cherry-pick|rebase|pull)'; then
+        tag=" — já está em $base: pode sair"
+      else
+        tag=" — sem commit próprio (recém-criada?)"
+      fi
+    fi
+    printf 'wt\t%s\t%s\t%s\n' "$p" "$b" "$tag"
+  done
 done
 """
 
@@ -194,6 +216,10 @@ def report_hosts(slugs, net):
             if not got:
                 lines.append("%s: nenhum clone dos repos tocados" % target)
             for l in got:
+                if l.startswith("wt\t"):
+                    _, path, branch, tag = (l.split("\t") + [""])[:4]
+                    lines.append("%s:%s  worktree [%s]%s" % (target, path, branch, tag))
+                    continue
                 path, status, dirty = l.split("\t")
                 lines.append("%s:%s  %s  · %s arquivo(s) sem commit" % (target, path, status, dirty.strip()))
             break
