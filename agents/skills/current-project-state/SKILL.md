@@ -110,6 +110,13 @@ Depois da primeira gravação, **só grave de novo quando a conversa produzir al
 irrecuperável** — uma decisão, um veto, um adiamento. Não grave a cada mensagem:
 o vault tem checkpoint a cada 15 min e sincroniza com o celular.
 
+**A skill `fechar` também escreve aqui**, no fim de sessão e com OK do dono:
+só em `## Decidido na conversa` e `## Adiado de propósito`, editando a prosa.
+Ela não roda `--gravar`, que somaria uma rodada a cada item da fila, salvo
+para criar o arquivo que ainda não existe. Frontmatter, fila e `## Leitura da
+última rodada` são só desta skill. As regras abaixo valem para as duas (ADR
+0039 em `~/ObsidianVault/projects/workflow-ia/decisoes/`).
+
 **Nunca escreva no registro o que o coletor recalcula** — lista de task, de
 commit, de ADR, de container, título de PR. Cópia de estado envelhece e passa a
 mentir; o coletor refaz tudo isso em 2 s e nunca erra.

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Trava "ao terminar, `freitask doctor`": dois hooks, um script.
 
-  doctor-no-stop marca   PostToolUse: marca a sessão que tocou o vault.
+  doctor-no-stop marca   PostToolUse: marca a sessão que tocou o vault e anota o
+                         que ela escreveu nele.
   doctor-no-stop         Stop: sessão marcada só encerra com o doctor limpo.
 
 Toca o vault: Edit/Write com caminho nele, ou Bash rodado nele ou que o cita.
@@ -9,11 +10,18 @@ O marcador é por session_id, em $XDG_RUNTIME_DIR (some no logout). Bloqueia uma
 vez só: com `stop_hook_active`, o turno já é a continuação que este hook pediu,
 e bloquear de novo viraria laço. Sem `freitask` na máquina, não faz nada (ADR
 0027).
+
+O marcador some a cada Stop limpo. O que a sessão escreveu fica à parte, em
+`toques-vault-<sessão>`, que só cresce e é o que a skill `fechar` lê (ADR 0039):
+o caminho de cada Edit/Write no vault e o id de cada `freitask` que escreve.
+Leitura não entra, e escrita por outro comando escapa: na dúvida, a `fechar`
+deixa passar em vez de tomar a task de outra sessão.
 """
 
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,11 +29,19 @@ import tempfile
 
 VAULT = os.path.realpath(os.path.expanduser(os.environ.get("TRAVAS_VAULT", "~/ObsidianVault")))
 FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
+# Subcomando do freitask que escreve → posições dos ids depois dele.
+FREITASK_WRITES = {"set": (0,), "archive": (0,), "unarchive": (0,), "delete": (0,),
+                   "rename": (0, 1), "new": (1,)}
+PREFIXES = {"sudo", "doas", "command", "builtin", "exec", "nice", "nohup", "time", "env"}
+
+
+def runtime_file(prefix, session_id):
+    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return os.path.join(base, "claude-travas", prefix + re.sub(r"[^A-Za-z0-9_-]", "_", session_id))
 
 
 def marker(session_id):
-    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    return os.path.join(base, "claude-travas", "vault-" + re.sub(r"[^A-Za-z0-9_-]", "_", session_id))
+    return runtime_file("vault-", session_id)
 
 
 def inside_vault(path):
@@ -45,11 +61,77 @@ def touched_vault(data):
     return False
 
 
+def simple_commands(command):
+    """Cada comando simples como lista de palavras (o da `tasks-so-pelo-freitask`)."""
+    lexer = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    words = []
+    try:
+        for tok in lexer:
+            if tok and set(tok) <= set(";&|()"):
+                if words:
+                    yield words
+                words = []
+            else:
+                words.append(tok)
+    except ValueError:
+        return
+    if words:
+        yield words
+
+
+def strip_prefixes(words):
+    i = 0
+    while i < len(words):
+        name, eq, _ = words[i].partition("=")
+        if eq and name.isidentifier():
+            i += 1
+        elif os.path.basename(words[i]) in PREFIXES:
+            i += 1
+            while i < len(words) and (words[i].startswith("-") or words[i].isdigit()):
+                i += 1
+        else:
+            break
+    return words[i:]
+
+
+def task_id(arg):
+    """`<id|caminho>` do freitask vira o id."""
+    name = os.path.basename(arg.rstrip("/"))
+    return name[:-3] if name.endswith(".md") else name
+
+
+def written(data):
+    """O que esta chamada escreveu no vault, uma linha por coisa."""
+    tool, tool_input = data.get("tool_name"), data.get("tool_input") or {}
+    if tool in FILE_TOOLS:
+        path = tool_input.get("file_path") or tool_input.get("notebook_path")
+        if inside_vault(path):
+            return ["arquivo " + os.path.relpath(os.path.realpath(os.path.expanduser(path)), VAULT)]
+        return []
+    if tool != "Bash":
+        return []
+    lines = []
+    for words in simple_commands(tool_input.get("command") or ""):
+        words = strip_prefixes(words)
+        if len(words) < 3 or os.path.basename(words[0]) != "freitask" or words[1] not in FREITASK_WRITES:
+            continue
+        args = words[2:]
+        lines += ["task " + task_id(args[i]) for i in FREITASK_WRITES[words[1]] if i < len(args)]
+    return lines
+
+
 def mark(data):
-    if touched_vault(data):
-        path = marker(data["session_id"])
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        open(path, "w").close()
+    if not touched_vault(data):
+        return
+    path = marker(data["session_id"])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "w").close()
+    lines = written(data)
+    if lines:
+        # Uma escrita só, em modo append: chamadas paralelas não se misturam.
+        with open(runtime_file("toques-vault-", data["session_id"]), "a", encoding="utf-8") as fh:
+            fh.write("".join(l + "\n" for l in lines))
 
 
 def stop(data):

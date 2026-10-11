@@ -1,13 +1,13 @@
 # Para onde vai cada resíduo
 
-Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0031.
+Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031 e 0039.
 
 | Resíduo | Destino | Quem decide |
 |---|---|---|
 | trabalho que sobra de uma task | checklist e estado da task (`freitask set --desc`) | você |
 | passo que depende do dono | "Para retomar" na task, em ordem | você |
 | posse que a sessão tomou | apagar `dono`, `desde` e `dominio` | você |
-| decisão de conversa ou adiamento | `estado-<host>.md`, pela `current-project-state` | o dono |
+| decisão de conversa ou adiamento | "Decidido" e "Adiado" do `estado-<host>.md`, pelo passo 5 da `current-project-state` | o dono |
 | decisão que passa no critério de ADR da skill `domain-modeling` | proposta de ADR | o dono |
 | regra para agentes | proposta de mudança no contrato | o dono |
 | ponta solta sem task | task nova, pela skill `freitask` | o dono |
@@ -33,8 +33,9 @@ dono.
 ## Posse
 
 `dono` é `<máquina>/<ferramenta>`: duas sessões na mesma máquina têm o mesmo
-valor. Só apague a posse que a conversa mostra que esta sessão escreveu. Posse
-de outra sessão vai para o relatório.
+valor. Quem diz de qual sessão é a task é o script, pelo que as travas
+anotaram. Só escreva em task desta sessão e só apague a posse dela; task e
+posse de outra sessão vão para o relatório.
 
 ## "Para retomar"
 

@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Fatos do disco para o fim de uma sessão (skill `fechar`, ADR 0031).
+"""Fatos do disco para o fim de uma sessão (skill `fechar`, ADRs 0031 e 0039).
 
   pendencias [--sessao <id>] [--repo <dir>]... [--horas <n>] [--sem-rede]
 
 Nada aqui é lista fixa (ADR 0017):
-- repos: os que a sessão tocou (marcadores das travas em
-  $XDG_RUNTIME_DIR/claude-travas/ com o id da sessão), o cwd e os de --repo;
+- o que é desta sessão: os repos das listas `verif-<sessão>-*` (a raiz na
+  primeira linha), o cwd e os de --repo; o que ela escreveu no vault, de
+  `toques-vault-<sessão>`. Quem grava os dois são as travas `verificacao-no-stop`
+  e `doctor-no-stop`, em $XDG_RUNTIME_DIR/claude-travas/;
+- o que é de outra sessão sai resumido; item enterrado e sync-conflict, sempre;
 - outras máquinas: as notas de hosts/ do vault que não são esta, com o alias de
   ssh tirado do H1, como faz o coletor da current-project-state;
-- vault: tasks mexidas na janela, posse, sync-conflict.
+- o "Decidido" e o "Adiado" de cada projeto tocado, pelo coletor da
+  current-project-state.
 
 Só lê. A exceção é o `git fetch`, que atualiza as refs remotas para "atrás do
 origin" não mentir; --sem-rede pula fetch, GitHub e ssh.
@@ -21,16 +25,24 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import time
 
 VAULT = os.path.realpath(os.path.expanduser(os.environ.get("FECHAR_VAULT", "~/ObsidianVault")))
 OPEN_ITEM = re.compile(r"^\s*- \[ \]", re.M)
+TASK_PATH = re.compile(r"^projects/([^/]+)/tasks/(?:archived/[^/]+/)?([^/]+)\.md$")
+COLETOR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))),
+                       "current-project-state", "scripts", "coletar-estado.sh")
+HOME = os.path.expanduser("~")
 
 
 def run(args, cwd=None, timeout=30):
     try:
-        r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        return r.returncode, r.stdout.strip()
+        # surrogateescape: caminho de worktree ou nome de branch que não é UTF-8.
+        r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, errors="surrogateescape",
+                           timeout=timeout)
+        # Só o fim: o começo da primeira linha do `status --porcelain` é coluna.
+        return r.returncode, r.stdout.rstrip()
     except (OSError, subprocess.TimeoutExpired):
         return 1, ""
 
@@ -39,24 +51,78 @@ def git(root, *args, timeout=30):
     return run(["git", "-C", root, *args], timeout=timeout)
 
 
-def runtime_dir():
+def tilde(path):
+    return "~" + path[len(HOME):] if path == HOME or path.startswith(HOME + os.sep) else path
+
+
+def runtime_file(name):
     import tempfile
 
-    return os.path.join(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir(), "claude-travas")
+    base = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return os.path.join(base, "claude-travas", name)
 
 
-def session_markers(sid):
+def safe(sid):
+    return re.sub(r"[^A-Za-z0-9_-]", "_", sid)
+
+
+def session_lists(sid):
+    """Raiz → caminhos sujos que a trava da verificação atribui a esta sessão.
+
+    Comitado sai da lista, e repo que não optou guarda só a raiz: ali a lista
+    não diz de quem é o arquivo sujo (`touched_files` devolve None).
+    """
     if not sid:
+        return {}
+    lists = {}
+    for path in glob.glob(runtime_file("verif-%s-*" % safe(sid))):
+        with open(path, encoding="utf-8", errors="surrogateescape") as fh:
+            lines = fh.read().split("\n")
+        lists[lines[0].strip()] = {l for l in lines[2:] if l} if lines[1:2] == ["# toques v2"] else set()
+    return lists
+
+
+def touched_files(root, lists, sid):
+    if not sid or not os.path.isfile(os.path.join(root, "docs", "agents", "verificacao.md")):
+        return None
+    return lists.get(root, set())
+
+
+def dirty_entries(root):
+    """`XY caminho` de cada arquivo sujo, como a trava da verificação os vê.
+
+    Com -z o caminho vem cru (sem aspas nem escape octal), e com
+    --untracked-files=all a pasta nova sai arquivo por arquivo, como na lista.
+    Bytes e `fsdecode`, como a trava: nome que não é UTF-8 não derruba o script.
+    `--no-optional-locks` não disputa o index.lock com o `git add` de outra sessão.
+    """
+    try:
+        r = subprocess.run(["git", "-C", root, "--no-optional-locks", "status", "--porcelain=v1", "-z",
+                            "--no-renames", "--untracked-files=all"], capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
         return []
-    safe = re.sub(r"[^A-Za-z0-9_-]", "_", sid)
-    # Só os marcadores: as travas guardam também trava e foto de Bash ali.
-    return [m for m in glob.glob(os.path.join(runtime_dir(), "*-%s*" % safe))
-            if os.path.basename(m).startswith(("verif-", "vault-"))]
+    return [os.fsdecode(e) for e in r.stdout.split(b"\0") if len(e) > 3]
+
+
+def vault_toques(sid):
+    """Linhas `arquivo <rel>` e `task <id>` do que a sessão escreveu; None sem sessão."""
+    if not sid:
+        return None
+    try:
+        with open(runtime_file("toques-vault-" + safe(sid)), encoding="utf-8") as fh:
+            return list(dict.fromkeys(l.strip() for l in fh if l.strip()))
+    except OSError:
+        return []
 
 
 def repo_root(path):
     rc, out = git(path, "rev-parse", "--show-toplevel")
     return out if rc == 0 and out else None
+
+
+def main_clone(root):
+    rc, out = git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    return os.path.dirname(out) if rc == 0 and out else root
 
 
 def slug(root):
@@ -88,59 +154,94 @@ def leftover(root, branch, base):
     return " — já está em %s: pode sair" % base
 
 
-def report_repo(root, net):
-    lines = ["### %s" % root.replace(os.path.expanduser("~"), "~", 1)]
-    if net:
-        git(root, "fetch", "--quiet", "--prune", timeout=40)
-    _, branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
-    _, porcelain = git(root, "status", "--porcelain")
-    dirty = [l for l in porcelain.split("\n") if l]
-    rc, counts = git(root, "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
-    if rc == 0:
-        behind, ahead = counts.split()
-        sync = "atrás %s, à frente %s do upstream" % (behind, ahead)
-    else:
-        sync = "sem upstream"
-    lines.append("branch %s · %s · %d arquivo(s) sem commit" % (branch, sync, len(dirty)))
-    lines += ["  %s" % l for l in dirty[:8]] + (["  …"] if len(dirty) > 8 else [])
-    base = default_ref(root)
-    _, refs = git(root, "for-each-ref", "--format=%(refname:short)\t%(upstream)", "refs/heads")
-    for line in refs.split("\n"):
-        name, _, upstream = line.partition("\t")
-        if not name or name == branch:
-            continue
-        tag = leftover(root, name, base)
-        if tag:
-            lines.append("branch local %s%s" % (name, tag))
-        elif not upstream:
-            lines.append("branch local %s sem upstream (nunca foi para o remoto)" % name)
-    _, wts = git(root, "worktree", "list", "--porcelain")
-    main = os.path.dirname(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")[1])
-    for block in wts.split("\n\n"):
+def worktrees(main):
+    """(caminho, branch ou None) de cada worktree além do clone principal."""
+    _, out = git(main, "worktree", "list", "--porcelain")
+    found = []
+    for block in out.split("\n\n"):
         path = re.search(r"^worktree (.+)$", block, re.M)
-        wbranch = re.search(r"^branch refs/heads/(.+)$", block, re.M)
-        if not path or path.group(1) in (main, root):
-            continue
-        b = wbranch.group(1) if wbranch else "(detached)"
-        tag = leftover(root, b, base) if wbranch else ""
-        lines.append("worktree %s [%s]%s" % (path.group(1).replace(os.path.expanduser("~"), "~", 1), b, tag))
-    s = slug(root)
+        branch = re.search(r"^branch refs/heads/(.+)$", block, re.M)
+        if path and path.group(1) != main:
+            found.append((path.group(1), branch.group(1) if branch else None))
+    return found
+
+
+def plural(n, one, many):
+    return "%d %s" % (n, one if n == 1 else many)
+
+
+def report_repo(main, roots, ours, net):
+    """`ours`: raiz → caminhos da sessão, ou None quando a lista não sabe dizer."""
+    lines = ["### %s" % tilde(main)]
+    if net:
+        git(main, "fetch", "--quiet", "--prune", timeout=40)
+    base = default_ref(main)
+    mine = set()
+    for root in roots:
+        _, branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        mine.add(branch)
+        dirty = dirty_entries(root)
+        rc, counts = git(root, "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
+        if rc == 0:
+            behind, ahead = counts.split()
+            sync = "atrás %s, à frente %s do upstream" % (behind, ahead)
+        else:
+            sync = "sem upstream"
+        where = "clone principal" if root == main else "worktree %s" % tilde(root)
+        tag = leftover(main, branch, base) if root != main and branch != "HEAD" else ""
+        if ours[root] is None:
+            show, rest = dirty, 0
+            lines.append("%s [%s] · %s · %d arquivo(s) sem commit%s" % (where, branch, sync, len(dirty), tag))
+        else:
+            show = [l for l in dirty if l[3:] in ours[root]]
+            rest = len(dirty) - len(show)
+            lines.append("%s [%s] · %s · %d arquivo(s) sem commit desta sessão%s" % (
+                where, branch, sync, len(show), tag))
+        lines += ["  %s" % l for l in show[:8]] + (["  …"] if len(show) > 8 else [])
+        if rest:
+            lines.append("  +%d sem commit de outras sessões" % rest)
+
+    wts = worktrees(main)
+    others = [(p, b) for p, b in wts if p not in roots]
+    gone = sum(1 for _, b in others if b and leftover(main, b, base).endswith("pode sair"))
+    if others:
+        lines.append("+%s de outras sessões%s" % (plural(len(others), "worktree", "worktrees"),
+                     ", %d já mergeado(s): pode sair" % gone if gone else ""))
+    checked = {b for _, b in wts if b}
+    _, heads = git(main, "rev-parse", "--abbrev-ref", "HEAD")
+    _, refs = git(main, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    loose = [b for b in refs.split("\n") if b and b not in mine and b not in checked and b != heads]
+    gone = sum(1 for b in loose if leftover(main, b, base).endswith("pode sair"))
+    if loose:
+        lines.append("+%s fora de worktree%s" % (plural(len(loose), "branch local", "branches locais"),
+                     ", %d já mergeada(s): pode sair" % gone if gone else ""))
+
+    s = slug(main)
     if net and s:
-        rc, out = run(["gh", "pr", "list", "--repo", s, "--state", "open", "--limit", "20",
+        rc, out = run(["gh", "pr", "list", "--repo", s, "--state", "open", "--limit", "30",
                        "--json", "number,title,headRefName,isDraft"], timeout=25)
         if rc != 0:
             lines.append("PRs: não consultei (gh falhou)")
         else:
-            for pr in json.loads(out or "[]"):
-                lines.append("PR aberto #%d [%s]%s %s" % (pr["number"], pr["headRefName"],
-                             " (rascunho)" if pr["isDraft"] else "", pr["title"]))
+            prs = json.loads(out or "[]")
+            for pr in prs:
+                if pr["headRefName"] in mine:
+                    lines.append("PR aberto #%d [%s]%s %s" % (pr["number"], pr["headRefName"],
+                                 " (rascunho)" if pr["isDraft"] else "", pr["title"]))
+            rest = sum(1 for pr in prs if pr["headRefName"] not in mine)
+            if rest:
+                lines.append("+%s de outras branches" % plural(rest, "PR aberto", "PRs abertos"))
         rc, out = run(["gh", "pr", "list", "--repo", s, "--state", "merged", "--limit", "10",
-                       "--json", "number,title,mergedAt"], timeout=25)
+                       "--json", "number,title,mergedAt,headRefName"], timeout=25)
         if rc == 0:
             since = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() - 24 * 3600))
-            for pr in json.loads(out or "[]"):
-                if pr["mergedAt"] >= since:
+            recent = [pr for pr in json.loads(out or "[]") if pr["mergedAt"] >= since]
+            for pr in recent:
+                if pr["headRefName"] in mine:
                     lines.append("PR mergeado nas últimas 24 h #%d %s" % (pr["number"], pr["title"]))
+            rest = sum(1 for pr in recent if pr["headRefName"] not in mine)
+            if rest:
+                lines.append("+%s nas últimas 24 h, de outras branches" % plural(rest, "PR mergeado", "PRs mergeados"))
     return lines, s
 
 
@@ -242,30 +343,121 @@ def task_info(path):
     }
 
 
-def report_vault(since):
-    lines = []
-    conflicts = [p for p in glob.glob(os.path.join(VAULT, "**", "*.sync-conflict-*"), recursive=True)]
-    lines.append("sync-conflict: %d%s" % (len(conflicts), " — não resolver sozinho" if conflicts else ""))
-    lines += ["  %s" % os.path.relpath(c, VAULT) for c in conflicts[:10]]
+def all_tasks():
     active = glob.glob(os.path.join(VAULT, "projects", "*", "tasks", "*.md"))
     archived = glob.glob(os.path.join(VAULT, "projects", "*", "tasks", "archived", "*", "*.md"))
+    return active, archived
+
+
+def session_tasks(toques, active, archived):
+    """Caminho atual de cada task que a sessão escreveu, os ids que sumiram e os outros arquivos."""
+    by_id = {}
+    for path in active + archived:
+        by_id.setdefault(os.path.basename(path)[:-3], []).append(path)
+    ids, files = [], []
+    for entry in toques:
+        kind, _, rest = entry.partition(" ")
+        m = TASK_PATH.match(rest) if kind == "arquivo" else None
+        if kind == "task":
+            ids.append(rest)
+        elif m:
+            ids.append(m.group(2))
+        elif kind == "arquivo":
+            files.append(rest)
+    ids = list(dict.fromkeys(ids))
+    paths = sorted({p for i in ids for p in by_id.get(i, [])})
+    missing = [i for i in ids if i not in by_id]
+    return paths, missing, list(dict.fromkeys(files))
+
+
+def describe_task(path):
+    rel = os.path.relpath(path, os.path.join(VAULT, "projects"))
+    parts = rel.split(os.sep)
+    info = task_info(path)
+    archived = parts[2] == "archived"
+    where = "arquivada (%s)" % parts[3] if archived else info["status"]
+    flag = ""
+    if info["abertos"]:
+        flag = " — %d item(ns) aberto(s)%s" % (info["abertos"], ", ENTERRADO em archived/" if archived else "")
+    lines = ["  %s `%s` [%s]%s" % (parts[0], os.path.basename(path)[:-3], where, flag)]
+    if info["dono"]:
+        lines.append("      posse: %s" % info["dono"])
+    if info["desc"]:
+        lines.append("      _%s_" % info["desc"])
+    return lines
+
+
+def report_vault(since, toques, tasks, mine, missing, files):
+    lines = []
+    conflicts = glob.glob(os.path.join(VAULT, "**", "*.sync-conflict-*"), recursive=True)
+    lines.append("sync-conflict: %d%s" % (len(conflicts), " — não resolver sozinho" if conflicts else ""))
+    lines += ["  %s" % os.path.relpath(c, VAULT) for c in conflicts[:10]]
+    active, archived = tasks
+    window = time.strftime("%d/%m %H:%M", time.localtime(since))
+    touched = sorted(p for p in active + archived if os.path.getmtime(p) >= since)
+    if toques is None:
+        # Sem sessão (Cursor), não há como separar: vai tudo, como antes da ADR 0039.
+        lines.append("tasks desta sessão: não sei (sem --sessao); mexidas na janela (%s em diante): %d"
+                     % (window, len(touched)))
+        for path in touched:
+            lines += describe_task(path)
+        return lines
+    lines.append("tasks desta sessão: %d" % len(mine))
+    for path in mine:
+        lines += describe_task(path)
+    lines += ["  `%s` — não existe mais (renomeada ou apagada)" % i for i in missing]
+    if files:
+        lines.append("outros arquivos do vault escritos pela sessão: %d" % len(files))
+        lines += ["  %s" % f for f in files[:10]] + (["  …"] if len(files) > 10 else [])
     for path in sorted(active):
         info = task_info(path)
-        if info["dono"]:
-            lines.append("posse: `%s` — %s" % (os.path.basename(path)[:-3], info["dono"]))
-    touched = [p for p in active + archived if os.path.getmtime(p) >= since]
-    lines.append("tasks mexidas na janela (%s em diante): %d" % (time.strftime("%d/%m %H:%M", time.localtime(since)), len(touched)))
-    for path in sorted(touched):
-        rel = os.path.relpath(path, os.path.join(VAULT, "projects"))
-        parts = rel.split(os.sep)
-        info = task_info(path)
-        where = "arquivada (%s)" % parts[3] if parts[2] == "archived" else info["status"]
-        flag = ""
-        if info["abertos"]:
-            flag = " — %d item(ns) aberto(s)%s" % (info["abertos"], ", ENTERRADO em archived/" if parts[2] == "archived" else "")
-        lines.append("  %s `%s` [%s]%s" % (parts[0], os.path.basename(path)[:-3], where, flag))
-        if info["desc"]:
-            lines.append("      _%s_" % info["desc"])
+        if info["dono"] and path not in mine:
+            lines.append("posse de outra sessão: `%s` — %s" % (os.path.basename(path)[:-3], info["dono"]))
+    others = [p for p in touched if p not in mine]
+    if others:
+        lines.append("+%s por outras sessões na janela (%s em diante)"
+                     % (plural(len(others), "task mexida", "tasks mexidas"), window))
+    for path in others:
+        if os.sep + "archived" + os.sep in path and task_info(path)["abertos"]:
+            lines += describe_task(path)
+    return lines
+
+
+def contract_projects(root):
+    """Projetos cujo backlog o contrato do repo aponta (a regra do coletor da current-project-state)."""
+    found = set()
+    for f in [os.path.join(root, "AGENTS.md"), os.path.join(root, "CLAUDE.md")] + \
+            glob.glob(os.path.join(root, "docs", "agents", "*.md")):
+        try:
+            found |= set(re.findall(r"projects/([a-z0-9][a-z0-9_.-]*)/tasks", open(f, encoding="utf-8").read()))
+        except OSError:
+            pass
+    return found
+
+
+def report_registro(projects):
+    if not projects:
+        return ["nenhum projeto identificado"]
+    if not os.access(COLETOR, os.X_OK):
+        return ["não consultei (coletor da current-project-state ausente)"]
+    lines = []
+    for p in sorted(projects):
+        rc, out = run([COLETOR, p, "--sem-rede", "--json"], timeout=60)
+        try:
+            reg = json.loads(out)["registro"] if rc == 0 else None
+        except (ValueError, KeyError):
+            reg = None
+        if reg is None:
+            lines.append("### %s: não consultei (o coletor saiu %d)" % (p, rc))
+            continue
+        if not reg.get("existe"):
+            lines.append("### %s: sem registro nesta máquina (%s)" % (p, reg.get("caminho", "")))
+            continue
+        lines.append("### %s (%s)" % (p, reg["caminho"]))
+        for label, key in (("decidido na conversa", "decidido"), ("adiado de propósito", "adiado")):
+            body = [l for l in (reg.get(key) or "").split("\n") if l.strip()]
+            lines.append("%s:%s" % (label, "" if body else " nada"))
+            lines += ["  " + l for l in body]
     return lines
 
 
@@ -277,40 +469,54 @@ def main():
     ap.add_argument("--horas", type=float)
     ap.add_argument("--sem-rede", action="store_true")
     a = ap.parse_args()
+    # Nome de arquivo que não é UTF-8 sai como veio, em qualquer locale.
+    sys.stdout.reconfigure(errors="surrogateescape")
     net = not a.sem_rede
 
-    markers = session_markers(a.sessao)
-    roots = []
-    for m in markers:
-        if os.path.basename(m).startswith("verif-"):
-            first = open(m, encoding="utf-8", errors="surrogateescape").readline().strip()
-            roots.append(first)
+    lists = session_lists(a.sessao)
+    roots = list(lists)
     for d in [os.getcwd()] + a.repo:
         r = repo_root(os.path.expanduser(d))
         if r:
             roots.append(r)
     roots = list(dict.fromkeys(r for r in roots if r and os.path.isdir(r)))
-    # Os marcadores dizem ONDE a sessão mexeu, não desde quando: o do vault é
-    # regravado a cada toque. A janela é fixa; quem filtra é a conversa.
+    groups = {}
+    for root in roots:
+        groups.setdefault(main_clone(root), []).append(root)
+
+    toques = vault_toques(a.sessao)
+    active, archived = all_tasks()
+    mine, missing, files = session_tasks(toques or [], active, archived)
+    # A janela só serve ao que é de outra sessão; o da sessão vem das travas.
     since = time.time() - (a.horas if a.horas is not None else 12) * 3600
 
     print("## sessão")
-    print("id %s · marcadores das travas: %d · vault tocado: %s" % (
-        a.sessao or "(não informado)", len(markers),
-        "sim" if any(os.path.basename(m).startswith("vault-") for m in markers) else "não sei"))
+    vault = ("não sei (sem --sessao)" if toques is None else
+             "%s e %s escritos" % (plural(len(mine) + len(missing), "task", "tasks"),
+                                  plural(len(files), "outro arquivo", "outros arquivos")))
+    print("id %s · %s desta sessão · vault: %s" % (
+        a.sessao or "(não informado)", plural(len(groups), "repo", "repos"), vault))
     print("\n## repos")
     slugs = []
-    for root in roots:
-        lines, s = report_repo(root, net)
+    for main_root, rs in groups.items():
+        lines, s = report_repo(main_root, rs, {r: touched_files(r, lists, a.sessao) for r in rs}, net)
         print("\n".join(lines))
         if s and s not in slugs:
             slugs.append(s)
-    if not roots:
+    if not groups:
         print("nenhum repo identificado; passe --repo <dir>")
     print("\n## outras máquinas")
     print("\n".join(report_hosts(slugs, net)))
     print("\n## vault")
-    print("\n".join(report_vault(since)))
+    print("\n".join(report_vault(since, toques, (active, archived), mine, missing, files)))
+
+    projects = {os.path.relpath(p, os.path.join(VAULT, "projects")).split(os.sep)[0] for p in mine}
+    projects |= {f.split("/")[1] for f in files if f.startswith("projects/") and f.count("/") >= 2}
+    for root in roots:
+        projects |= contract_projects(root)
+    projects = {p for p in projects if os.path.isdir(os.path.join(VAULT, "projects", p))}
+    print("\n## registro dos projetos (não reapresentar como ponta solta)")
+    print("\n".join(report_registro(projects)))
 
 
 if __name__ == "__main__":

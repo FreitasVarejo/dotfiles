@@ -11,10 +11,12 @@
   verificacao-no-stop                Stop: caminho da lista ainda sujo e com impressão
                                      diferente da carimbada bloqueia o fim do turno.
 
-Só vale para repo que optou: o que tem docs/agents/verificacao.md. A lista é por
-sessão e por repo, e o que outra sessão suja no mesmo repo não entra nela. O que
-já estava sujo antes da sessão só entra se ela tocar o arquivo, e aí ela responde
-por ele inteiro. O Bash conta no repo do cwd e nos que a sessão já tocou.
+Só cobra repo que optou: o que tem docs/agents/verificacao.md. Em repo que não
+optou, Edit e Write deixam a lista só com a raiz, para a skill `fechar` saber onde
+a sessão escreveu (ADR 0039); o Bash ali não conta. A lista é por sessão e por
+repo, e o que outra sessão suja no mesmo repo não entra nela. O que já estava
+sujo antes da sessão só entra se ela tocar o arquivo, e aí ela responde por ele
+inteiro. O Bash conta no repo do cwd e nos que a sessão já tocou.
 
 O carimbo não tem dono: a `verificar` lê o diff inteiro e roda os portões na
 árvore toda, então cobre todo arquivo sujo daquele momento. Impressão é o hash do
@@ -181,6 +183,14 @@ def add(session_id, root, rels):
             write_list(path, root, have | rels)
 
 
+def note_root(session_id, root):
+    """Repo que não optou: a lista fica só com a raiz, que é o que a `fechar` lê."""
+    path = list_path(session_id, root)
+    with session_lock(session_id):
+        if (read(path) or "").split("\n")[:2] != [root, LIST_TAG]:
+            write_list(path, root, set())
+
+
 def mark(data):
     tool, tool_input = data.get("tool_name"), data.get("tool_input") or {}
     if tool == "Bash":
@@ -191,6 +201,8 @@ def mark(data):
     root = repo_root(target) if target else None
     if opted_in(root):
         add(data["session_id"], root, {os.path.relpath(os.path.realpath(os.path.expanduser(target)), root)})
+    elif root:
+        note_root(data["session_id"], root)
 
 
 def snapshot(data):

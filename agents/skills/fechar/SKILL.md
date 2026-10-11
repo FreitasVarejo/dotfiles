@@ -23,7 +23,8 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
 1. **Fatos.** Rode
    `~/.claude/skills/fechar/scripts/pendencias --sessao ${CLAUDE_SESSION_ID}`,
    com um `--repo <dir>` para cada repo que a conversa mexeu e o script não
-   listou. Fonte que diz "não consultei" não é "não há": diga qual.
+   listou. Ele detalha o que é desta sessão e resume o de outras. Fonte que
+   diz "não consultei" não é "não há": diga qual.
 2. **A cadeia.** Para cada coisa que espera o dono (PR aberto, ação manual,
    merge recente), escreva o que ela destrava e o que limpar depois. Ponha em
    ordem.
@@ -31,14 +32,17 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
    `- [ ]` aberto, cada item pede uma decisão do dono: concluir, mover para
    task nova ou largar de propósito. Item ENTERRADO em `archived/` também.
 4. **Pontas soltas.** O que a conversa notou e não resolveu, e que não está em
-   task nenhuma: uma linha cada.
+   task nenhuma nem no `## registro dos projetos` (decidido ou adiado): uma
+   linha cada.
 5. **Escrita.**
-   - **Sem perguntar:** nas tasks que a sessão tocou, marque o que foi feito,
+   - **Sem perguntar:** nas tasks desta sessão (as do script, mais as que a
+     conversa mostra e ele não pegou), marque o que foi feito,
      troque o estado (`freitask set <id> --desc`) e deixe uma seção
      "Para retomar" com os passos em ordem. Apague `dono`, `desde` e `dominio`
      que a sessão escreveu.
-   - **Só com OK:** arquivar, abrir task (skill `freitask`) e gravar o
-     `estado-<host>.md` (skill `current-project-state`).
+   - **Só com OK:** arquivar, abrir task (skill `freitask`) e gravar decisão
+     e adiamento no `estado-<host>.md` (o que e como: skill
+     `current-project-state`, passo 5).
 6. **Feche** com `freitask doctor --quiet`.
 
 ## Relatório
