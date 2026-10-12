@@ -1,6 +1,6 @@
 # Para onde vai cada resíduo
 
-Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031 e 0039.
+Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031, 0039 e 0040.
 
 | Resíduo | Destino | Quem decide |
 |---|---|---|
@@ -9,6 +9,7 @@ Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031 e 0039.
 | posse que a sessão tomou | apagar `dono`, `desde` e `dominio` | você |
 | decisão de conversa ou adiamento | "Decidido" e "Adiado" do `estado-<host>.md`, pelo passo 5 da `current-project-state` | o dono |
 | decisão que passa no critério de ADR da skill `domain-modeling` | proposta de ADR | o dono |
+| pesquisa respondida | nota em `research/`, pela skill `research` | o dono |
 | regra para agentes | proposta de mudança no contrato | o dono |
 | ponta solta sem task | task nova, pela skill `freitask` | o dono |
 | task terminada | `freitask archive <id> done`, depois do portão | o dono |
