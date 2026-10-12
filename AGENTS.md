@@ -1,9 +1,9 @@
 # AGENTS.md - Dotfiles Repository Guide
 
 Personal dotfiles using **GNU Stow** for symlink management. Each top-level directory
-(bash, git, nvim, tmux, yazi, vault, ssh) is a "stow package" that mirrors its target in
-`STOW_TARGETS` (`setup.sh`). The exception is `agents`, a **hook-only package** (empty
-target): nothing in it is stowed, so `setup.sh` only runs its setup hook.
+named in `STOW_TARGETS` (`setup.sh`) is a "stow package" that mirrors its target there.
+The exception is `agents`, a **hook-only package** (empty target): nothing in it is
+stowed, so `setup.sh` only runs its setup hook.
 
 ## Architecture: thin orchestrators + per-package hooks
 
