@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""Consulta a config efetiva do ambiente do dono (skill `ambiente-de-dev`).
+
+  consultar nvim [--modo n,v,...] [--tipo <filetype>] [filtro]
+  consultar tmux [filtro]
+
+O arquivo dos dotfiles só tem o que o dono mudou; o resto vem do LazyVim, dos
+extras e dos plugins. Por isso a resposta sai da ferramenta rodando.
+
+nvim: sobe headless com a config de sempre, dispara o `User VeryLazy` (o
+headless nunca o dispara, e é nele que o LazyVim carrega o keymaps.lua do dono)
+e lista os atalhos com a origem:
+
+  ~/...:linha        o arquivo que criou o mapa (a origem exige 'verbose': -V1)
+  lazy:<plugin>      declarado em `keys = {...}` da spec desse plugin
+  lsp:<servidor>     declarado em opts.servers[<servidor>].keys do nvim-lspconfig
+                     (`*` = todos); só vira mapa no LspAttach, por isso sai das opts
+  plugin:<plugin>    criado pelo código do plugin
+  nvim               padrão do Neovim
+  ← ~/...            a spec que declarou a tecla é do dono, nesse arquivo. O lazy
+                     não guarda de onde veio cada spec; o script reexecuta os
+                     módulos de lua/plugins/, que só devolvem tabelas.
+
+--tipo põe o filetype num buffer vazio para os atalhos de buffer dele aparecerem.
+Abrir arquivo de verdade carregaria o persistence, que ao sair grava a sessão do
+cwd por cima da do dono; pelo mesmo motivo, -i NONE (sem shada) e -n (sem swap).
+
+tmux: sobe um servidor num socket próprio, com a config que o tmux acha sozinho,
+e outro sem config nenhuma (-f /dev/null); `*` marca a linha que só existe no
+primeiro, a que o dono pôs ou mudou. Os dois caem no fim, e o do dono não é tocado.
+
+Filtro: trecho, sem caixa, da tecla, da descrição ou da origem. Só lê.
+Saída 0 = consultou; 1 = a ferramenta falhou; 2 = uso errado.
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+
+LUA = r"""
+-- Erro aqui deixaria o nvim headless de pé até o timeout, e a causa se perderia:
+-- o corpo roda em xpcall e o fim sai sempre, com o erro no stderr.
+local function consultar()
+  vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy", modeline = false })
+  local tipo = os.getenv("CONSULTAR_TIPO") or ""
+  if tipo ~= "" then
+    vim.bo.filetype = tipo
+  end
+  local home = vim.env.HOME
+  local leader = vim.g.mapleader or "\\"
+  local localleader = vim.g.maplocalleader or "\\"
+  local ok_k, Keys = pcall(require, "lazy.core.handler.keys")
+  local ok_h, handler = pcall(require, "lazy.core.handler")
+  local managed = ok_h and handler.handlers.keys and handler.handlers.keys.managed or {}
+
+  local function curto(f)
+    return (f:gsub("^" .. vim.pesc(home), "~"))
+  end
+
+  -- Os módulos de lua/plugins/ do dono só devolvem specs. Reexecutá-los dá a
+  -- tecla e o arquivo exatos, que o lazy perde ao fundir as specs.
+  local do_dono = {}
+  local function marcar(keys, arquivo)
+    if type(keys) == "table" then
+      for _, k in pairs(Keys.resolve(keys)) do
+        do_dono[k.id] = arquivo
+      end
+    end
+  end
+  local function percorrer(spec, arquivo)
+    if type(spec) ~= "table" then
+      return
+    end
+    marcar(spec.keys, arquivo)
+    local servers = type(spec.opts) == "table" and spec.opts.servers
+    if type(servers) == "table" then
+      for _, cfg in pairs(servers) do
+        if type(cfg) == "table" then
+          marcar(cfg.keys, arquivo)
+        end
+      end
+    end
+    for _, sub in ipairs(spec) do
+      percorrer(sub, arquivo)
+    end
+  end
+  if ok_k then
+    for _, f in ipairs(vim.fn.globpath(vim.fn.stdpath("config") .. "/lua/plugins", "**/*.lua", false, true)) do
+      pcall(function()
+        percorrer(dofile(f), curto(vim.fn.resolve(f)))
+      end)
+    end
+  end
+
+  -- O id do lazy é o replace_termcodes da tecla (o lhsraw codifica <C-A> de
+  -- outro jeito) mais o modo da spec, que no visual pode ser v ou x.
+  local function ids(lhs, modos)
+    local base = vim.api.nvim_replace_termcodes(lhs, true, true, true)
+    local ret = {}
+    for _, md in ipairs(modos) do
+      ret[#ret + 1] = base .. (md == "n" and "" or " (" .. md .. ")")
+    end
+    return ret
+  end
+
+  local function primeiro(tab, lista)
+    for _, id in ipairs(lista) do
+      if tab[id] then
+        return tab[id]
+      end
+    end
+  end
+
+  local function seta(lista)
+    local a = primeiro(do_dono, lista)
+    return a and " ← " .. a or ""
+  end
+
+  -- A tecla sai em notação <>, pelo keytrans dos bytes: o lhs impresso traz o
+  -- espaço cru, e `<leader><space>` viraria `<leader> ` e não casaria o filtro.
+  local function tecla(raw, buf)
+    local k = vim.fn.keytrans(raw)
+    local lideres = { { leader, "<leader>" } }
+    if buf then
+      table.insert(lideres, 1, { localleader, "<localleader>" })
+    end
+    for _, l in ipairs(lideres) do
+      local prefixo = vim.fn.keytrans(l[1])
+      if k:sub(1, #prefixo) == prefixo then
+        return l[2] .. k:sub(#prefixo + 1)
+      end
+    end
+    return k
+  end
+
+  local function cru(lhs)
+    return vim.api.nvim_replace_termcodes(lhs, true, true, true)
+  end
+
+  local function origem(m, modo)
+    local info = m.sid and m.sid > 0 and vim.fn.getscriptinfo({ sid = m.sid })[1]
+    if not info then
+      return "?"
+    end
+    -- o runtime embutido no binário não existe em disco (vim/_core/defaults.lua)
+    if vim.fn.filereadable(info.name) == 0 or info.name:sub(1, #vim.env.VIMRUNTIME) == vim.env.VIMRUNTIME then
+      return "nvim"
+    end
+    local f = vim.fn.resolve(info.name)
+    if f:find("/lazy/core/handler/keys.lua", 1, true) then
+      local modos = { m.mode, modo }
+      if modo == "v" or modo == "x" then
+        vim.list_extend(modos, { "v", "x" })
+      end
+      local candidatos = ids(m.lhs, modos)
+      local p = primeiro(managed, candidatos)
+      if p then
+        return "lazy:" .. p .. seta(candidatos)
+      end
+    end
+    local plugin = f:match("/lazy/([^/]+)/")
+    if plugin then
+      return "plugin:" .. plugin
+    end
+    return curto(f) .. ":" .. (m.lnum or 0)
+  end
+
+  local function linha(campos)
+    io.stdout:write(table.concat(campos, "\31"), "\n")
+  end
+
+  -- Atalho de LSP só vira mapa no LspAttach; antes disso mora nas opts do
+  -- nvim-lspconfig, em servers[<servidor>].keys ("*" vale para todos).
+  local function lsp_keys()
+    local ok, ret = pcall(function()
+      local plugin = require("lazy.core.config").spec.plugins["nvim-lspconfig"]
+      local opts = plugin and require("lazy.core.plugin").values(plugin, "opts", false) or {}
+      local lista = {}
+      for servidor, cfg in pairs(opts.servers or {}) do
+        if type(cfg) == "table" and cfg.keys then
+          for _, k in pairs(Keys.resolve(cfg.keys)) do
+            lista[#lista + 1] = { servidor = servidor, k = k }
+          end
+        end
+      end
+      return lista
+    end)
+    return ok and ret or {}
+  end
+
+  local lsp = lsp_keys()
+  for modo in (os.getenv("CONSULTAR_MODOS") or "n"):gmatch("[^,]+") do
+    for _, buf in ipairs({ false, true }) do
+      local mapas = buf and vim.api.nvim_buf_get_keymap(0, modo) or vim.api.nvim_get_keymap(modo)
+      for _, m in ipairs(mapas) do
+        if not m.lhs:find("^<Plug>") then
+          local raw = m.lhsraw or cru(m.lhs)
+          linha({ modo, tecla(raw, buf), m.desc or m.rhs or "", origem(m, modo), buf and "buffer" or "" })
+        end
+      end
+    end
+    for _, l in ipairs(lsp) do
+      if (l.k.mode or "n") == modo then
+        linha({ modo, tecla(cru(l.k.lhs), false), l.k.desc or "", "lsp:" .. l.servidor .. seta({ l.k.id }), "lsp" })
+      end
+    end
+  end
+end
+
+local ok, err = xpcall(consultar, debug.traceback)
+if not ok then
+  io.stderr:write(tostring(err), "\n")
+  vim.cmd("cquit 1")
+end
+vim.cmd("qa!")
+"""
+
+
+# Os modos que o nvim_get_keymap aceita.
+MODOS = ("n", "v", "x", "s", "o", "i", "c", "t", "l")
+
+
+def modos(valor):
+    lista = valor.split(",")
+    errados = [m for m in lista if m not in MODOS]
+    if errados:
+        raise argparse.ArgumentTypeError("modo desconhecido: " + ",".join(errados))
+    return valor
+
+
+def tabela(linhas):
+    if not linhas:
+        print("(nada casou)")
+        return
+    larg = [max(len(l[i]) for l in linhas) for i in range(len(linhas[0]) - 1)]
+    for l in linhas:
+        print("  ".join(c.ljust(larg[i]) for i, c in enumerate(l[:-1])) + "  " + l[-1])
+
+
+def casa(filtro, *campos):
+    return not filtro or any(filtro.lower() in c.lower() for c in campos)
+
+
+def nvim(args):
+    with tempfile.NamedTemporaryFile("w", suffix=".lua", delete=False) as f:
+        f.write(LUA)
+        lua = f.name
+    cmd = ["nvim", "-V1" + os.devnull, "-n", "-i", "NONE", "--headless", "-c", "luafile " + lua]
+    env = dict(os.environ, CONSULTAR_MODOS=args.modo, CONSULTAR_TIPO=args.tipo or "")
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120)
+    finally:
+        os.unlink(lua)
+    linhas = []
+    for linha in r.stdout.splitlines():
+        campos = linha.split("\x1f")
+        if len(campos) == 5 and casa(args.filtro, *campos[1:4]):
+            linhas.append(campos)
+    # rc != 0 é o `cquit` do Lua: a lista pode ter saído pela metade.
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr or r.stdout)
+        return 1
+    linhas.sort(key=lambda c: (c[0], c[1]))
+    tabela([["modo", "tecla", "descrição", "origem", "escopo"]] + linhas if linhas else [])
+    return 0
+
+
+def servidor_tmux(sock, config):
+    """Prefixo e teclas de um servidor descartável; derruba e apaga o socket."""
+    env = {k: v for k, v in os.environ.items() if k != "TMUX"}
+    base = ["tmux", "-u", "-L", sock] + (["-f", config] if config else [])
+    cmd = base + ["new-session", "-d", ";",
+                  "display-message", "-p", "#{socket_path}", ";",
+                  "show-options", "-g", "prefix", ";",
+                  "show-options", "-g", "prefix2", ";",
+                  "list-keys", ";", "kill-server"]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
+    finally:
+        subprocess.run(["tmux", "-L", sock, "kill-server"], capture_output=True, env=env)
+    linhas = r.stdout.splitlines()
+    if linhas and linhas[0].endswith("/" + sock) and os.path.exists(linhas[0]):
+        os.unlink(linhas[0])
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr or r.stdout)
+    return linhas[1:]
+
+
+def tmux(args):
+    try:
+        dono = servidor_tmux("consultar-%d" % os.getpid(), None)
+        padrao = set(servidor_tmux("consultar-padrao-%d" % os.getpid(), os.devnull))
+    except RuntimeError as e:
+        sys.stderr.write(str(e))
+        return 1
+    for linha in dono:
+        if not (linha.startswith("prefix") or casa(args.filtro, linha)):
+            continue
+        marca = " " if linha in padrao else "*"
+        print(marca, linha if len(linha) <= 160 else linha[:159] + "…")
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(prog="consultar", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="ferramenta", required=True)
+    pn = sub.add_parser("nvim", help="atalhos efetivos do Neovim, com a origem")
+    pn.add_argument("--modo", default="n", type=modos,
+                    help="modos separados por vírgula, de " + ",".join(MODOS) + " (padrão: n)")
+    pn.add_argument("--tipo", help="filetype (cs, markdown...) para ver os atalhos de buffer dele")
+    pn.add_argument("filtro", nargs="?", default="")
+    pt = sub.add_parser("tmux", help="prefixo e teclas efetivas do tmux")
+    pt.add_argument("filtro", nargs="?", default="")
+    args = p.parse_args()
+    try:
+        return nvim(args) if args.ferramenta == "nvim" else tmux(args)
+    except FileNotFoundError as e:
+        sys.stderr.write("ferramenta ausente: %s\n" % e.filename)
+        return 1
+    except subprocess.TimeoutExpired as e:
+        sys.stderr.write("tempo esgotado: %s\n" % " ".join(e.cmd))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
