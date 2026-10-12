@@ -250,11 +250,13 @@ if [[ -f "$REGISTRO" ]]; then
   ' "$REGISTRO")
 fi
 
+# DESDE leva a hora: data sozinha no --since o git completa com a hora atual,
+# e a janela encolhe quanto mais tarde a coleta roda.
 if [[ $JANELA_EXPLICITA -eq 1 ]]; then
-  DESDE=$(date -d "-$JANELA days" +%Y-%m-%d)
+  DESDE=$(date -d "-$JANELA days" +%Y-%m-%dT00:00:00%:z)
   JANELA_ORIGEM="--janela $JANELA dias"
 elif [[ -n "$COLETADO_EM" ]]; then
-  DESDE=${COLETADO_EM:0:10}
+  DESDE=$COLETADO_EM
   # Quanto tempo faz, em palavra: "desde 2026-09-23" sozinho parece defeito
   # quando a coleta foi hoje de manhã.
   _seg=$(( $(date +%s) - $(date -d "$COLETADO_EM" +%s 2>/dev/null || date +%s) ))
@@ -263,7 +265,7 @@ elif [[ -n "$COLETADO_EM" ]]; then
   else _faz="há $(( _seg / 86400 )) dias"; fi
   JANELA_ORIGEM="desde a última coleta, $_faz (${COLETADO_EM:0:16})"
 else
-  DESDE=$(date -d "-$JANELA days" +%Y-%m-%d)
+  DESDE=$(date -d "-$JANELA days" +%Y-%m-%dT00:00:00%:z)
   JANELA_ORIGEM="$JANELA dias (não há registro anterior)"
 fi
 
@@ -792,7 +794,7 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
   . as $r |
 
   "# estado: \($r.projeto)" + (if $r.pedido != $r.projeto then "   (pedido: \"\($r.pedido)\")" else "" end),
-  "gerado em \($r.gerado_em) · janela: \($r.janela_origem) — mudanças desde \($r.desde)",
+  "gerado em \($r.gerado_em) · janela: \($r.janela_origem) — mudanças desde \($r.desde[0:16] | sub("T"; " "))",
   "vault: projects/\($r.projeto)/ · MOC: \($r.moc) · \($r.adrs) ADR(s) em decisoes/",
   "",
 
@@ -823,7 +825,7 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
       + "\n" + bloco([ $g[] | linha_task ])
   ),
   "",
-  ( [ $r.tasks[] | select(.arquivada != "" and .data >= $r.desde) ]
+  ( [ $r.tasks[] | select(.arquivada != "" and .data >= $r.desde[0:10]) ]
     | sort_by(.data) | reverse ) as $arq |
   "### Arquivadas na janela — \($arq|length)",
   bloco([ $arq[] | "  - \(.data)  \(.arquivada|col(9))\(.id)  ·  \(.titulo)"
