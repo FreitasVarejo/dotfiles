@@ -30,6 +30,7 @@ STOW_TARGETS=(
   [vault]="$HOME"
   [agents]=""
   [ssh]="$HOME"
+  [cloudflare]="$HOME"
 )
 
 if ! command -v stow &>/dev/null; then

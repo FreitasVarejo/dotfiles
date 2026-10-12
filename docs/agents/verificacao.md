@@ -19,3 +19,6 @@ agents/**|*/hooks/**|lib/**|setup.sh|healthcheck.sh     ./healthcheck.sh
   evento que ela escuta.
 - `vault/**`: o comando do `~/.local/bin` que mudou, contra o vault real só em
   modo leitura.
+- `cloudflare/**`: numa sessão nova do Claude Code, dentro de um repo,
+  `cf zones list` e `cf tunnels list` rodam sem perguntar e não deixam nada no
+  `git status`; um `cf-write` pede aprovação.

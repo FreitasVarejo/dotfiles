@@ -1,0 +1,55 @@
+#!/bin/bash
+# cf / cf-write — a CLI `cf` da Cloudflare com o token do agente.
+#
+# Um script com dois nomes (cf-write é symlink para este). `cf` usa o token de
+# leitura e `cf-write`, o de escrita. O Claude Code libera o `cf` e pergunta
+# antes de cada `cf-write` (agents/settings/claude.json), mas a separação de
+# verdade é o token: uma escrita pelo `cf` volta 403 da própria Cloudflare, em
+# qualquer modo de permissão. O porquê: ADR 0038 em
+# ~/ObsidianVault/projects/workflow-ia/decisoes/.
+#
+# O token entra só no ambiente do processo do `cf` e nunca é exportado, porque
+# um segredo exportado chega a todo processo filho, agentes incluídos. Sem o
+# arquivo do token o wrapper recusa: deixar o `cf` cair num `cf auth login`
+# guardado daria a ele um escopo que este desenho não controla.
+#
+# O id da conta também vem de arquivo, e também sem ele o wrapper recusa. Sem
+# CLOUDFLARE_ACCOUNT_ID, a `cf` descobre a conta pela API e guarda a resposta em
+# .cloudflare/cache/ do diretório onde roda, sujando todo repo em que o agente
+# estiver. O id não é segredo, mas é desta conta, então fica fora do repo.
+#
+# O `cf` mora num prefixo privado (o mesmo de cloudflare/hooks/lib.sh), e não
+# no npm global, para que só estes wrappers estejam no PATH.
+
+set -euo pipefail
+
+CF_BIN="$HOME/.local/lib/cf/node_modules/.bin/cf"
+TOKEN_DIR="$HOME/.config/cloudflare"
+NAME=$(basename "$0")
+
+case "$NAME" in
+  cf-write) TOKEN_FILE="$TOKEN_DIR/write-token" ;;
+  *) TOKEN_FILE="$TOKEN_DIR/read-token" ;;
+esac
+
+if [[ ! -x "$CF_BIN" ]]; then
+  echo "$NAME: CLI da Cloudflare não instalada em ${CF_BIN%/node_modules/*}" >&2
+  echo "  -> ~/dotfiles/setup.sh" >&2
+  exit 2
+fi
+
+if [[ ! -s "$TOKEN_FILE" ]]; then
+  echo "$NAME: token ausente em $TOKEN_FILE" >&2
+  echo "  -> install -D -m 600 /dev/stdin $TOKEN_FILE   (cole o token, Ctrl-D)" >&2
+  exit 2
+fi
+
+ACCOUNT_FILE="$TOKEN_DIR/account-id"
+if [[ ! -s "$ACCOUNT_FILE" ]]; then
+  echo "$NAME: id da conta ausente em $ACCOUNT_FILE" >&2
+  echo "  -> echo <id> > $ACCOUNT_FILE   (o id é o trecho depois de dash.cloudflare.com/ na URL do painel)" >&2
+  exit 2
+fi
+
+CLOUDFLARE_API_TOKEN="$(<"$TOKEN_FILE")" CLOUDFLARE_ACCOUNT_ID="$(<"$ACCOUNT_FILE")" \
+  exec "$CF_BIN" "$@"

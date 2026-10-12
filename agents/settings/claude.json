@@ -26,5 +26,9 @@
       "Trusted repo: the owner's clones under ~/dev, ~/projects and ~/dotfiles on this machine; ~/ObsidianVault is the owner's notes vault (plain .md files synced by Syncthing)"
     ]
   },
-  "disableClaudeAiConnectors": true
+  "disableClaudeAiConnectors": true,
+  "permissions": {
+    "allow": ["Bash(cf *)"],
+    "ask": ["Bash(cf-write *)"]
+  }
 }

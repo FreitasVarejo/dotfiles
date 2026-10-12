@@ -1,5 +1,5 @@
 {
-  "read": ["~/.bashrc.local", "~/.config/gh/hosts.yml"],
+  "read": ["~/.bashrc.local", "~/.config/gh/hosts.yml", "~/.config/cloudflare/read-token", "~/.config/cloudflare/write-token"],
   "shell": ["env", "printenv:*", "gh auth token"],
   "edit": ["~/ObsidianVault/daily/**", "~/ObsidianVault/**/*.sync-conflict-*"]
 }

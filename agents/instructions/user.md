@@ -7,6 +7,10 @@
 - Task não se move, renomeia, arquiva nem apaga com `mv`, `rm` ou edição à mão: use `freitask`. Ao terminar, `freitask doctor`.
 - `daily/` não se reescreve. `*.sync-conflict-*` não se resolve sozinho.
 
+## Cloudflare
+
+- Ler: `cf`. Mudar qualquer coisa: só `cf-write`, e só depois de eu aprovar o comando. Não contorne (binário do npm direto, `curl` na API, `cf auth login`). Comando certo: `cf cli search`. O porquê: ADR 0038 em `~/ObsidianVault/projects/workflow-ia/decisoes/`.
+
 ## Como decidir comigo
 
 - Decisão de desenho: explique o mecanismo por extenso (o que quebra, onde, com citação do código ou do contrato) antes de oferecer opções. Opção resumida em duas linhas esconde o que eu uso para escolher.
