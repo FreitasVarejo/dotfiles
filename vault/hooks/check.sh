@@ -184,4 +184,21 @@ for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
   fi
 done
 
+# 8. Segredos e configuração do obsidian-mcp --------------------------------
+# Só na máquina que roda a stack: sem o .env dela o verificador sai 3, e aqui
+# fica em silêncio (ADR 0002). Achado é fail_check, ao contrário do vault-lint
+# (6): lá é ponteiro morto, aqui é exposição real da vault.
+MCP_RC=0
+MCP_OUT=$("$DOTFILES_DIR/vault/.local/bin/vault-mcp-check" 2>&1) || MCP_RC=$?
+case "$MCP_RC" in
+  0) log_success "vault-mcp-check: segredos e configuração do obsidian-mcp em dia" ;;
+  3) ;;
+  *)
+    log_error "vault-mcp-check: a stack do obsidian-mcp tem achado"
+    sed -n 's/^  /    -> /p' <<<"$MCP_OUT"
+    echo "    -> Detalhes: vault-mcp-check"
+    fail_check
+    ;;
+esac
+
 exit "${CHECK_FAILED:-0}"

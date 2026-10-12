@@ -1,0 +1,184 @@
+#!/bin/bash
+# vault-mcp-check — verificador dos segredos e da configuração do obsidian-mcp.
+#
+# O obsidian-mcp do pi01 põe a vault inteira atrás de uma URL pública: quem
+# passa pelo login OAuth e pelo bearer lê e escreve tudo. Checklist que depende
+# de alguém lembrar de rodar fica parado, então a conferência é este script, e
+# o vault/hooks/check.sh o chama na máquina que tem a stack.
+#
+# Nunca imprime valor, nem parcial: o achado nomeia a variável ou o arquivo e o
+# motivo. Não tem hostname (os dotfiles são públicos): ele vem do .env. E é
+# autocontido, sem source de lib, para rodar também de fora:
+#   ssh pi01 bash -s < ~/dotfiles/vault/.local/bin/vault-mcp-check
+#
+# Uso:
+#   vault-mcp-check            # relatório
+#   vault-mcp-check --quiet    # só o código de saída
+#
+# Lê $OBSIDIAN_MCP_ENV, ou ~/docker/personal/obsidian-mcp/.env.
+# Saída: 0 = limpo, 1 = achados, 2 = erro de uso, 3 = a stack não está nesta
+# máquina (o .env não existe).
+
+set -euo pipefail
+
+ENV_FILE="${OBSIDIAN_MCP_ENV:-$HOME/docker/personal/obsidian-mcp/.env}"
+STACK_DIR=$(dirname "$ENV_FILE")
+# Nomes do docker-compose.yml da stack e da rede do Traefik, não hostnames.
+CONTAINER=obsidian-mcp
+TRAEFIK=traefik
+PROXY_NET=proxy_net
+
+QUIET=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quiet) QUIET=true ;;
+    -h | --help)
+      sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *)
+      echo "vault-mcp-check: opção desconhecida: $1" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  [[ "$QUIET" == true ]] || echo "vault-mcp-check: sem a stack nesta máquina (${ENV_FILE/#$HOME/\~} não existe)" >&2
+  exit 3
+fi
+
+FINDINGS=()
+finding() { FINDINGS+=("$1: $2"); }
+
+# --- .env como o docker compose lê: CHAVE=valor, aspas opcionais ------------
+# Ler linha a linha, sem `source`: o .env não é script, e um valor com $ ou
+# crase seria executado.
+declare -A ENV=()
+while IFS= read -r LINE || [[ -n "$LINE" ]]; do
+  [[ "$LINE" =~ ^[[:space:]]*(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+  KEY=${BASH_REMATCH[2]} VAL=${BASH_REMATCH[3]}
+  if [[ "$VAL" =~ ^\"([^\"]*)\"[[:space:]]*(#.*)?$ || "$VAL" =~ ^\'([^\']*)\'[[:space:]]*(#.*)?$ ]]; then
+    VAL=${BASH_REMATCH[1]}
+  else
+    VAL=${VAL%%[[:space:]]#*}
+    VAL=${VAL%"${VAL##*[![:space:]]}"}
+  fi
+  ENV[$KEY]=$VAL
+done <"$ENV_FILE"
+unset LINE VAL
+
+# --- Arquivos ---------------------------------------------------------------
+read -r MODE OWNER < <(stat -c '%a %U' "$ENV_FILE")
+[[ "$MODE" == [46]00 ]] || finding .env "modo $MODE, esperado 600 (chmod 600)"
+[[ "$OWNER" == "$(id -un)" ]] || finding .env "dono $OWNER, esperado $(id -un), quem roda a stack"
+
+# Hoje a pasta não é repositório; a checagem vale no dia em que a stack for
+# versionada.
+if git -C "$STACK_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+  if git -C "$STACK_DIR" ls-files --error-unmatch .env &>/dev/null; then
+    finding .env "versionado no git: tire do índice e troque os segredos, que já estão no histórico"
+  elif ! git -C "$STACK_DIR" check-ignore -q .env; then
+    finding .env "a pasta é repositório git e o .env não está ignorado"
+  fi
+fi
+
+# Cópia de .env esquecida ao lado do atual guarda o segredo anterior, que a
+# rotação não troca.
+shopt -s nullglob
+for F in "$STACK_DIR"/.env*; do
+  case "$(basename "$F")" in
+    .env | .env.example) ;;
+    *) finding "$(basename "$F")" "cópia de .env ao lado da stack: guarda segredo antigo (apague)" ;;
+  esac
+done
+shopt -u nullglob
+
+# Os registros DCR: quem os tem, tem client_id.
+CLIENTS="$STACK_DIR/data/oauth_clients.json"
+if [[ -f "$CLIENTS" ]]; then
+  MODE=$(stat -c '%a' "$CLIENTS")
+  [[ "$MODE" == [46]00 ]] || finding data/oauth_clients.json "modo $MODE, esperado 600 (chmod 600)"
+fi
+
+# --- Segredos no .env -------------------------------------------------------
+TOKEN=${ENV[VAULT_MCP_TOKEN]:-}
+if [[ -z "$TOKEN" ]]; then
+  finding VAULT_MCP_TOKEN "vazio"
+elif [[ ! "$TOKEN" =~ ^[0-9a-fA-F]{64}$ ]]; then
+  finding VAULT_MCP_TOKEN "não tem 64 caracteres hexadecimais, os 256 bits de openssl rand -hex 32"
+fi
+
+# O servidor falha fechado com a senha vazia, mas falhar fechado só ajuda se
+# alguém notar. Senha curta aqui é a vault inteira.
+PASSWORD=${ENV[VAULT_OAUTH_PASSWORD]:-}
+if [[ -z "$PASSWORD" ]]; then
+  finding VAULT_OAUTH_PASSWORD "vazia"
+elif ((${#PASSWORD} < 32)) || [[ ! "$PASSWORD" =~ ^[A-Za-z0-9+/=]+$ ]]; then
+  finding VAULT_OAUTH_PASSWORD "mais curta ou com outro alfabeto que openssl rand -base64 24 (32 caracteres base64)"
+fi
+
+SUB=${ENV[OBSIDIAN_MCP_SUBDOMAIN]:-} DOMAIN=${ENV[CF_TUNNEL_DOMAIN]:-}
+HOST=""
+if [[ -z "$SUB" || -z "$DOMAIN" ]]; then
+  finding OBSIDIAN_MCP_SUBDOMAIN/CF_TUNNEL_DOMAIN "vazio: sem eles não há hostname público para conferir"
+else
+  HOST="$SUB.$DOMAIN"
+fi
+
+# --- O que o container roda de fato -----------------------------------------
+# ALLOWED_HOSTS, PUBLIC_URL e FORWARDED_ALLOW_IPS são montados pelo compose a
+# partir do .env, então só o ambiente do container diz se valem: um compose com
+# valor fixo ou um .env trocado sem `docker compose up -d` não aparecem no .env.
+declare -A CENV=()
+if ! command -v docker &>/dev/null; then
+  finding docker "não está no PATH: a configuração do container não foi conferida"
+elif ! CENV_RAW=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>/dev/null); then
+  finding "$CONTAINER" "container não encontrado (ou docker sem permissão): a configuração dele não foi conferida"
+else
+  while IFS= read -r LINE; do
+    [[ "$LINE" == *=* ]] && CENV[${LINE%%=*}]=${LINE#*=}
+  done <<<"$CENV_RAW"
+  unset CENV_RAW LINE
+
+  if [[ -n "$HOST" ]]; then
+    # Proteção anti DNS-rebinding: o hostname público, exatamente.
+    [[ "${CENV[VAULT_MCP_ALLOWED_HOSTS]:-}" == "$HOST" ]] ||
+      finding VAULT_MCP_ALLOWED_HOSTS "não é exatamente o hostname público (OBSIDIAN_MCP_SUBDOMAIN.CF_TUNNEL_DOMAIN)"
+    # Sem ele, as URLs da descoberta OAuth derivam do header Host, e um Host
+    # forjado desvia a troca de token para um servidor de terceiro.
+    [[ "${CENV[VAULT_MCP_PUBLIC_URL]:-}" == "https://$HOST" ]] ||
+      finding VAULT_MCP_PUBLIC_URL "não é https:// mais o hostname público"
+  fi
+
+  # O único forwarder confiável é o Traefik. O IP dele na rede não é fixo:
+  # recriar o container o troca, e o valor velho passa a confiar em outro.
+  TRAEFIK_IP=$(docker inspect --format "{{with index .NetworkSettings.Networks \"$PROXY_NET\"}}{{.IPAddress}}{{end}}" "$TRAEFIK" 2>/dev/null || true)
+  if [[ -z "$TRAEFIK_IP" ]]; then
+    finding "$TRAEFIK" "sem IP na $PROXY_NET: VAULT_MCP_FORWARDED_ALLOW_IPS não foi conferida"
+  else
+    [[ "${CENV[VAULT_MCP_FORWARDED_ALLOW_IPS]:-}" == "$TRAEFIK_IP" ]] ||
+      finding VAULT_MCP_FORWARDED_ALLOW_IPS "não é só o IP atual do $TRAEFIK na $PROXY_NET (o .env vai em TRAEFIK_PROXY_NET_IP; depois, docker compose up -d)"
+    [[ "${ENV[TRAEFIK_PROXY_NET_IP]:-}" == "$TRAEFIK_IP" ]] ||
+      finding TRAEFIK_PROXY_NET_IP "difere do IP atual do $TRAEFIK na $PROXY_NET: o próximo up -d confia no IP errado"
+  fi
+
+  # A força conferida acima é a do .env; isto garante que é a que está no ar.
+  for KEY in VAULT_MCP_TOKEN VAULT_OAUTH_PASSWORD; do
+    [[ "${CENV[$KEY]:-}" == "${ENV[$KEY]:-}" ]] ||
+      finding "$KEY" "o container roda com outro valor que o .env (rotação sem docker compose up -d?)"
+  done
+fi
+unset TOKEN PASSWORD ENV CENV
+
+# --- Relatório --------------------------------------------------------------
+if [[ "$QUIET" == false ]]; then
+  if ((${#FINDINGS[@]} == 0)); then
+    echo "vault-mcp-check: nenhum achado em ${ENV_FILE/#$HOME/\~}."
+  else
+    printf '  %s\n' "${FINDINGS[@]}"
+    printf '\n%d achado(s) em %s.\n' "${#FINDINGS[@]}" "${ENV_FILE/#$HOME/\~}"
+  fi
+fi
+((${#FINDINGS[@]} == 0))
