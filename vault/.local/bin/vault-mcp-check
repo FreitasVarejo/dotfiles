@@ -95,12 +95,14 @@ for F in "$STACK_DIR"/.env*; do
 done
 shopt -u nullglob
 
-# Os registros DCR: quem os tem, tem client_id.
-CLIENTS="$STACK_DIR/data/oauth_clients.json"
-if [[ -f "$CLIENTS" ]]; then
-  MODE=$(stat -c '%a' "$CLIENTS")
-  [[ "$MODE" == [46]00 ]] || finding data/oauth_clients.json "modo $MODE, esperado 600 (chmod 600)"
-fi
+# Os registros DCR (quem os tem, tem client_id) e o log de auditoria (caminho
+# e checksum de toda escrita na vault). O servidor cria arquivo com a umask,
+# então um log recriado volta legível por todos.
+for F in data/oauth_clients.json data/audit.jsonl; do
+  [[ -f "$STACK_DIR/$F" ]] || continue
+  MODE=$(stat -c '%a' "$STACK_DIR/$F")
+  [[ "$MODE" == [46]00 ]] || finding "$F" "modo $MODE, esperado 600 (chmod 600)"
+done
 
 # --- Segredos no .env -------------------------------------------------------
 TOKEN=${ENV[VAULT_MCP_TOKEN]:-}
