@@ -29,9 +29,12 @@ import tempfile
 
 VAULT = os.path.realpath(os.path.expanduser(os.environ.get("TRAVAS_VAULT", "~/ObsidianVault")))
 FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
-# Subcomando do freitask que escreve → posições dos ids depois dele.
+# Subcomando do freitask que escreve → posições dos ids entre os posicionais dele.
 FREITASK_WRITES = {"set": (0,), "archive": (0,), "unarchive": (0,), "delete": (0,),
                    "rename": (0, 1), "new": (1,)}
+# Opções que levam o valor na palavra seguinte, por subcomando: espelha os
+# `parse_flags(2, {...})` de `~/dev/freitask.nvim/lua/freitask/cli.lua`.
+FREITASK_VALUE_OPTS = {"set": {"status", "title", "desc"}, "new": {"desc"}}
 PREFIXES = {"sudo", "doas", "command", "builtin", "exec", "nice", "nohup", "time", "env"}
 
 
@@ -101,6 +104,23 @@ def task_id(arg):
     return name[:-3] if name.endswith(".md") else name
 
 
+def positionals(args, value_opts):
+    """Os posicionais como o `parse_flags` do freitask os vê: `--x=v` e `--x` são
+    opção, e `--x` com valor leva a palavra seguinte. `set --help` não é a task `--help`."""
+    ret, i = [], 0
+    while i < len(args):
+        arg = args[i]
+        if re.match(r"--[^=]+=", arg):
+            pass
+        elif re.match(r"--.", arg):
+            if arg[2:] in value_opts:
+                i += 1
+        else:
+            ret.append(arg)
+        i += 1
+    return ret
+
+
 def written(data):
     """O que esta chamada escreveu no vault, uma linha por coisa."""
     tool, tool_input = data.get("tool_name"), data.get("tool_input") or {}
@@ -116,7 +136,7 @@ def written(data):
         words = strip_prefixes(words)
         if len(words) < 3 or os.path.basename(words[0]) != "freitask" or words[1] not in FREITASK_WRITES:
             continue
-        args = words[2:]
+        args = positionals(words[2:], FREITASK_VALUE_OPTS.get(words[1], set()))
         lines += ["task " + task_id(args[i]) for i in FREITASK_WRITES[words[1]] if i < len(args)]
     return lines
 
