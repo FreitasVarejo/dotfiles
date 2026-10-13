@@ -15,6 +15,13 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 log_info "--- Cloudflare (cf) ---"
 
+# Sem o diretório dos tokens, a máquina não opera a Cloudflare: nada a instalar.
+if [[ ! -d "$CF_TOKEN_DIR" ]]; then
+  log_optional "${CF_TOKEN_DIR/#$HOME/\~} ausente: esta máquina não opera a Cloudflare; cf não instalado"
+  echo "    -> Para operar: install -D -m 600 /dev/stdin ${CF_TOKEN_DIR/#$HOME/\~}/read-token   (cole o token, Ctrl-D), depois ~/dotfiles/setup.sh"
+  exit 0
+fi
+
 if ! command -v npm &>/dev/null; then
   log_warn "npm não encontrado; cf não instalado"
   echo "    -> $PM_INSTALL nodejs npm && ~/dotfiles/setup.sh"

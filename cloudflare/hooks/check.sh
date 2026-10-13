@@ -2,8 +2,9 @@
 # shellcheck shell=bash
 # Checks READ-ONLY do pacote 'cloudflare': Node, a CLI `cf` na versão fixa,
 # os wrappers `cf`/`cf-write` à frente no PATH, os dois tokens do agente e o id
-# da conta. Token ou id ausente é aviso: máquina sem eles (o WSL do trabalho)
-# não usa a Cloudflare, e o wrapper recusa rodar sem eles.
+# da conta. Só cobra onde existe o diretório dos tokens: máquina sem ele (o WSL
+# do trabalho) não opera a Cloudflare, e o check sai sem cobrar nada. Com o
+# diretório, token ou id ausente é aviso, porque o wrapper recusa rodar sem eles.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -12,6 +13,12 @@ DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 log_info "--- Cloudflare (cf) ---"
+
+if [[ ! -d "$CF_TOKEN_DIR" ]]; then
+  log_optional "${CF_TOKEN_DIR/#$HOME/\~} ausente: esta máquina não opera a Cloudflare"
+  echo "    -> Para operar: install -D -m 600 /dev/stdin ${CF_TOKEN_DIR/#$HOME/\~}/read-token   (cole o token, Ctrl-D), depois ~/dotfiles/setup.sh"
+  exit 0
+fi
 
 # 1. Node ----------------------------------------------------------------------
 if node_at_least "$CF_NODE_MIN"; then
