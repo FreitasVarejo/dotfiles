@@ -5,6 +5,14 @@ return {
     "mikavilpas/yazi.nvim",
     event = "VeryLazy",
     keys = {
+      -- Uma tecla só; troca o <BS> nativo do modo normal (anda para a esquerda).
+      {
+        "<BS>",
+        function()
+          require("yazi").yazi()
+        end,
+        desc = "Open yazi at the current file",
+      },
       {
         "<leader>-",
         function()
