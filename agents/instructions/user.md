@@ -2,7 +2,8 @@
 
 ## Vault
 
-- `~/ObsidianVault` tem o mesmo caminho em toda máquina. Onde ele está em disco, leia e escreva os `.md` direto, sem MCP de Obsidian.
+- `~/ObsidianVault` é o mesmo vault no notebook e no pi01 (Syncthing). No WSL do trabalho, o mesmo caminho guarda outro vault, e nada deste está lá: nem task, ADR e glossário de `projects/`, nem `hosts/`, `research/` ou o `AGENTS.md` do vault. Regra que precisa valer no WSL se escreve no texto que viaja com os dotfiles, nunca só numa ADR; instrução para fazer no WSL leva os comandos prontos. O porquê: `~/ObsidianVault/projects/workflow-ia/mapa-do-workflow.md`.
+- Onde o vault está em disco, leia e escreva os `.md` direto, sem MCP de Obsidian.
 - Antes de criar, mover, renomear ou apagar qualquer coisa nele, leia `~/ObsidianVault/AGENTS.md`.
 - Task não se move, renomeia, arquiva nem apaga com `mv`, `rm` ou edição à mão: use `freitask`. Ao terminar, `freitask doctor`.
 - `daily/` não se reescreve. `*.sync-conflict-*` não se resolve sozinho.

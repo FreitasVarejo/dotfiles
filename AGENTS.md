@@ -81,6 +81,12 @@ a dead pointer blocks nobody (ADR 0009).
 
 ## Agent skills
 
+The vault paths in this repo (here and in `docs/agents/`) point at the vault the notebook
+and pi01 share. If `~/ObsidianVault/projects/workflow-ia/` does not exist, this machine holds
+another vault at that path (the work WSL): none of those pointers resolve there, and nothing
+is written into that vault on this repo's behalf — no task (`freitask new`), no ADR, no
+glossary entry. The why: `~/ObsidianVault/projects/workflow-ia/mapa-do-workflow.md`.
+
 ### Issue tracker
 
 Work lives as freitask tasks in `~/ObsidianVault/projects/workflow-ia/tasks/`, not GitHub issues (this repo has no pipeline). See `docs/agents/issue-tracker.md`.

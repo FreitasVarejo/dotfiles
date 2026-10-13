@@ -9,6 +9,9 @@ and there should not be one — a decision recorded here would be a second sourc
 
 ## Before exploring, read these
 
+The vault paths below exist in the vault the notebook and pi01 share. On a machine with
+another vault (the work WSL), the paragraph under `## Agent skills` in `AGENTS.md` applies.
+
 - **`AGENTS.md`** at the repo root: the architecture and code-style contract for this repo.
 - **`~/ObsidianVault/projects/workflow-ia/glossario.md`**: the glossary of domain terms.
 - **`~/ObsidianVault/projects/workflow-ia/decisoes/`**: read the ADRs that touch the area
