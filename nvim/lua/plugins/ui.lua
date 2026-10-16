@@ -55,6 +55,19 @@ return {
     "folke/snacks.nvim",
     opts = {
       image = { enabled = false },
+      -- O preset nvim-remote do lazygit abre com --remote-tab, uma tab por
+      -- arquivo. Aqui o `e` carrega os selecionados como buffers na janela em
+      -- que o Neovim estava; o `q` fecha o lazygit antes de o arquivo abrir.
+      -- Só o `edit`: o editAtLine (e num hunk) fica com o preset, que abre tab.
+      -- Com --remote o `:drop` roda com o float ainda em modo terminal, e ao
+      -- sair desse modo o Neovim desfaz o cursor posicionado na linha.
+      lazygit = {
+        config = {
+          os = {
+            edit = '[ -z "$NVIM" ] && (nvim -- {{filename}}) || (nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote {{filename}})',
+          },
+        },
+      },
       dashboard = {
         preset = {
           header = [[
