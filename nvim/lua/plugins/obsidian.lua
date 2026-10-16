@@ -23,23 +23,46 @@
 -- `:Obsidian today` by hand still creates that file.
 local vault = vim.fs.normalize("~/ObsidianVault")
 
+-- Provisional name for a note created with no title: six characters of
+-- Crockford's base32 in lowercase (no i, l, o or u, which read as 1 and 0).
+-- `vim.uv.random` and not `math.random`, which repeats the same sequence in
+-- every Neovim session. 16 and 32 divide 256, so a byte modulo either has no
+-- bias. The first character is always a letter: the plugin writes the title
+-- into `aliases` through `tonumber`, so "000123" became the alias "123",
+-- "0x1a2b" became "6699" and "12e456" became "inf". 16 * 32^5 is about 5e8
+-- names: `title_id` only sees this machine's folder, and two machines creating
+-- a note before Syncthing delivers the other's practically never draw the same.
+local alphabet = "0123456789abcdefghjkmnpqrstvwxyz"
+local letters = "abcdefghjkmnpqrs"
+local function random_id()
+  local bytes = assert(vim.uv.random(6))
+  local id = {}
+  for i = 1, 6 do
+    local set = i == 1 and letters or alphabet
+    local n = bytes:byte(i) % #set + 1
+    id[i] = set:sub(n, n)
+  end
+  return table.concat(id)
+end
+
 -- A bare title goes to the root of the project the current buffer belongs to,
 -- or stays where the plugin would put it inside `study/` or `hosts/`; typing a
 -- path ("study/foo") is taken as is. Anywhere else goes to `inbox/`, the free
--- area for a note with no project yet: the vault root is closed.
+-- area for a note with no project yet: the vault root is closed. An empty title
+-- is a random name, for `<leader>or` to rename once the note has a subject.
 local function new_note()
   local name = vim.api.nvim_buf_get_name(0)
   local rel = name ~= "" and vim.fs.relpath(vault, name) or nil
   local project = rel and rel:match("^projects/[^/]+/")
   local free_area = rel and (rel:match("^study/") or rel:match("^hosts/"))
 
-  vim.ui.input({ prompt = "New note (title or path from the vault root): " }, function(id)
+  vim.ui.input({ prompt = "New note (title or path from the vault root; empty for a random name): " }, function(id)
     if not id then
       return
     end
     id = vim.trim(id)
     if id == "" then
-      return
+      id = random_id()
     end
     if not id:find("/", 1, true) then
       if project then
