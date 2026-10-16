@@ -24,6 +24,20 @@ vim.keymap.set("n", "<C-Right>", "<cmd>vertical resize +2<cr>", { desc = "Increa
 -- ESLint fix (o comando do eslint LSP do nvim-lspconfig, buffer-local)
 vim.keymap.set("n", "<leader>el", "<cmd>LspEslintFixAll<cr>", { desc = "ESLint Fix All" })
 
+-- Diagnostics por buffer: o markdown abre desligado (config/autocmds.lua). O
+-- toggle do LazyVim é global e lê vim.diagnostic.is_enabled() sem buffer, que
+-- vira false assim que um único buffer é desligado; ele passaria a mostrar
+-- "off" em todos os outros. Este troca o <leader>ud pelo do buffer atual.
+Snacks.toggle({
+  name = "Diagnostics",
+  get = function()
+    return vim.diagnostic.is_enabled({ bufnr = 0 })
+  end,
+  set = function(state)
+    vim.diagnostic.enable(state, { bufnr = 0 })
+  end,
+}):map("<leader>ud")
+
 -- O Copilot sobe desligado (plugins/copilot.lua); este toggle liga e desliga.
 -- O get não carrega o plugin: sem o módulo na memória ele está desligado. O
 -- <leader>up é o toggle do Mini Pairs no LazyVim, daí o P maiúsculo.

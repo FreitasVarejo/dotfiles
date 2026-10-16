@@ -1,9 +1,11 @@
--- Garante que o spell check esteja desativado para markdown,
--- já que o extra de markdown do LazyVim costuma habilitá-lo.
+-- Markdown abre sem spell check (o extra de markdown do LazyVim costuma
+-- habilitá-lo) e sem diagnostics. O marksman e o markdownlint seguem rodando,
+-- só não aparecem; <leader>ud (config/keymaps.lua) liga no buffer.
 vim.api.nvim_create_autocmd("FileType", {
   pattern = { "markdown" },
-  callback = function()
+  callback = function(args)
     vim.opt_local.spell = false
+    vim.diagnostic.enable(false, { bufnr = args.buf })
   end,
 })
 
