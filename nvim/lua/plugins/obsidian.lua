@@ -14,7 +14,8 @@
 -- reserves `tasks/`, `decisoes/` and `daily/`, but the plugin's default
 -- (`new_notes_location = "current_dir"`) drops a new note next to the buffer
 -- you are in, which from a task lands it inside `tasks/`. `new_note` below
--- puts it at the project root instead. The daily-note keys are gone for the
+-- puts it at the project root instead, or in `inbox/` when the buffer is in no
+-- project. The daily-note keys are gone for the
 -- same reason: `daily/` holds generated snapshots, and with no
 -- `daily_notes.folder` the plugin would write today's note in the vault root.
 -- `daily_notes.enabled = false` only hides `today`, `yesterday`, `tomorrow`
@@ -24,7 +25,8 @@ local vault = vim.fs.normalize("~/ObsidianVault")
 
 -- A bare title goes to the root of the project the current buffer belongs to,
 -- or stays where the plugin would put it inside `study/` or `hosts/`; typing a
--- path ("study/foo") is taken as is. Anywhere else has no home in the contract.
+-- path ("study/foo") is taken as is. Anywhere else goes to `inbox/`, the free
+-- area for a note with no project yet: the vault root is closed.
 local function new_note()
   local name = vim.api.nvim_buf_get_name(0)
   local rel = name ~= "" and vim.fs.relpath(vault, name) or nil
@@ -36,14 +38,14 @@ local function new_note()
       return
     end
     id = vim.trim(id)
+    if id == "" then
+      return
+    end
     if not id:find("/", 1, true) then
       if project then
         id = project .. id
       elseif not free_area then
-        return vim.notify(
-          "No home for a new note here: open a note under projects/<project>/ or type a path",
-          vim.log.levels.WARN
-        )
+        id = "inbox/" .. id
       end
     end
     local ok, actions = pcall(require, "obsidian.actions")
