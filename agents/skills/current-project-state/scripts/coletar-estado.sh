@@ -270,11 +270,11 @@ else
 fi
 
 # --- Tasks ------------------------------------------------------------------
-# O freitask é a autoridade do que existe e em que fase está; ele não devolve
-# título nem descrição, então cada arquivo é lido para pegar o que importa:
-# a linha em itálico (o melhor resumo de uma linha que este vault tem), o
-# motivo do bloqueio e o `dono`/`desde`/`dominio`, que é como se vê se tem
-# agente segurando a task.
+# O freitask é a autoridade do que existe, em que fase está e como se chama
+# (`callout`, `title`, `desc`, `status_num` do `list --json`). O arquivo só é
+# lido para o que ele não devolve: as notas (linha 4+ do bloco, o motivo do
+# bloqueio) e o `dono`/`desde`/`dominio`, que é como se vê se tem agente
+# segurando a task, e a data do último item de `## Histórico`.
 parse_task() {
   awk '
     function limpar(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
@@ -286,19 +286,12 @@ parse_task() {
       if ($0 ~ /^dominio:/) { sub(/^dominio:/, ""); dominio = limpar($0) }
       next
     }
-    !titulo && /^> \[!/ {
-      linha = $0
-      match(linha, /\[![a-z]+\]/)
-      callout = substr(linha, RSTART + 2, RLENGTH - 3)
-      titulo = limpar(substr(linha, RSTART + RLENGTH))
-      bloco = 1
-      next
-    }
+    !visto && /^> \[!/ { visto = 1; bloco = 1; next }
     bloco && /^>/ {
       corpo = limpar(substr($0, 2))
       if (corpo ~ /^\[\[/) next                       # o wikilink da linha 2
-      if (!estado && corpo ~ /^_.*_$/) {              # o itálico é o estado
-        estado = substr(corpo, 2, length(corpo) - 2)
+      if (!estado && !notas && corpo ~ /^_.*_$/) {    # o itálico antes das notas é o estado; o texto vem do JSON
+        estado = 1
         next
       }
       if (corpo != "") notas = notas (notas ? " " : "") corpo
@@ -308,8 +301,7 @@ parse_task() {
     /^## Hist/ { hist = 1; next }
     hist && /^- [0-9]{4}-[0-9]{2}-[0-9]{2}/ { data = substr($0, 3, 10) }
     END {
-      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-        callout, titulo, estado, notas, dono, desde, dominio, data
+      printf "%s\t%s\t%s\t%s\t%s\n", notas, dono, desde, dominio, data
     }
   ' "$1"
 }
@@ -317,7 +309,7 @@ parse_task() {
 FASES_JSON=$(cat "$VAULT/.freitask/status.json" 2>/dev/null || echo '{}')
 
 tasks_json() {
-  local id path arquivada status
+  local id path
   if ! command -v freitask >/dev/null; then
     fonte freitask ausente "freitask não está no PATH — backlog não lido"
     echo '[]'
@@ -331,30 +323,22 @@ tasks_json() {
   fi
   fonte freitask ok "freitask list --json --archived"
 
-  # O campo vazio no meio vira '-': TAB é IFS-whitespace e `read` colapsa dois
-  # seguidos, jogando o campo seguinte na variável errada.
-  while IFS=$'\t' read -r id path arquivada status; do
+  while IFS=$'\t' read -r id path; do
     [[ -n "$id" ]] || continue
     [[ -f "$path" ]] || continue
-    [[ "$arquivada" == "-" ]] && arquivada=""
-    local campos
-    campos=$(parse_task "$path")
-    printf '%s\t%s\t%s\t%s\n' "$id" "$arquivada" "$status" "$campos"
+    printf '%s\t%s\n' "$id" "$(parse_task "$path")"
   done < <(
     printf '%s' "$bruto" | jq -r --arg p "$PROJETO" '
-      .[] | select(.project == $p)
-      | [.id, .path, (.archived // "-"), .status] | @tsv'
-  ) | jq -R -s --argjson fases "$FASES_JSON" '
-      split("\n") | map(select(length > 0)) | map(split("\t")) | map({
-        id: .[0], arquivada: .[1], fase: .[2],
-        callout: .[3], titulo: .[4], estado: .[5], notas: .[6],
-        dono: .[7], desde: .[8], dominio: .[9], data: .[10]
-      })
-      | map(. as $t | . + { ordem: (
-          ($fases | to_entries
-            | map(select(.value.callout == $t.callout or .value.title == $t.fase))
-            | .[0].key // "9") | tonumber? // 9
-        ) })
+      .[] | select(.project == $p) | [.id, .path] | @tsv'
+  ) | jq -R -s --argjson lista "$bruto" --arg p "$PROJETO" '
+      ($lista | map(select(.project == $p)) | INDEX(.id)) as $porid
+      | split("\n") | map(select(length > 0)) | map(split("\t")) | map(
+          $porid[.[0]] as $t | {
+            id: .[0], arquivada: ($t.archived // ""), fase: $t.status,
+            callout: $t.callout, titulo: $t.title, estado: $t.desc,
+            notas: .[1], dono: .[2], desde: .[3], dominio: .[4], data: .[5],
+            ordem: $t.status_num
+          })
     '
 }
 
