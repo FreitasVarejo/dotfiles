@@ -68,13 +68,17 @@ Sempre estas quatro, nesta ordem. A tabela diz de onde sai cada uma:
 | **Últimas mudanças** | `## mudanças na janela` — os três blocos: vault (ADR nova, spec reescrita, review), repos (commits, branch, árvore suja) e os planos de sessão |
 | **O que está pronto** | tasks em `Pronta (check)` + `### Arquivadas na janela` (as `done`; `dropped` foi abandonada, não entregue) |
 | **O que espera você** | `## esperando você` inteiro, cruzado com a idade que veio do registro |
-| **Próximos passos** | tasks em `Não iniciada (todo)` e `Bloqueada (warning)` — a bloqueada primeiro, com o motivo, porque ela trava as outras |
+| **Próximos passos** | tasks em `Refinada (tip)`, `Não iniciada (todo)` e `Bloqueada (warning)` — a bloqueada primeiro, com o motivo, porque ela trava as outras; depois a Refinada, que já tem o desenho fechado, e só então a Não iniciada |
 
 Como narrar:
 
 - **Cite id de task e data.** "`credenciais-dos-exporters`, parada desde 17/09" é
   verificável; "algumas pendências de infra" não é.
 - **Ordene por impacto, não pela ordem da saída.** O coletor lista; você escolhe.
+- **Mostre as mais antigas de "Algum dia".** O coletor imprime dessa fase só a
+  contagem e as 5 mais antigas, pela última edição do arquivo (`### Algum dia`).
+  Diga-as ao dono quando ele pedir o estado do projeto: é o que impede a
+  prateleira de virar o destino padrão da captura. Elas não são próximos passos.
 - **A linha `estado:` de cada task é o melhor resumo que existe** — é o itálico
   que o dono escreveu. Prefira-a a resumir o corpo da task por conta própria.
 - **Cruze o host com as tasks.** Quando a frente tem host vinculado, o que está
@@ -99,9 +103,11 @@ Isso reescreve o frontmatter e a fila em
 `~/ObsidianVault/projects/<projeto>/estado-<host>.md`, e **preserva intacta** a
 prosa das três seções seguintes. Depois, edite só essas três:
 
-- `## Decidido na conversa` — o que o dono resolveu e ainda não virou ADR. Uma
-  linha datada por decisão. Decisão que passa no critério de ADR da skill
-  `domain-modeling` **não** mora aqui: vira ADR em `decisoes/`.
+- `## Decidido na conversa` — o que o dono resolveu e ainda não foi para o
+  destino dele. Uma linha datada por decisão. O destino de cada decisão é o da
+  tabela da skill `domain-modeling`
+  (`~/dotfiles/agents/skills/domain-modeling/SKILL.md`), e uma que passa nos
+  três testes **não** mora aqui.
 - `## Adiado de propósito` — o que ele mandou deixar para depois, com o porquê.
   É o que impede a próxima rodada de cobrar de novo.
 - `## Leitura da última rodada` — uma ou duas frases sobre onde a frente está.

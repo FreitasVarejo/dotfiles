@@ -333,13 +333,10 @@ def task_info(path):
     text = open(path, encoding="utf-8").read()
     status = re.search(r"^> \[!(\w+)\]", text, re.M)
     desc = re.search(r"^> _(.*)_\s*$", text, re.M)
-    dono = re.search(r"^dono:\s*(.+)$", text, re.M)
-    desde = re.search(r"^desde:\s*(.+)$", text, re.M)
     return {
         "status": status.group(1) if status else "?",
         "desc": desc.group(1) if desc else "",
         "abertos": len(OPEN_ITEM.findall(text)),
-        "dono": (dono.group(1).strip() + " desde " + (desde.group(1).strip() if desde else "?")) if dono else "",
     }
 
 
@@ -380,8 +377,6 @@ def describe_task(path):
     if info["abertos"]:
         flag = " — %d item(ns) aberto(s)%s" % (info["abertos"], ", ENTERRADO em archived/" if archived else "")
     lines = ["  %s `%s` [%s]%s" % (parts[0], os.path.basename(path)[:-3], where, flag)]
-    if info["dono"]:
-        lines.append("      posse: %s" % info["dono"])
     if info["desc"]:
         lines.append("      _%s_" % info["desc"])
     return lines
@@ -409,10 +404,6 @@ def report_vault(since, toques, tasks, mine, missing, files):
     if files:
         lines.append("outros arquivos do vault escritos pela sessão: %d" % len(files))
         lines += ["  %s" % f for f in files[:10]] + (["  …"] if len(files) > 10 else [])
-    for path in sorted(active):
-        info = task_info(path)
-        if info["dono"] and path not in mine:
-            lines.append("posse de outra sessão: `%s` — %s" % (os.path.basename(path)[:-3], info["dono"]))
     others = [p for p in touched if p not in mine]
     if others:
         lines.append("+%s por outras sessões na janela (%s em diante)"

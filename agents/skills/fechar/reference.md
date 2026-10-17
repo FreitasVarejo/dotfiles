@@ -6,9 +6,8 @@ Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031, 0039 e 004
 |---|---|---|
 | trabalho que sobra de uma task | checklist e estado da task (`freitask set --desc`) | você |
 | passo que depende do dono | "Para retomar" na task, em ordem | você |
-| posse que a sessão tomou | apagar `dono`, `desde` e `dominio` | você |
 | decisão de conversa ou adiamento | "Decidido" e "Adiado" do `estado-<host>.md`, pelo passo 5 da `current-project-state` | o dono |
-| decisão que passa no critério de ADR da skill `domain-modeling` | proposta de ADR | o dono |
+| decisão tomada na sessão | destino da tabela da skill `domain-modeling` | o dono |
 | pesquisa respondida | nota em `research/`, pela skill `research` | o dono |
 | regra para agentes | proposta de mudança no contrato | o dono |
 | ponta solta sem task | task nova, pela skill `freitask` | o dono |
@@ -31,12 +30,10 @@ Commit, push, merge, `git worktree remove`, apagar branch, `mv` ou `rm` em
 task. O que for limpeza vai para o relatório como comando, e quem roda é o
 dono.
 
-## Posse
+## De qual sessão é a task
 
-`dono` é `<máquina>/<ferramenta>`: duas sessões na mesma máquina têm o mesmo
-valor. Quem diz de qual sessão é a task é o script, pelo que as travas
-anotaram. Só escreva em task desta sessão e só apague a posse dela; task e
-posse de outra sessão vão para o relatório.
+Quem diz é o script, pelo que as travas anotaram. Só escreva em task desta
+sessão; a de outra sessão vai para o relatório.
 
 ## "Para retomar"
 

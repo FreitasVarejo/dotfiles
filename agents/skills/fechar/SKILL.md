@@ -38,8 +38,7 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
    - **Sem perguntar:** nas tasks desta sessão (as do script, mais as que a
      conversa mostra e ele não pegou), marque o que foi feito,
      troque o estado (`freitask set <id> --desc`) e deixe uma seção
-     "Para retomar" com os passos em ordem. Apague `dono`, `desde` e `dominio`
-     que a sessão escreveu.
+     "Para retomar" com os passos em ordem.
    - **Só com OK:** arquivar, abrir task (skill `freitask`) e gravar decisão
      e adiamento no `estado-<host>.md` (o que e como: skill
      `current-project-state`, passo 5).

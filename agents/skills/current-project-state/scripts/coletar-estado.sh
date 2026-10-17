@@ -271,19 +271,17 @@ fi
 
 # --- Tasks ------------------------------------------------------------------
 # O freitask é a autoridade do que existe, em que fase está e como se chama
-# (`callout`, `title`, `desc`, `status_num` do `list --json`). O arquivo só é
-# lido para o que ele não devolve: as notas (linha 4+ do bloco, o motivo do
-# bloqueio) e o `dono`/`desde`/`dominio`, que é como se vê se tem agente
-# segurando a task, e a data do último item de `## Histórico`.
+# (`callout`, `title`, `desc`, `status_num`, `hidden` do `list --json`). O
+# arquivo só é lido para o que ele não devolve: as notas (linha 4+ do bloco, o
+# motivo do bloqueio) e a data do último item de `## Histórico`. O mtime do
+# arquivo entra no laço abaixo: é a idade das tasks de "Algum dia", que não têm
+# data no bloco.
 parse_task() {
   awk '
     function limpar(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
     NR == 1 && $0 == "---" { fm = 1; next }
     fm {
-      if ($0 == "---") { fm = 0; next }
-      if ($0 ~ /^dono:/)    { sub(/^dono:/, "");    dono = limpar($0) }
-      if ($0 ~ /^desde:/)   { sub(/^desde:/, "");   desde = limpar($0) }
-      if ($0 ~ /^dominio:/) { sub(/^dominio:/, ""); dominio = limpar($0) }
+      if ($0 == "---") fm = 0
       next
     }
     !visto && /^> \[!/ { visto = 1; bloco = 1; next }
@@ -301,12 +299,16 @@ parse_task() {
     /^## Hist/ { hist = 1; next }
     hist && /^- [0-9]{4}-[0-9]{2}-[0-9]{2}/ { data = substr($0, 3, 10) }
     END {
-      printf "%s\t%s\t%s\t%s\t%s\n", notas, dono, desde, dominio, data
+      printf "%s\t%s\n", notas, data
     }
   ' "$1"
 }
 
 FASES_JSON=$(cat "$VAULT/.freitask/status.json" 2>/dev/null || echo '{}')
+# Os callouts das fases que o freitask esconde por padrão ("Algum dia"). A regra
+# é dele; o coletor só pergunta, para não repeti-la aqui.
+OCULTAS_JSON=$(freitask statuses --json 2>/dev/null | jq -c '[.[] | select(.hidden) | .callout]' 2>/dev/null)
+[[ -n "$OCULTAS_JSON" ]] || OCULTAS_JSON='[]'
 
 tasks_json() {
   local id path
@@ -326,7 +328,7 @@ tasks_json() {
   while IFS=$'\t' read -r id path; do
     [[ -n "$id" ]] || continue
     [[ -f "$path" ]] || continue
-    printf '%s\t%s\n' "$id" "$(parse_task "$path")"
+    printf '%s\t%s\t%s\n' "$id" "$(parse_task "$path")" "$(stat -c %Y "$path")"
   done < <(
     printf '%s' "$bruto" | jq -r --arg p "$PROJETO" '
       .[] | select(.project == $p) | [.id, .path] | @tsv'
@@ -336,7 +338,7 @@ tasks_json() {
           $porid[.[0]] as $t | {
             id: .[0], arquivada: ($t.archived // ""), fase: $t.status,
             callout: $t.callout, titulo: $t.title, estado: $t.desc,
-            notas: .[1], dono: .[2], desde: .[3], dominio: .[4], data: .[5],
+            escondida: $t.hidden, notas: .[1], data: .[2], mtime: (.[3] | tonumber),
             ordem: $t.status_num
           })
     '
@@ -761,7 +763,7 @@ fi
 # Fases da mais adiantada para a menos: o que está pronto e o que trava vêm
 # antes do que nem começou. Seção vazia imprime "—" em vez de sumir: o agente
 # precisa distinguir "olhei e não tem" de "não olhei".
-printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
+printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" --argjson ocultas "$OCULTAS_JSON" '
   def col(n): (. + "                                        ")[0:n];
   def bloco(l): if (l | length) == 0 then "  —" else (l | join("\n")) end;
   # prosa do registro vem verbatim do arquivo: indenta para não quebrar a
@@ -772,7 +774,6 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
   def linha_task:
     "  - \(.id)  ·  \(.titulo)"
     + (if .estado  != "" then "\n      estado: \(.estado)" else "" end)
-    + (if .dono    != "" then "\n      dono: \(.dono) desde \(.desde) [\(.dominio)]" else "" end)
     + (if .notas   != "" then "\n      notas: \(.notas[0:280])" else "" end);
 
   . as $r |
@@ -800,13 +801,27 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" '
 
   "## tasks por fase",
   ( [ $r.tasks[] | select(.arquivada == "") ] ) as $ativas |
-  ( ( $fases | to_entries | map(select((.key|tonumber) <= 6))
+  ( ( $fases | to_entries
+      | map(select(.value.callout != "done" and (.value.callout | IN($ocultas[]) | not)))
       | sort_by(.key|tonumber) | reverse )[]
     | .value.title as $titulo | .value.callout as $callout
     | ( [ $ativas[] | select(.callout == $callout) ] ) as $g
     | "### \($titulo) (\($callout)) — \($g|length)"
       + (if $callout == "question" then "   <- é isto que espera homologação sua" else "" end)
       + "\n" + bloco([ $g[] | linha_task ])
+  ),
+  # As fases que o freitask esconde ("Algum dia") não entram na lista corrida:
+  # só a contagem e as mais antigas, pela última edição do arquivo, para a
+  # prateleira não virar destino padrão da captura e ainda assim ser lembrada.
+  ( ( $fases | to_entries
+      | map(select(.value.callout | IN($ocultas[])))
+      | sort_by(.key|tonumber) )[]
+    | .value.title as $titulo | .value.callout as $callout
+    | ( [ $ativas[] | select(.callout == $callout) ] | sort_by(.mtime) ) as $g
+    | "### \($titulo) (\($callout)) — \($g|length)"
+      + (if ($g|length) > 5 then "   (as 5 mais antigas, pela última edição)" else "" end)
+      + "\n" + bloco([ $g[0:5][]
+          | "  - \(.id)  ·  \(.titulo)  ·  mexida pela última vez em \(.mtime | strflocaltime("%d/%m/%Y"))" ])
   ),
   "",
   ( [ $r.tasks[] | select(.arquivada != "" and .data >= $r.desde[0:10]) ]
