@@ -48,8 +48,7 @@ Changes to task behaviour go there. This repo only carries the wiring:
 
 - the CLI wrapper `vault/.local/bin/freitask` — with no arguments in a terminal it
   opens the TUI (`freitask-tui`);
-- `vault/hooks/setup.sh` clones the repo and `cargo install`s the TUI; `vault/hooks/check.sh`
-  checks both;
+- the clone and the TUI: `vault/hooks/setup.sh` and `vault/hooks/check.sh`;
 - in Neovim, `<leader>k` opens the TUI in a float (`nvim/lua/plugins/freitask.lua`) and saving
   a task runs `freitask rebuild` (`nvim/lua/config/autocmds.lua`).
 
@@ -81,11 +80,8 @@ a dead pointer blocks nobody (ADR 0009).
 
 ## Agent skills
 
-The vault paths in this repo (here and in `docs/agents/`) point at the vault the notebook
-and pi01 share. If `~/ObsidianVault/projects/workflow-ia/` does not exist, this machine holds
-another vault at that path (the work WSL): none of those pointers resolve there, and nothing
-is written into that vault on this repo's behalf — no task (`freitask new`), no ADR, no
-glossary entry. The why: `~/ObsidianVault/projects/workflow-ia/mapa-do-workflow.md`.
+If `~/ObsidianVault/projects/workflow-ia/` does not exist, the vault at `~/ObsidianVault` is
+another one (the work WSL): write nothing from this repo into it.
 
 ### Issue tracker
 

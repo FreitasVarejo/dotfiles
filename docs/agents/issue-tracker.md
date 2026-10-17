@@ -6,9 +6,6 @@ trabalho não vive em GitHub Issues: vive como **task do freitask** em
 `~/ObsidianVault/projects/workflow-ia/decisoes/0005-freitask-e-frente-issue-e-execucao-onde-ha-esteira.md`.
 Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em task.
 
-Esses caminhos valem no vault do notebook e do pi01. Numa máquina com outro vault (o WSL
-do trabalho), vale o parágrafo de `## Agent skills` no `AGENTS.md` deste repo.
-
 ## Convenções
 
 - Criar, listar, mudar de fase, fechar e renomear: pela CLI (`freitask help`).
