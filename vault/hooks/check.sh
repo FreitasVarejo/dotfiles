@@ -12,13 +12,18 @@ VAULT_WORK_TREE="$HOME/ObsidianVault"
 
 log_info "--- Vault do Obsidian ---"
 
-# Sem o vault principal, 1-3 e 5-6 perdem o objeto mas não o hook inteiro: os
-# binários no PATH e os vaults extras (7) continuam valendo — uma máquina só
-# com o enter-hackathon ainda precisa ser checada.
+# O vault principal é obrigatório: sem ele o check falha. 1-3 e 5-6 seguem
+# puladas, porque não há o que checar e o `freitask doctor` CRIARIA o vault (um
+# esqueleto que o Syncthing trataria como conflito ao chegar). Os binários no
+# PATH e os vaults extras (7) continuam valendo, então uma máquina só com o
+# enter-hackathon falha aqui, mas ainda é checada.
 HAS_VAULT=true
 if [[ ! -d "$VAULT_WORK_TREE" ]]; then
   HAS_VAULT=false
-  log_optional "Vault principal não encontrado em $VAULT_WORK_TREE (checagens dele puladas)."
+  log_missing "Vault principal não encontrado em $VAULT_WORK_TREE"
+  echo "    -> Máquina pessoal: ele chega pelo Syncthing (aceite a pasta do vault)"
+  echo "    -> Trabalho: crie a pasta com mkdir ~/ObsidianVault"
+  fail_check
 fi
 
 # 1. Repo de checkpoints -----------------------------------------------------
@@ -74,8 +79,38 @@ fi
 # O clone é o motor da CLI: sem ele `freitask` não roda, então é falha. A TUI
 # (`freitask` sem argumentos) é conveniência, e a falta dela é só aviso.
 FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
+# freitask_vs_origin — compara o clone com o origin por `ls-remote`, e não por
+# `fetch`: o check é somente leitura e o fetch grava em .git. Imprime uma
+# palavra: em-dia | atras | sem-upstream | sem-rede. Nunca é motivo de falha.
+freitask_vs_origin() {
+  local branch remote ref remote_sha
+  branch=$(git -C "$FREITASK_REPO" symbolic-ref --short -q HEAD) || { echo sem-upstream; return; }
+  remote=$(git -C "$FREITASK_REPO" config "branch.$branch.remote") || { echo sem-upstream; return; }
+  ref=$(git -C "$FREITASK_REPO" config "branch.$branch.merge") || { echo sem-upstream; return; }
+  remote_sha=$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
+    timeout 10 git -C "$FREITASK_REPO" ls-remote "$remote" "$ref" 2>/dev/null | cut -f1)
+  [[ -n "$remote_sha" ]] || { echo sem-rede; return; }
+  # À frente do origin (o SHA dele é ancestral do HEAD) também é "em dia".
+  if git -C "$FREITASK_REPO" merge-base --is-ancestor "$remote_sha" HEAD 2>/dev/null; then
+    echo em-dia
+  else
+    echo atras
+  fi
+}
+
 if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
   log_success "freitask encontrado: $FREITASK_REPO"
+  if command -v git &>/dev/null && git -C "$FREITASK_REPO" rev-parse --git-dir &>/dev/null; then
+    case "$(freitask_vs_origin)" in
+      em-dia) log_success "freitask em dia com o origin" ;;
+      atras)
+        log_warn "freitask atrás do origin"
+        echo "    -> ~/dotfiles/setup.sh puxa o clone"
+        ;;
+      sem-upstream) log_optional "freitask: clone sem upstream (atualização não conferida)." ;;
+      sem-rede) log_optional "freitask: origin inalcançável (atualização não conferida)." ;;
+    esac
+  fi
 else
   log_missing "freitask não encontrado em $FREITASK_REPO"
   echo "    -> setup.sh clona de git@github.com:FreitasVarejo/freitask.nvim.git"
@@ -95,6 +130,16 @@ fi
 # reparado (`fixed`) não conta para nenhum dos dois.
 if command -v freitask &>/dev/null && [[ "$HAS_VAULT" == false ]]; then
   log_success "freitask encontrado: $(command -v freitask) (doctor pulado: sem vault principal)"
+elif command -v freitask &>/dev/null && [[ ! -d "$VAULT_WORK_TREE/.freitask" ]]; then
+  # Vault que não é do freitask (o do trabalho): o `doctor` o criaria, com
+  # .freitask/ e projects/. `list --json` prova a CLI sem escrever nada.
+  if freitask list --json >/dev/null 2>&1; then
+    log_success "freitask funciona (doctor pulado: $VAULT_WORK_TREE não tem .freitask/)"
+  else
+    log_error "freitask list --json falhou"
+    echo "    -> Detalhes: freitask list --json"
+    fail_check
+  fi
 elif command -v freitask &>/dev/null; then
   if ! command -v jq &>/dev/null; then
     # Sem jq não dá para separar erro de aviso: degrada para aviso, como antes.

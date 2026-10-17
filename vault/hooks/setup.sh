@@ -7,10 +7,12 @@
 #   - vault pessoal (~/ObsidianVault)            -> vault-checkpoint.timer
 #   - vaults extras (~/.config/vault-checkpoint/<nome>.env, stowados deste
 #     pacote)                                     -> vault-checkpoint@<nome>.timer
-#   - freitask: clone em $FREITASK_REPO e `cargo install` da TUI
+#   - freitask: clone em $FREITASK_REPO, `git pull --ff-only` nele e `cargo install`
+#     da TUI
 #
-# Idempotente: repetir não recria repo, não duplica exclude nem remoto, não
-# mexe num clone existente e só recompila a TUI quando o fonte mudou.
+# Idempotente: repetir não recria repo, não duplica exclude nem remoto, só
+# avança o clone existente quando dá fast-forward limpo e só recompila a TUI
+# quando o fonte mudou.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -134,14 +136,37 @@ done
 
 # 3. Freitask: clone e TUI ----------------------------------------------------
 # O clone é o motor da CLI `freitask` (este pacote stowa o shim). Se ele já
-# existe, não é tocado: quem decide quando dar `git pull` é o usuário.
+# existe, `pull_freitask` o avança, mas só onde não atropela: é o clone de
+# desenvolvimento do dono, então nada de pull com arquivo rastreado modificado,
+# com HEAD solto ou em branch sem upstream. Fora isso, ou sem rede, é aviso: o
+# setup nunca aborta por causa do pull.
 FREITASK_REPO="${FREITASK_REPO:-$HOME/dev/freitask.nvim}"
 FREITASK_REMOTE="git@github.com:FreitasVarejo/freitask.nvim.git"
+
+# pull_freitask <repo>
+pull_freitask() {
+  local repo="$1" branch
+  command -v git &>/dev/null && git -C "$repo" rev-parse --git-dir &>/dev/null || return 0
+  if ! branch=$(git -C "$repo" symbolic-ref --short -q HEAD); then
+    log_warn "freitask: HEAD solto em $repo; sem pull"
+  elif ! git -C "$repo" diff --quiet || ! git -C "$repo" diff --cached --quiet; then
+    log_warn "freitask: arquivos modificados em $repo; sem pull"
+  elif ! git -C "$repo" rev-parse --abbrev-ref '@{u}' &>/dev/null; then
+    log_warn "freitask: a branch '$branch' não tem upstream; sem pull"
+  elif GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=5" \
+    timeout 60 git -C "$repo" pull --ff-only --quiet 2>/dev/null; then
+    log_success "freitask em dia com o origin ($(git -C "$repo" rev-parse --short HEAD))"
+  else
+    log_warn "freitask: git pull --ff-only falhou"
+    echo "    -> Rode à mão para ver o erro: git -C \"$repo\" pull --ff-only"
+  fi
+}
 
 echo ""
 log_info "--- Freitask ---"
 if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
   log_success "freitask já clonado: $FREITASK_REPO"
+  pull_freitask "$FREITASK_REPO"
 elif command -v git &>/dev/null; then
   mkdir -p "$(dirname "$FREITASK_REPO")"
   if git clone --quiet "$FREITASK_REMOTE" "$FREITASK_REPO"; then
