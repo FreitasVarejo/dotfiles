@@ -224,14 +224,14 @@ vault_notes() {
 #   `supersedida-por: "[[x]] — inteira"` na antiga  -> ela mesma não pode estar vigente
 
 # frontmatter_fields <nota>...: arquivo<TAB>linha<TAB>campo<TAB>valor para
-# status e para os dois pares de vínculo, supersede/supersedida-por e
-# emenda/emendada-por. Um awk só para o vault inteiro.
+# status e para o par de vínculo supersede/supersedida-por. Um awk só para o
+# vault inteiro.
 frontmatter_fields() {
   awk '
     FNR == 1 { fm = ($0 == "---"); next }
     !fm { nextfile }
     $0 == "---" { fm = 0; nextfile }
-    match($0, /^(status|supersede|supersedida-por|emenda|emendada-por):[[:space:]]*/) {
+    match($0, /^(status|supersede|supersedida-por):[[:space:]]*/) {
       campo = substr($0, 1, index($0, ":") - 1)
       valor = substr($0, RLENGTH + 1)
       gsub(/"/, "", valor)
@@ -273,23 +273,14 @@ whole_targets() {
   done < <(printf '%s\n' "${1//;/$'\n'}")
 }
 
-# SUPERSEDE_ROWS alimenta este check; PAR_ROWS, o check 4. Emenda fica fora
-# daqui: o escopo dela é prosa livre e pode conter "inteira".
-declare -A NOTE_STATUS VOLTA VOLTA_LINHA
+declare -A NOTE_STATUS
 SUPERSEDE_ROWS=()
-PAR_ROWS=()
 while IFS=$'\t' read -r file lineno campo valor; do
   rel=${file#"$VAULT"/}
   row="$rel"$'\t'"$lineno"$'\t'"$campo"$'\t'"$valor"
   case "$campo" in
     status) NOTE_STATUS[$rel]=$valor ;;
-    supersede) SUPERSEDE_ROWS+=("$row") PAR_ROWS+=("$row") ;;
-    emenda) PAR_ROWS+=("$row") ;;
-    supersedida-por | emendada-por)
-      VOLTA["$rel"$'\t'"$campo"]=$valor
-      VOLTA_LINHA["$rel"$'\t'"$campo"]=$lineno
-      if [[ "$campo" == supersedida-por ]]; then SUPERSEDE_ROWS+=("$row"); fi
-      ;;
+    supersede | supersedida-por) SUPERSEDE_ROWS+=("$row") ;;
   esac
 done < <(
   mapfile -t notas < <(vault_notes)
@@ -332,53 +323,7 @@ done < <(
   ((${#notas[@]})) && extract_links "${notas[@]}"
 )
 
-# --- Check 4: ADR emendada sem o ponteiro de volta --------------------------
-# ADR 0036: o vínculo se escreve dos dois lados. Supersede parcial na nova pede
-# `supersedida-por: "[[nova]] — parcial"` na antiga; `emenda:` pede
-# `emendada-por: "[[nova]]"`. O inteiro fica com o check 2. Só vale quando o
-# alvo é ADR (`*/decisoes/`): é lá que a domain-modeling escreve os dois lados.
-# O achado cai na antiga, um por campo, com a linha inteira pronta para colar:
-# duas sugestões para o mesmo campo virariam chave YAML duplicada.
-declare -A FALTA
-FALTA_KEYS=()
-for row in ${PAR_ROWS+"${PAR_ROWS[@]}"}; do
-  IFS=$'\t' read -r rel _ campo valor <<<"$row"
-  nova=${rel##*/}
-  nova=${nova%.md}
-  if [[ "$campo" == supersede ]]; then
-    campo_volta=supersedida-por sufixo=" — parcial"
-  else
-    campo_volta=emendada-por sufixo=""
-  fi
-  while IFS= read -r item; do
-    [[ "$item" =~ \[\[([^]|]+) ]] || continue
-    [[ "$campo" == supersede && "$item" == *inteira* ]] && continue
-    alvo_path=$(resolve_note "${BASH_REMATCH[1]}")
-    [[ "$alvo_path" == */decisoes/* ]] || continue
-    key="$alvo_path"$'\t'"$campo_volta"
-    [[ "${VOLTA[$key]:-}" =~ (\[\[|/)"$nova"(\]\]|\|) ]] && continue
-    if [[ -z "${FALTA[$key]+x}" ]]; then
-      FALTA_KEYS+=("$key")
-      FALTA[$key]=""
-    fi
-    [[ "${FALTA[$key]}" == *"[[$nova]]"* ]] && continue
-    FALTA[$key]+="; [[$nova]]$sufixo"
-  done < <(printf '%s\n' "${valor//;/$'\n'}")
-done
-
-for key in ${FALTA_KEYS+"${FALTA_KEYS[@]}"}; do
-  IFS=$'\t' read -r alvo_path campo_volta <<<"$key"
-  volta=${VOLTA[$key]:-}
-  novos=${FALTA[$key]#; }
-  if [[ -n "$volta" ]]; then
-    finding emenda-sem-volta "$alvo_path" "${VOLTA_LINHA[$key]}" \
-      "troque por $campo_volta: \"$volta; $novos\""
-  else
-    finding emenda-sem-volta "$alvo_path" 1 "acrescente $campo_volta: \"$novos\""
-  fi
-done
-
-# --- Check 5: duas ADRs com o mesmo número -----------------------------------
+# --- Check 4: duas ADRs com o mesmo número -----------------------------------
 # A domain-modeling numera pelo maior NNNN da pasta mais um, e duas sessões ao
 # mesmo tempo chegam ao mesmo número (a 0036 do workflow-ia, em 11/10). O
 # achado cai em cada repetida depois da primeira, com o próximo número livre.
@@ -443,7 +388,6 @@ case "$FORMAT" in
             caminho-morto) echo "--- Caminho citado em contrato que não existe" ;;
             supersede-vigente) echo "--- ADR supersedido inteiro que continua vigente" ;;
             wikilink-morto) echo "--- Wikilink para nota inexistente" ;;
-            emenda-sem-volta) echo "--- ADR emendada sem o ponteiro de volta" ;;
             adr-numero-repetido) echo "--- Duas ADRs com o mesmo número" ;;
           esac
           last=$check

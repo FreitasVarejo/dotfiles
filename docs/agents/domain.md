@@ -39,4 +39,5 @@ overriding:
 
 > _Contradicts ADR 0009 (contract holds pointers only), but worth reopening because…_
 
-A decision that comes out of a task becomes an ADR in the vault; the task only links to it.
+A decision that comes out of a task goes where the destination table of the `domain-modeling`
+skill says (`~/dotfiles/agents/skills/domain-modeling/SKILL.md`); the task only links to it.

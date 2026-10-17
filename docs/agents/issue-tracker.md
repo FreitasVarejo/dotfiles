@@ -29,5 +29,5 @@ Leia o arquivo da task.
 
 Não se aplicam: o freitask não tem labels nem sub-issues, e `/triage` e
 `/wayfinder` não fazem parte do repertório de skills deste workflow. Decisão que
-sair de uma task vira ADR no vault (`projects/workflow-ia/decisoes/`); a task só
-linka.
+sair de uma task vai para o destino da tabela da `domain-modeling`
+(`~/dotfiles/agents/skills/domain-modeling/SKILL.md`); a task só linka.

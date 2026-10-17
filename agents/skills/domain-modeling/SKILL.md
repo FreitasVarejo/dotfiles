@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen a project's domain model, whose glossary and decisions (ADRs) live in the Obsidian vault, not in the repo. Use when discussing codebase terminology, resolving what a term means, or recording an ADR or changing one (which means superseding it).
+description: Build and sharpen a project's domain model, whose glossary and decisions (ADRs) live in the Obsidian vault, not in the repo. Use when discussing codebase terminology, resolving what a term means, recording or editing an ADR, or deciding where a decision belongs.
 metadata:
   surfaces: "code"
   upstream: "https://github.com/mattpocock/skills"
@@ -82,9 +82,42 @@ What tends to qualify:
 - **Constraints not visible in the code.** "We can't use AWS because of compliance requirements." "Response times must be under 200ms because of the partner API contract."
 - **Rejected alternatives when the rejection is non-obvious.** If you considered GraphQL and picked REST for subtle reasons, record it; otherwise someone will suggest GraphQL again in six months.
 
+If any of the three is missing, skip the ADR. The decision still goes somewhere:
+
+| the decision is about | it goes to |
+|---|---|
+| something that passes the three tests | an ADR in `decisoes/` |
+| a domain rule, a screen rule, scope ("out of the pilot"), a plan | the project's spec in the vault, in the present tense, rewritten whole |
+| a "no", or an alternative that must not come back as news | the spec's "what it does not do / rejected proposals" section |
+| behaviour of a skill, hook or script | the tool's own text (`SKILL.md`, the script's header, `status.json`) |
+| a rule an agent obeys in a repo (process, pipeline, package policy, how to write) | the contract (`AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, `docs/agents/`) |
+| a number, an implementation detail | code and test; a guard test when CI must fail |
+| why a change was made, when it is only a change | the commit message or the PR body |
+| a machine fact | `hosts/<host>.md` |
+| an intention not built, a deferral with a trigger, a parked design | a task, or the "Algum dia" phase |
+| a measurement, a comparison, the transcript of a grill | a dated record (`research/`, `reviews/`, `anexos/`) |
+| a term | the glossary |
+| trivial or easy to reverse | nowhere |
+
 ## Writing an ADR
 
+An ADR is a title and one to three sentences: the context, what was decided, and why. That is all it needs.
+
+```markdown
+---
+tipo: decisao
+status: vigente
+decidido-em: 2026-10-17
+---
+
+# 0044 — The title in one sentence
+
+<One to three sentences: the context, what was decided, why.>
+```
+
 - **Number**: the highest `NNNN` in `decisoes/` plus one, or `0001` when there is none. File name `NNNN-slug-in-kebab-case.md`.
-- **Format by example**: open the most recent ADR in the folder and copy its shape: the frontmatter keys (`tipo`, `status`, `decidido-em`, `origem`, and `supersede` when it applies) and the sections it uses. Don't bring a template from elsewhere.
-- **An ADR's body is never edited once written.** To change a decision, write a new ADR that supersedes it. `supersede:` names the old one and how much of it goes: `"[[NNNN-slug]] — parcial: <which clause>"`, and the old one stays `vigente` and gains `supersedida-por: "[[new-slug]] — parcial"`; or `"[[NNNN-slug]] — inteira"`, and the old one changes to `status: supersedida` plus `supersedida-por: "[[new-slug]] — inteira"`. A decision that adds to an old one without taking anything away uses `emenda: "[[NNNN-slug]] — <what it adds>"`, and the old one gains `emendada-por: "[[new-slug]]"`. In every case only the old one's frontmatter changes, and a second pointer on the same field joins the first with `; `. Look for an existing supersede or emenda in the folder and match it.
-- **If the decision contradicts an ADR in force**, say so to the user before writing, and make the new ADR supersede the clause it contradicts.
+- **Frontmatter**: `tipo`, `status` (`vigente` or `supersedida`) and `decidido-em` always. `origem:` only when a note motivated the decision. Don't bring a template from elsewhere.
+- **Optional sections**, most ADRs won't need them: `## Alternativas recusadas` only when the rejection is not obvious, `## Consequências` only when the downstream effect is not obvious.
+- **An ADR is edited in place.** When the decision changes, rewrite the ADR and put the line `Atualizada em AAAA-MM-DD` under the title, replacing the date on each edit instead of accumulating lines. The history is in the vault's checkpoints (`vaultgit`, see `~/ObsidianVault/AGENTS.md`).
+- **A decision that died** is not deleted: set `status: supersedida` and add `supersedida-por:` pointing to where the rule lives now (another ADR or the note that took it over). The ADR that replaces it cites the old one in its text. `supersede:`, `emenda:`, `emendada-por:` and "— parcial" are not part of the format; the ADRs that already carry them keep them.
+- **If the decision contradicts an ADR in force**, say so to the user before writing, then edit that ADR in place or mark it `supersedida`.
