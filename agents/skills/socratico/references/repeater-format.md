@@ -24,7 +24,7 @@ Existe também o card de linha única `pergunta::resposta`. **Não use** — e v
 - `C:` com N lacunas `[...]` não vazias → **N cards**. Cada lacuna é revisada separadamente, com as outras visíveis.
 - Linha com `::` → 1 card.
 
-O orçamento de 100 é de cards reais: conte lacunas, não blocos.
+Conte cards reais: lacunas, não blocos.
 
 Consequência de estilo: `C:` com 1 a 3 lacunas. Com 4 ou mais, quase sempre é melhor um `Q:` cobrando a tabela inteira — ensina o mesmo e custa 1 card.
 
@@ -50,5 +50,5 @@ Consequência de estilo: `C:` com 1 a 3 lacunas. Com 4 ou mais, quase sempre é 
 
 ## Conferência
 
-- `python scripts/count_cards.py <arquivos ou pasta> --budget 100` imita estas regras, conta por arquivo e lista armadilhas.
+- `python3 ~/.claude/skills/socratico/scripts/count_cards.py <arquivos ou pasta>` imita estas regras, conta por arquivo e lista armadilhas.
 - A verificação definitiva é do próprio repeater: `repeater check --plain <pasta>` (reindexa e mostra o total).

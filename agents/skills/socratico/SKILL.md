@@ -140,10 +140,9 @@ sobre as palavras exatas dele. Diga isso antes de propor qualquer card.
 ### 3.2 Proponha os cards
 
 Leia o formato do repeater antes de escrever um card só:
-`~/.claude/skills/chapter-flashcards/references/repeater-format.md`. Siga a
-regra de contagem e as armadilhas de lá. Não use o orçamento de 100 nem o
-estilo de prova da `chapter-flashcards`: aqui não há orçamento. O número de
-cards é o número de erros e hesitações.
+`~/.claude/skills/socratico/references/repeater-format.md`. Siga a regra de
+contagem e as armadilhas de lá. Não há orçamento: o número de cards é o número
+de erros e hesitações.
 
 Para cada erro ou hesitação:
 
@@ -198,7 +197,7 @@ tema.
 ### 3.4 Confira
 
 ```bash
-python3 ~/.claude/skills/chapter-flashcards/scripts/count_cards.py <nota>
+python3 ~/.claude/skills/socratico/scripts/count_cards.py <nota>
 repeater check --plain <nota>
 ```
 
