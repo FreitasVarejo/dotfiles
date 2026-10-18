@@ -85,7 +85,8 @@ another one (the work WSL): write nothing from this repo into it.
 
 ### Issue tracker
 
-Work lives as freitask tasks in `~/ObsidianVault/projects/workflow-ia/tasks/`, not GitHub issues (this repo has no pipeline). See `docs/agents/issue-tracker.md`.
+Work lives as freitask tasks in the vault, not GitHub issues (this repo has no pipeline).
+The backlogs this repo feeds and how to open a task: `~/dotfiles/docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

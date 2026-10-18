@@ -1,11 +1,12 @@
 ---
 name: freitask
-description: Abre uma task do freitask no vault do Obsidian a partir do que o dono descrever, descobrindo o projeto pela pasta em que a sessão está (o repo e o contrato dele). Use quando o dono pedir para abrir, criar, anotar ou registrar uma task, uma frente de trabalho ou "uma coisa para fazer depois" — mesmo sem dizer "freitask". Hoje só abre task nova; mudar fase, arquivar ou renomear continua sendo a CLI direto.
+description: Abre uma task do freitask no vault do Obsidian a partir do que o dono descrever, escolhendo o projeto pelo escopo de cada um (o MOC), com a pasta e o repo da sessão só como pista. Use quando o dono pedir para abrir, criar, anotar ou registrar uma task, uma frente de trabalho ou "uma coisa para fazer depois" — mesmo sem dizer "freitask". Hoje só abre task nova; mudar fase, arquivar, renomear ou mover de projeto continua sendo a CLI direto.
 argument-hint: "<o que a task é, em uma ou duas frases>"
 model: claude-sonnet-5-5
 effort: xhigh
 allowed-tools:
   - Bash(~/.claude/skills/freitask/scripts/contexto.sh)
+  - Bash(~/.claude/skills/freitask/scripts/contexto.sh *)
   - Bash(freitask new *)
   - Bash(freitask kebab *)
   - Bash(freitask list *)
@@ -32,12 +33,31 @@ O pedido do dono: $ARGUMENTS
 
 ## 1. Projeto
 
-- **`projeto: <p>`**: é esse. Não pergunte.
-- **`AMBÍGUO` ou `NENHUM`**: se a descrição já nomeia um dos "projetos do vault",
-  use-o. Senão, pergunte ao dono, oferecendo os candidatos (ou a lista toda).
+A regra é do vault (`~/ObsidianVault/AGENTS.md`, no parágrafo de criar task): o
+projeto se escolhe pelo escopo. Nesta skill:
+
+- **Escolha o projeto cujo escopo combina com o pedido**, lendo os escopos em
+  "projetos do vault". As pistas (a pasta do vault, os backlogs que o repo
+  alimenta) são ponto de partida, não decisão: uma sessão nos dotfiles alimenta
+  mais de um projeto.
+- **Dois escopos cabem, ou nenhum**: pergunte, na rodada única do §2,
+  oferecendo os candidatos.
+- **Pedido com duas entregas** de projetos diferentes vira duas tasks, uma em
+  cada projeto, a segunda linkando a primeira. Nunca a mesma task duplicada.
 - **Só use nome que está na lista.** O `freitask new` cria projeto novo em
   silêncio quando o nome não existe. Projeto novo só se o dono pedir com essas
   palavras.
+
+Escolhido o projeto, liste as tasks ativas dele, sempre: é de onde vem a
+checagem de duplicata do §2.
+
+```bash
+~/.claude/skills/freitask/scripts/contexto.sh tasks <projeto>
+```
+
+As de outro projeto, só quando dois escopos couberem ou quando o título pedido
+parecer familiar. Não use `freitask list | grep`: o pipe tira o comando da
+permissão da skill.
 
 ## 2. Perguntar ou criar direto
 
@@ -48,8 +68,9 @@ chamada, e a resposta do dono já roda no modelo da sessão.
 **Pergunte**, numa rodada só e com tudo junto, apenas quando:
 
 - não há descrição nenhuma, nem em `$ARGUMENTS` nem na conversa;
+- dois escopos de projeto cabem, ou nenhum (§1);
 - a descrição cabe em duas tasks diferentes, e escolher uma seria chutar;
-- uma task ativa da lista acima parece ser a mesma coisa. Pergunte se é task
+- uma task ativa do projeto parece ser a mesma coisa. Pergunte se é task
   nova ou um acréscimo àquela. Se for acréscimo, não crie nada: diga qual é a
   task e pare.
 
@@ -61,7 +82,8 @@ chamada, e a resposta do dono já roda no modelo da sessão.
 - **id**: `freitask kebab "<2 a 5 palavras>"`. O id é o nome do arquivo **e** o
   da branch git, e é a única coisa cara de mudar depois: renomear reescreve
   referências no vault inteiro. Escolha curto e específico, e nunca um que já
-  esteja na lista.
+  esteja na lista do projeto. Nem o de uma task de outro projeto: o `doctor`
+  do §6 acusa id repetido entre projetos.
 - **Estado** (`--desc`): uma linha começando pela data, no tom das existentes:
   "Aberta em DD/MM; <de onde veio, ou o que falta para começar>".
 - **Fase**: a task nasce `todo`. Não mude.
@@ -114,7 +136,8 @@ sem `--quiet` e mostre o achado ao dono. Não use `--fix` por conta própria.
 
 Responda curto:
 
-- projeto, `id` e caminho;
+- projeto, e por que esse, em uma linha;
+- `id` e caminho;
 - o estado;
 - quando for o caso, a linha da seção 5.
 
