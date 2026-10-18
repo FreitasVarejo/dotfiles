@@ -7,6 +7,7 @@ script da skill: globs do que mudou, dois espaços, o comando na raiz do repo.
 ```portoes
 *                                                       ./precommit.sh
 agents/**|*/hooks/**|lib/**|setup.sh|healthcheck.sh     ./healthcheck.sh
+agents/**                                               python3 -I -m unittest discover -s agents/tests
 ```
 
 ## Como testar à mão

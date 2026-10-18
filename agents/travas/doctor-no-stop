@@ -31,7 +31,7 @@ VAULT = os.path.realpath(os.path.expanduser(os.environ.get("TRAVAS_VAULT", "~/Ob
 FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 # Subcomando do freitask que escreve → posições dos ids entre os posicionais dele.
 FREITASK_WRITES = {"set": (0,), "archive": (0,), "unarchive": (0,), "delete": (0,),
-                   "rename": (0, 1), "new": (1,)}
+                   "rename": (0, 1), "move": (0,), "new": (1,)}
 # Opções que levam o valor na palavra seguinte, por subcomando: espelha os
 # `parse_flags(2, {...})` de `~/dev/freitask.nvim/lua/freitask/cli.lua`.
 FREITASK_VALUE_OPTS = {"set": {"status", "title", "desc"}, "new": {"desc"}}
@@ -65,16 +65,27 @@ def touched_vault(data):
 
 
 def simple_commands(command):
-    """Cada comando simples como lista de palavras (o da `tasks-so-pelo-freitask`)."""
+    """Cada comando simples como lista de palavras (o da `tasks-so-pelo-freitask`),
+    sem o redirecionamento: o token com `<` ou `>` (`>`, `>>`, `>&`, `&>`, `<`), a
+    palavra seguinte e o dígito solto antes dele (o fd de `2>&1`). Exceção aceita:
+    id de task que seja só um dígito, logo antes de um `>`."""
     lexer = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     words = []
+    redirect = False
     try:
         for tok in lexer:
             if tok and set(tok) <= set(";&|()"):
+                redirect = False
                 if words:
                     yield words
                 words = []
+            elif redirect:
+                redirect = False
+            elif re.fullmatch(r"[<>&|]*[<>][<>&|]*", tok):
+                redirect = True
+                if words and words[-1].isdigit():
+                    words.pop()
             else:
                 words.append(tok)
     except ValueError:
