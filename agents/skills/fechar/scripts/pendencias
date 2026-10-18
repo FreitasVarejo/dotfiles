@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fatos do disco para o fim de uma sessão (skill `fechar`, ADRs 0031 e 0039).
 
-  pendencias [--sessao <id>] [--repo <dir>]... [--horas <n>] [--sem-rede]
+  pendencias [--sessao <id>] [--repo <dir>]... [--horas <n>] [--sem-rede] [--plano]
 
 Nada aqui é lista fixa (ADR 0017):
 - o que é desta sessão: os repos das listas `verif-<sessão>-*` (a raiz na
@@ -16,13 +16,30 @@ Nada aqui é lista fixa (ADR 0017):
 
 Só lê. A exceção é o `git fetch`, que atualiza as refs remotas para "atrás do
 origin" não mentir; --sem-rede pula fetch, GitHub e ssh.
+
+--plano acrescenta, no fim da saída (que não muda), a seção `## plano`: os
+comandos de limpeza que a saída já deixa ver, um por linha, `P<n>. <comando> —
+<motivo>`. O script só os imprime; quem roda é a skill, e só o que o dono
+aprovar. O conjunto é fechado e nunca força:
+- worktree local que pode sair, está limpa e não está trancada: `worktree
+  remove` e `branch -d` da branch dela, num item só (o motivo lista o que o git
+  ignora ali, que o remove apaga junto);
+- branch local fora de worktree que pode sair: `branch -d`;
+- o ~/dotfiles de outro host, só atrás do origin e limpo: `pull --ff-only` por
+  ssh e, se o diff traz arquivo novo, removido ou mexe em hooks/setup, o
+  `./setup.sh` num item à parte;
+- o que podia sair e não cabe num item (sujo, trancado, `branch -d` que
+  recusaria, host à frente, ssh mudo, --sem-rede) sai depois dos itens, em
+  `- fora do plano: ...`. A worktree desta sessão vai por último.
 """
 
 import argparse
+import fnmatch
 import glob
 import json
 import os
 import re
+import shlex
 import socket
 import subprocess
 import sys
@@ -265,7 +282,12 @@ for d in ~/dotfiles ~/dev/* ~/projects/*; do
   u=$(git -C "$d" remote get-url origin 2>/dev/null) || continue
   case "$u" in *"$1"|*"$1.git") ;; *) continue ;; esac
   git -C "$d" fetch -q 2>/dev/null
-  printf '%s\t%s\t%s\n' "$d" "$(git -C "$d" status -sb | head -1)" "$(git -C "$d" status --porcelain | wc -l)"
+  # Depois do sujo, só para o --plano: atrás/à frente do upstream, os shas do HEAD
+  # e do upstream (o diff sai do clone local) e o $HOME, para achar ~/dotfiles.
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$d" "$(git -C "$d" status -sb | head -1)" \
+    "$(git -C "$d" status --porcelain | wc -l)" \
+    "$(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null | tr '\t' ' ')" \
+    "$(git -C "$d" rev-parse HEAD 2>/dev/null)" "$(git -C "$d" rev-parse '@{upstream}' 2>/dev/null)" "$HOME"
   # Os worktrees além do principal, com o mesmo "pode sair" do lado local (leftover).
   base=$(git -C "$d" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
   git -C "$d" worktree list --porcelain | awk '
@@ -287,7 +309,9 @@ done
 """
 
 
-def report_hosts(slugs, net):
+def report_hosts(slugs, net, facts=None):
+    """Linhas da seção; `facts`, se vier, recebe um dict por clone achado e por host mudo (para o --plano)."""
+    facts = [] if facts is None else facts
     lines = []
     if not slugs:
         return ["nenhum repo com remoto no GitHub para comparar"]
@@ -310,23 +334,226 @@ def report_hosts(slugs, net):
                 if p.returncode == 255:
                     ok = False
                     break
-                got += [l for l in p.stdout.split("\n") if l]
+                got += [(s, l) for l in p.stdout.split("\n") if l]
             if not ok:
                 continue
             found = True
             if not got:
                 lines.append("%s: nenhum clone dos repos tocados" % target)
-            for l in got:
+            for s, l in got:
                 if l.startswith("wt\t"):
                     _, path, branch, tag = (l.split("\t") + [""])[:4]
                     lines.append("%s:%s  worktree [%s]%s" % (target, path, branch, tag))
                     continue
-                path, status, dirty = l.split("\t")
+                path, status, dirty, counts, head, up, home = (l.split("\t") + [""] * 7)[:7]
                 lines.append("%s:%s  %s  · %s arquivo(s) sem commit" % (target, path, status, dirty.strip()))
+                n = counts.split()
+                facts.append({"alias": alias, "alvo": target, "slug": s, "path": path, "home": home,
+                              "behind": int(n[0]) if len(n) == 2 and n[0].isdigit() else None,
+                              "ahead": int(n[1]) if len(n) == 2 and n[1].isdigit() else None,
+                              "dirty": int(dirty) if dirty.strip().isdigit() else None,
+                              "head": head, "up": up})
             break
         if not found:
             lines.append("%s: não consultei (ssh não respondeu em %s nem %s-local)" % (alias, alias, alias))
+            facts.append({"alias": alias, "mudo": True})
     return lines or ["nenhuma outra máquina em hosts/"]
+
+
+# --plano: só texto. Nada abaixo roda comando de limpeza; o conjunto é fechado
+# (worktree/branch que pode sair, pull e setup do ~/dotfiles de outro host).
+
+
+def item(cmd, why, last=False, dep=None):
+    """Um item do plano. `last`: vai por último (a worktree da sessão). `dep`: item de que este depende;
+    o NUL no `why` vira o número dele na hora de numerar."""
+    return {"cmd": cmd, "why": why, "last": last, "dep": dep}
+
+
+def shpath(path):
+    """Caminho para colar no shell: sob o HOME vai com `~/` na frente (o bash expande), o resto entre aspas."""
+    if path == HOME:
+        return "~"
+    if path.startswith(HOME + os.sep):
+        return "~/" + shlex.quote(path[len(HOME) + 1:])
+    return shlex.quote(path)
+
+
+def is_clean(root):
+    """Sem arquivo modificado nem novo? O git falhar não conta como limpo."""
+    rc, out = git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=all")
+    return rc == 0 and not out
+
+
+def ignored(root, limit=4):
+    """O que o git ignora na worktree (`.env`, cache, build): o `worktree remove` sem --force apaga junto, sem recusar."""
+    _, out = git(root, "--no-optional-locks", "status", "--porcelain", "--ignored", "--untracked-files=normal")
+    found = [l[3:] for l in out.split("\n") if l.startswith("!! ")]
+    return ", ".join(found[:limit]) + (", …" if len(found) > limit else "")
+
+
+def locked(main):
+    """Caminhos das worktrees trancadas (`git worktree lock`): o remove sem --force as recusa."""
+    _, out = git(main, "worktree", "list", "--porcelain")
+    return {m.group(1) for block in out.split("\n\n") if re.search(r"^locked", block, re.M)
+            for m in [re.search(r"^worktree (.+)$", block, re.M)] if m}
+
+
+def can_leave(main, branch, base):
+    return leftover(main, branch, base).endswith("pode sair")
+
+
+def deletable(main, branch):
+    """O `git branch -d` aceita? Ele confere o upstream da branch e, sem upstream (ou com ele sumido), o HEAD do clone."""
+    rc, up = git(main, "rev-parse", "--verify", "--quiet", branch + "@{upstream}")
+    return git(main, "merge-base", "--is-ancestor", "refs/heads/" + branch, up if rc == 0 else "HEAD")[0] == 0
+
+
+def plan_repo(main, roots):
+    """(itens, fora) de limpeza local de um clone; `roots` são as worktrees e clones desta sessão."""
+    items, fora = [], []
+    base = default_ref(main)
+    where = tilde(main)
+    mine = {os.path.realpath(r) for r in roots}
+    wts = worktrees(main)
+    trancadas = locked(main)
+    for path, branch in wts:
+        if not branch or not can_leave(main, branch, base) or not os.path.isdir(path):
+            continue
+        # Nunca força: suja, trancada ou com `branch -d` recusando, a worktree fica e o motivo sai.
+        if path in trancadas:
+            fora.append("%s: [%s] já está em %s, mas está trancada (`git worktree lock`); não removo" % (tilde(path), branch, base))
+            continue
+        if not is_clean(path):
+            fora.append("%s: [%s] já está em %s, mas tem arquivo sujo ou novo; não removo" % (tilde(path), branch, base))
+            continue
+        if not deletable(main, branch):
+            fora.append("%s: [%s] já está em %s, mas o `branch -d` recusaria (nem o upstream nem o HEAD de %s a contêm); "
+                        "atualize o clone principal antes" % (tilde(path), branch, base, where))
+            continue
+        cmd = "git -C %s worktree remove %s && git -C %s branch -d %s" % (
+            shpath(main), shpath(path), shpath(main), shlex.quote(branch))
+        junto = ignored(path)
+        junto = "; apaga junto o que o git ignora: %s" % junto if junto else ""
+        if os.path.realpath(path) in mine:
+            items.append(item(cmd, "worktree [%s] desta sessão já está em %s e está limpa%s; vai por último "
+                              "porque removê-la tira o cwd do Bash" % (branch, base, junto), last=True))
+        else:
+            items.append(item(cmd, "worktree [%s] já está em %s e está limpa%s (de outra sessão, pode estar aberta)"
+                              % (branch, base, junto)))
+    # Fora de worktree: nem checada em worktree nenhuma, nem o HEAD do clone, nem a padrão (`origin/main` → `main`).
+    checked = {b for _, b in wts if b}
+    _, heads = git(main, "rev-parse", "--abbrev-ref", "HEAD")
+    _, refs = git(main, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+    for b in refs.split("\n"):
+        if not b or b in checked or b == heads or b == base.split("/", 1)[-1] or not can_leave(main, b, base):
+            continue
+        if deletable(main, b):
+            items.append(item("git -C %s branch -d %s" % (shpath(main), shlex.quote(b)),
+                              "branch local [%s] fora de worktree já está em %s" % (b, base)))
+        else:
+            fora.append("%s: [%s] já está em %s, mas o `branch -d` recusaria (nem o upstream nem o HEAD de %s a contêm); "
+                        "atualize o clone principal antes" % (where, b, base, where))
+    return items, fora
+
+
+def setup_reason(changes):
+    """Por que o diff pede ./setup.sh ('' se não pede). `changes`: (status, caminho) sem detecção de renomeação."""
+    for st, path in changes:
+        if st[:1] == "A":
+            return "o diff traz arquivo novo (%s)" % path
+        if st[:1] == "D":
+            return "o diff remove arquivo (%s)" % path
+        if path == "setup.sh" or fnmatch.fnmatchcase(path, "*/hooks/*"):
+            return "o diff mexe em %s" % path
+    return ""
+
+
+def local_diff(root, head, up):
+    """(mudanças, None) do diff `head..up` lido no clone local, ou (None, porquê) quando não dá para saber."""
+    if not head or not up:
+        return None, "o host não devolveu os shas do HEAD e do upstream"
+    for sha in (head, up):
+        if git(root, "cat-file", "-e", sha + "^{commit}")[0] != 0:
+            return None, "o commit %s do host não existe no clone local" % sha[:10]
+    rc, out = git(root, "diff", "--name-status", "--no-renames", "-z", head, up)
+    if rc != 0:
+        return None, "o git diff falhou"
+    parts = out.split("\0")
+    return list(zip(parts[0::2], parts[1::2])), None
+
+
+def decide_host(alias, fact, diff):
+    """(itens, fora) do ~/dotfiles de um host. Pura: não toca disco nem rede.
+
+    `fact`: dict com alvo (o nome que respondeu no ssh), behind, ahead e dirty (None quando
+    o host não soube dizer), ou None se o ssh não respondeu. `diff()`: (mudanças, porquê-não).
+    """
+    if fact is None:
+        return [], ["%s: ssh não respondeu; não sei se o ~/dotfiles de lá está atrás" % alias]
+    alvo = fact["alvo"]
+    where = "%s:~/dotfiles" % alvo
+    behind, ahead, dirty = fact["behind"], fact["ahead"], fact["dirty"]
+    if behind is None or ahead is None:
+        return [], ["%s: sem upstream ou em HEAD destacado; não proponho o pull" % where]
+    why = []
+    if ahead:
+        why.append("%s à frente do origin" % plural(ahead, "commit", "commits"))
+    if dirty is None:
+        why.append("não sei se tem arquivo sujo")
+    elif dirty:
+        why.append("%d arquivo(s) sem commit" % dirty)
+    if why:
+        if behind:
+            why.append("está %s atrás, mas não proponho o pull" % plural(behind, "commit", "commits"))
+        return [], ["%s: %s" % (where, "; ".join(why))]
+    if not behind:
+        return [], []
+    pull = item("ssh %s 'git -C ~/dotfiles pull --ff-only'" % shlex.quote(alvo),
+                "%s está %s atrás do origin, sem commit à frente e sem arquivo sujo" % (where, plural(behind, "commit", "commits")))
+    changes, nao = diff()
+    if changes is None:
+        return [pull], ["%s: não sei se precisa de ./setup.sh (%s); não proponho o setup" % (where, nao)]
+    reason = setup_reason(changes)
+    if not reason:
+        return [pull], []
+    setup = item("ssh %s 'cd ~/dotfiles && ./setup.sh'" % shlex.quote(alvo),
+                 "depende do pull (\0): %s; pode recompilar a TUI com cargo, o que leva minutos: rodar em background"
+                 % reason, dep=pull)
+    return [pull, setup], []
+
+
+def plan_hosts(net, slugs, facts, slug_root):
+    """(itens, fora) dos outros hosts; só o ~/dotfiles vira item, os outros clones ficam só informados."""
+    items, fora = [], []
+    for alias in other_hosts():
+        if not (net and slugs):
+            fora.append("%s: não consultei (%s)" % (alias, "--sem-rede" if not net else "nenhum repo tocado tem remoto no GitHub"))
+            continue
+        mine = [f for f in facts if f["alias"] == alias]
+        if any(f.get("mudo") for f in mine):
+            fact = None
+        else:
+            dots = [f for f in mine if f["path"] == f["home"] + "/dotfiles"]
+            if not dots:
+                continue
+            fact = dots[0]
+        diff = None if fact is None else (lambda f=fact: local_diff(slug_root[f["slug"]], f["head"], f["up"]))
+        i, f = decide_host(alias, fact, diff)
+        items += i
+        fora += f
+    return items, fora
+
+
+def render_plan(items, fora):
+    """Linhas da seção: a worktree da sessão por último, o resto na ordem em que veio."""
+    ordered = [i for i in items if not i["last"]] + [i for i in items if i["last"]]
+    number = {id(it): n for n, it in enumerate(ordered, 1)}
+    lines = []
+    for n, it in enumerate(ordered, 1):
+        why = it["why"].replace("\0", "P%d" % number[id(it["dep"])]) if it["dep"] else it["why"]
+        lines.append("P%d. %s — %s" % (n, it["cmd"], why))
+    return (lines or ["(nada a propor)"]) + ["- fora do plano: %s" % f for f in fora]
 
 
 def task_info(path):
@@ -459,6 +686,7 @@ def main():
     ap.add_argument("--repo", action="append", default=[])
     ap.add_argument("--horas", type=float)
     ap.add_argument("--sem-rede", action="store_true")
+    ap.add_argument("--plano", action="store_true", help="acrescenta `## plano`: os comandos de limpeza, só impressos")
     a = ap.parse_args()
     # Nome de arquivo que não é UTF-8 sai como veio, em qualquer locale.
     sys.stdout.reconfigure(errors="surrogateescape")
@@ -488,16 +716,23 @@ def main():
     print("id %s · %s desta sessão · vault: %s" % (
         a.sessao or "(não informado)", plural(len(groups), "repo", "repos"), vault))
     print("\n## repos")
-    slugs = []
+    slugs, slug_root, itens, fora = [], {}, [], []
     for main_root, rs in groups.items():
         lines, s = report_repo(main_root, rs, {r: touched_files(r, lists, a.sessao) for r in rs}, net)
         print("\n".join(lines))
         if s and s not in slugs:
             slugs.append(s)
+        if s:
+            slug_root.setdefault(s, main_root)
+        if a.plano:
+            i, f = plan_repo(main_root, rs)
+            itens += i
+            fora += f
     if not groups:
         print("nenhum repo identificado; passe --repo <dir>")
     print("\n## outras máquinas")
-    print("\n".join(report_hosts(slugs, net)))
+    facts = []
+    print("\n".join(report_hosts(slugs, net, facts)))
     print("\n## vault")
     print("\n".join(report_vault(since, toques, (active, archived), mine, missing, files)))
 
@@ -508,6 +743,10 @@ def main():
     projects = {p for p in projects if os.path.isdir(os.path.join(VAULT, "projects", p))}
     print("\n## registro dos projetos (não reapresentar como ponta solta)")
     print("\n".join(report_registro(projects)))
+    if a.plano:
+        i, f = plan_hosts(net, slugs, facts, slug_root)
+        print("\n## plano")
+        print("\n".join(render_plan(itens + i, fora + f)))
 
 
 if __name__ == "__main__":
