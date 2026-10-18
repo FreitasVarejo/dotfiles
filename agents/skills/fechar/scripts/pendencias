@@ -18,19 +18,27 @@ Só lê. A exceção é o `git fetch`, que atualiza as refs remotas para "atrás
 origin" não mentir; --sem-rede pula fetch, GitHub e ssh.
 
 --plano acrescenta, no fim da saída (que não muda), a seção `## plano`: os
-comandos de limpeza que a saída já deixa ver, um por linha, `P<n>. <comando> —
+comandos que a saída já deixa ver, um por linha, `P<n>. <comando> —
 <motivo>`. O script só os imprime; quem roda é a skill, e só o que o dono
 aprovar. O conjunto é fechado e nunca força:
+- push de cada repo e worktree desta sessão que está à frente do upstream, sem
+  estar atrás, e cujo upstream tem o nome da própria branch: `git push <remote>
+  <branch>`. A reserva é o OK do dono, não o git, que aceitaria o commit de outra
+  sessão: o motivo diz quantos commits vão e quais. A branch padrão de repo com
+  `.github/workflows/` não entra (o merge ali é por PR), nem a branch sem
+  upstream, divergida, de upstream com outro nome ou vista com --sem-rede;
 - worktree local que pode sair, está limpa e não está trancada: `worktree
   remove` e `branch -d` da branch dela, num item só (o motivo lista o que o git
   ignora ali, que o remove apaga junto);
 - branch local fora de worktree que pode sair: `branch -d`;
-- o ~/dotfiles de outro host, só atrás do origin e limpo: `pull --ff-only` por
-  ssh e, se o diff traz arquivo novo, removido ou mexe em hooks/setup, o
+- o ~/dotfiles de outro host, limpo e sem commit à frente, que está atrás do
+  origin ou ficará atrás depois de um item de push (o pull então depende do
+  push): `pull --ff-only` por ssh e, se o diff pede (`setup_reason`), o
   `./setup.sh` num item à parte;
 - o que podia sair e não cabe num item (sujo, trancado, `branch -d` que
-  recusaria, host à frente, ssh mudo, --sem-rede) sai depois dos itens, em
-  `- fora do plano: ...`. A worktree desta sessão vai por último.
+  recusaria, push que o git recusaria, host à frente, ssh mudo, --sem-rede) sai
+  depois dos itens, em `- fora do plano: ...`. A worktree desta sessão vai por
+  último.
 """
 
 import argparse
@@ -283,11 +291,13 @@ for d in ~/dotfiles ~/dev/* ~/projects/*; do
   case "$u" in *"$1"|*"$1.git") ;; *) continue ;; esac
   git -C "$d" fetch -q 2>/dev/null
   # Depois do sujo, só para o --plano: atrás/à frente do upstream, os shas do HEAD
-  # e do upstream (o diff sai do clone local) e o $HOME, para achar ~/dotfiles.
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$d" "$(git -C "$d" status -sb | head -1)" \
+  # e do upstream (o diff sai do clone local), o $HOME, para achar ~/dotfiles, e o
+  # nome do upstream, para casar com a branch que um push publica.
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$d" "$(git -C "$d" status -sb | head -1)" \
     "$(git -C "$d" status --porcelain | wc -l)" \
     "$(git -C "$d" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null | tr '\t' ' ')" \
-    "$(git -C "$d" rev-parse HEAD 2>/dev/null)" "$(git -C "$d" rev-parse '@{upstream}' 2>/dev/null)" "$HOME"
+    "$(git -C "$d" rev-parse HEAD 2>/dev/null)" "$(git -C "$d" rev-parse '@{upstream}' 2>/dev/null)" "$HOME" \
+    "$(git -C "$d" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"
   # Os worktrees além do principal, com o mesmo "pode sair" do lado local (leftover).
   base=$(git -C "$d" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
   git -C "$d" worktree list --porcelain | awk '
@@ -345,14 +355,14 @@ def report_hosts(slugs, net, facts=None):
                     _, path, branch, tag = (l.split("\t") + [""])[:4]
                     lines.append("%s:%s  worktree [%s]%s" % (target, path, branch, tag))
                     continue
-                path, status, dirty, counts, head, up, home = (l.split("\t") + [""] * 7)[:7]
+                path, status, dirty, counts, head, up, home, upname = (l.split("\t") + [""] * 8)[:8]
                 lines.append("%s:%s  %s  · %s arquivo(s) sem commit" % (target, path, status, dirty.strip()))
                 n = counts.split()
                 facts.append({"alias": alias, "alvo": target, "slug": s, "path": path, "home": home,
                               "behind": int(n[0]) if len(n) == 2 and n[0].isdigit() else None,
                               "ahead": int(n[1]) if len(n) == 2 and n[1].isdigit() else None,
                               "dirty": int(dirty) if dirty.strip().isdigit() else None,
-                              "head": head, "up": up})
+                              "head": head, "up": up, "upname": upname.strip()})
             break
         if not found:
             lines.append("%s: não consultei (ssh não respondeu em %s nem %s-local)" % (alias, alias, alias))
@@ -360,14 +370,15 @@ def report_hosts(slugs, net, facts=None):
     return lines or ["nenhuma outra máquina em hosts/"]
 
 
-# --plano: só texto. Nada abaixo roda comando de limpeza; o conjunto é fechado
-# (worktree/branch que pode sair, pull e setup do ~/dotfiles de outro host).
+# --plano: só texto. Nada abaixo roda comando; o conjunto é fechado (push, worktree/branch
+# que pode sair, pull e setup do ~/dotfiles de outro host).
 
 
-def item(cmd, why, last=False, dep=None):
+def item(cmd, why, last=False, dep=None, push=None):
     """Um item do plano. `last`: vai por último (a worktree da sessão). `dep`: item de que este depende;
-    o NUL no `why` vira o número dele na hora de numerar."""
-    return {"cmd": cmd, "why": why, "last": last, "dep": dep}
+    o NUL no `why` vira o número dele na hora de numerar. `push`: o que um item de push publica
+    (`main`, `upstream`, `head`, `ahead`), de onde o host prevê que ficará atrás."""
+    return {"cmd": cmd, "why": why, "last": last, "dep": dep, "push": push}
 
 
 def shpath(path):
@@ -409,9 +420,69 @@ def deletable(main, branch):
     return git(main, "merge-base", "--is-ancestor", "refs/heads/" + branch, up if rc == 0 else "HEAD")[0] == 0
 
 
-def plan_repo(main, roots):
-    """(itens, fora) de limpeza local de um clone; `roots` são as worktrees e clones desta sessão."""
+def esteira(root):
+    """O repo tem esteira de PR? Sai do disco (`.github/workflows/`), sem lista de repos (ADR 0017)."""
+    return os.path.isdir(os.path.join(root, ".github", "workflows"))
+
+
+def plan_pushes(main, roots, net):
+    """(itens, fora) do push de cada root da sessão (clone principal ou worktree). Só fast-forward, sem `--force`.
+
+    A reserva deste item é o OK do dono, e o git não a substitui: ele aceita qualquer fast-forward, inclusive o
+    commit de outra sessão, e `upstream..HEAD` não diz de quem é cada um. Por isso o motivo lista os commits.
+    """
     items, fora = [], []
+    if git(main, "remote", "get-url", "origin")[0] != 0:
+        return items, fora
+    base = default_ref(main)
+    padrao = base.split("/", 1)[-1]
+    for root in dict.fromkeys(roots):
+        _, branch = git(root, "rev-parse", "--abbrev-ref", "HEAD")
+        if branch == "HEAD":
+            continue
+        where = "%s [%s]" % (tilde(root), branch)
+        rc, counts = git(root, "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
+        if rc != 0:
+            if not merged(root, "HEAD", base):
+                fora.append("%s: sem upstream; não proponho o push (o `push -u` cria a branch remota, e isso é do dono)" % where)
+            continue
+        behind, ahead = (int(n) for n in counts.split())
+        if not ahead:
+            continue
+        _, upstream = git(root, "rev-parse", "--abbrev-ref", "@{upstream}")
+        if behind:
+            fora.append("%s: %s atrás e %s à frente de %s (divergida); não proponho o push, que o git recusaria"
+                        % (where, plural(behind, "commit", "commits"), plural(ahead, "commit", "commits"), upstream))
+            continue
+        if not net:
+            fora.append("%s: %s à frente de %s, mas não consultei o remoto (--sem-rede); não proponho o push"
+                        % (where, plural(ahead, "commit", "commits"), upstream))
+            continue
+        # Só a branch que segue a si mesma: `worktree add -b x origin/main` faz `x` seguir `origin/main`, e
+        # `push origin x:main` publicaria a feature na padrão.
+        _, remote = git(root, "config", "branch.%s.remote" % branch)
+        _, merge = git(root, "config", "branch.%s.merge" % branch)
+        if remote in ("", ".") or merge != "refs/heads/" + branch:
+            fora.append("%s: o upstream é %s, de outro nome; não proponho o push (criaria ou sobrescreveria outra branch)"
+                        % (where, upstream))
+            continue
+        if esteira(root) and (not padrao or branch == padrao):
+            fora.append("%s: %s repo com esteira de PR (.github/workflows/); o merge ali é por PR, não proponho o push"
+                        % (where, "é a branch padrão de um" if padrao else "sem origin/HEAD, não sei se é a padrão de um"))
+            continue
+        _, head = git(root, "rev-parse", "HEAD")
+        _, log = git(root, "log", "--format=%h %s", "-n", "5", "@{upstream}..HEAD")
+        quais = "; ".join(log.split("\n")) + ("; …" if ahead > 5 else "")
+        items.append(item("git -C %s push %s %s" % (shpath(root), shlex.quote(remote), shlex.quote(branch)),
+                          "[%s] tem %s à frente de %s (%s); o push publica todos, inclusive o de outra sessão"
+                          % (branch, plural(ahead, "commit", "commits"), upstream, quais),
+                          push={"main": main, "upstream": upstream, "head": head, "ahead": ahead}))
+    return items, fora
+
+
+def plan_repo(main, roots, net=True):
+    """(itens, fora) do push e da limpeza local de um clone; `roots` são as worktrees e clones desta sessão."""
+    items, fora = plan_pushes(main, roots, net)
     base = default_ref(main)
     where = tilde(main)
     mine = {os.path.realpath(r) for r in roots}
@@ -457,6 +528,21 @@ def plan_repo(main, roots):
     return items, fora
 
 
+# Sob agents/, por exclusão: o que o pull atualiza sozinho é o que o setup liga por symlink; o resto ele
+# mescla ou registra (`~/dotfiles/.claude/rules/agents.md` diz qual é qual). Lista dos insumos de merge
+# falharia calada no próximo que alguém criar; o erro da exclusão é um setup a mais, que aparece.
+AGENTS_LINKED = ("agents/skills/*", "agents/instructions/*", "agents/tests/*")
+
+
+def agents_merged(path):
+    """O arquivo é de agents/ e o pull sozinho não o leva ao destino?"""
+    if not path.startswith("agents/") or path.endswith(".md"):
+        return False
+    if any(fnmatch.fnmatchcase(path, g) for g in AGENTS_LINKED):
+        return False
+    return not path.startswith("agents/travas/") or path == "agents/travas/travas.json"
+
+
 def setup_reason(changes):
     """Por que o diff pede ./setup.sh ('' se não pede). `changes`: (status, caminho) sem detecção de renomeação."""
     for st, path in changes:
@@ -466,16 +552,21 @@ def setup_reason(changes):
             return "o diff remove arquivo (%s)" % path
         if path == "setup.sh" or fnmatch.fnmatchcase(path, "*/hooks/*"):
             return "o diff mexe em %s" % path
+        if agents_merged(path):
+            return "o diff mexe em %s, que o setup mescla ou registra em vez de linkar" % path
     return ""
 
 
-def local_diff(root, head, up):
-    """(mudanças, None) do diff `head..up` lido no clone local, ou (None, porquê) quando não dá para saber."""
+def local_diff(root, head, up, ff=False):
+    """(mudanças, None) do diff `head..up` lido no clone local, ou (None, porquê) quando não dá para saber.
+    `ff`: `up` é o que um push vai publicar, e o pull só avança em fast-forward se `head` está no histórico dele."""
     if not head or not up:
         return None, "o host não devolveu os shas do HEAD e do upstream"
     for sha in (head, up):
         if git(root, "cat-file", "-e", sha + "^{commit}")[0] != 0:
             return None, "o commit %s do host não existe no clone local" % sha[:10]
+    if ff and git(root, "merge-base", "--is-ancestor", head, up)[0] != 0:
+        return None, "o HEAD do host não está no histórico do que o push publica"
     rc, out = git(root, "diff", "--name-status", "--no-renames", "-z", head, up)
     if rc != 0:
         return None, "o git diff falhou"
@@ -483,11 +574,13 @@ def local_diff(root, head, up):
     return list(zip(parts[0::2], parts[1::2])), None
 
 
-def decide_host(alias, fact, diff):
+def decide_host(alias, fact, diff, push=None):
     """(itens, fora) do ~/dotfiles de um host. Pura: não toca disco nem rede.
 
     `fact`: dict com alvo (o nome que respondeu no ssh), behind, ahead e dirty (None quando
     o host não soube dizer), ou None se o ssh não respondeu. `diff()`: (mudanças, porquê-não).
+    `push`: o item de push que deixa este host atrás do origin. Com ele o host conta como atrás do que o
+    push leva, e o pull (e, por ele, o setup) só roda se o push rodou sem erro.
     """
     if fact is None:
         return [], ["%s: ssh não respondeu; não sei se o ~/dotfiles de lá está atrás" % alias]
@@ -507,12 +600,21 @@ def decide_host(alias, fact, diff):
         if behind:
             why.append("está %s atrás, mas não proponho o pull" % plural(behind, "commit", "commits"))
         return [], ["%s: %s" % (where, "; ".join(why))]
-    if not behind:
+    after = behind + (push["push"]["ahead"] if push else 0)
+    if not after:
         return [], []
-    pull = item("ssh %s 'git -C ~/dotfiles pull --ff-only'" % shlex.quote(alvo),
-                "%s está %s atrás do origin, sem commit à frente e sem arquivo sujo" % (where, plural(behind, "commit", "commits")))
+    cmd = "ssh %s 'git -C ~/dotfiles pull --ff-only'" % shlex.quote(alvo)
+    commits = plural(after, "commit", "commits")
+    if push:
+        pull = item(cmd, "depende do push (\0): %s ficará %s atrás do origin, sem commit à frente e sem arquivo sujo"
+                    % (where, commits), dep=push)
+    else:
+        pull = item(cmd, "%s está %s atrás do origin, sem commit à frente e sem arquivo sujo" % (where, commits))
     changes, nao = diff()
     if changes is None:
+        if push:
+            return [], ["%s: depois do push, não sei se o pull avança em fast-forward (%s); "
+                        "não proponho o pull nem o setup" % (where, nao)]
         return [pull], ["%s: não sei se precisa de ./setup.sh (%s); não proponho o setup" % (where, nao)]
     reason = setup_reason(changes)
     if not reason:
@@ -523,8 +625,11 @@ def decide_host(alias, fact, diff):
     return [pull, setup], []
 
 
-def plan_hosts(net, slugs, facts, slug_root):
-    """(itens, fora) dos outros hosts; só o ~/dotfiles vira item, os outros clones ficam só informados."""
+def plan_hosts(net, slugs, facts, slug_root, pushes=()):
+    """(itens, fora) dos outros hosts; só o ~/dotfiles vira item, os outros clones ficam só informados.
+
+    `pushes`: os itens de push do plano. O host que segue a branch que um deles publica ficará atrás depois
+    dele, e o diff do setup é então `HEAD do host..HEAD local`, não o do upstream do host (que é o de antes)."""
     items, fora = [], []
     for alias in other_hosts():
         if not (net and slugs):
@@ -538,8 +643,12 @@ def plan_hosts(net, slugs, facts, slug_root):
             if not dots:
                 continue
             fact = dots[0]
-        diff = None if fact is None else (lambda f=fact: local_diff(slug_root[f["slug"]], f["head"], f["up"]))
-        i, f = decide_host(alias, fact, diff)
+        push = None if fact is None else next(
+            (p for p in pushes if p["push"]["main"] == slug_root.get(fact["slug"])
+             and p["push"]["upstream"] == fact.get("upname")), None)
+        diff = None if fact is None else (lambda f=fact, p=push: local_diff(
+            slug_root[f["slug"]], f["head"], p["push"]["head"] if p else f["up"], ff=bool(p)))
+        i, f = decide_host(alias, fact, diff, push)
         items += i
         fora += f
     return items, fora
@@ -686,7 +795,7 @@ def main():
     ap.add_argument("--repo", action="append", default=[])
     ap.add_argument("--horas", type=float)
     ap.add_argument("--sem-rede", action="store_true")
-    ap.add_argument("--plano", action="store_true", help="acrescenta `## plano`: os comandos de limpeza, só impressos")
+    ap.add_argument("--plano", action="store_true", help="acrescenta `## plano`: os comandos de push, limpeza e pull, só impressos")
     a = ap.parse_args()
     # Nome de arquivo que não é UTF-8 sai como veio, em qualquer locale.
     sys.stdout.reconfigure(errors="surrogateescape")
@@ -725,7 +834,7 @@ def main():
         if s:
             slug_root.setdefault(s, main_root)
         if a.plano:
-            i, f = plan_repo(main_root, rs)
+            i, f = plan_repo(main_root, rs, net)
             itens += i
             fora += f
     if not groups:
@@ -744,7 +853,7 @@ def main():
     print("\n## registro dos projetos (não reapresentar como ponta solta)")
     print("\n".join(report_registro(projects)))
     if a.plano:
-        i, f = plan_hosts(net, slugs, facts, slug_root)
+        i, f = plan_hosts(net, slugs, facts, slug_root, [it for it in itens if it["push"]])
         print("\n## plano")
         print("\n".join(render_plan(itens + i, fora + f)))
 

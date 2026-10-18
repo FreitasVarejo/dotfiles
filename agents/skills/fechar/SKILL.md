@@ -1,6 +1,6 @@
 ---
 name: fechar
-description: Fecha uma sessão de trabalho sem perder o que sobrou — junta o que espera o dono (PR aberto, merge que destrava a etapa seguinte, limpeza depois do merge, outra máquina atrás), atualiza as tasks do freitask que a sessão tocou, pergunta o destino de cada ponta solta e propõe um plano de limpeza (worktree, branch, pull nas outras máquinas) que ela roda depois do OK do dono. Use quando o dono disser que vai fechar ou encerrar o chat.
+description: Fecha uma sessão de trabalho sem perder o que sobrou — junta o que espera o dono (PR aberto, merge que destrava a etapa seguinte, limpeza depois do merge, outra máquina atrás), atualiza as tasks do freitask que a sessão tocou, pergunta o destino de cada ponta solta e propõe um plano de comandos (push do que está à frente, limpeza de worktree e branch, pull nas outras máquinas) que ela roda depois do OK do dono. Use quando o dono disser que vai fechar ou encerrar o chat.
 disable-model-invocation: true
 argument-hint: "[o que mais registrar antes de fechar]"
 allowed-tools:
@@ -51,8 +51,8 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
      Resposta que não case com isso: pergunte de novo e não rode nada.
    - Rode na ordem do plano, cada comando como o script o imprimiu, sem
      acrescentar flag. O item que o script diz para rodar em background, rode
-     em background. Se o git recusar (árvore suja, branch não mergeada), não
-     contorne: o item fica no relatório, com a mensagem dele.
+     em background. Se o git recusar (árvore suja, branch não mergeada, push
+     rejeitado), não contorne: o item fica no relatório, com a mensagem dele.
    - Item que depende de outro (o motivo diz qual) só roda se aquele rodou
      sem erro; senão, fica no relatório com o motivo.
    - Confira com `git -C <clone principal> worktree list` e diga o que rodou,
@@ -63,9 +63,9 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
 - **Feito no freitask**: o que você escreveu, task a task.
 - **Plano**: os itens do `## plano` do script, como ele os imprimiu
   (`P1`, `P2`…), para resposta no formato `P: ok`, `P: 1, 3` ou `P: nenhum`.
-  Sem item, diga que não há o que limpar.
+  Sem item, diga que não há o que rodar.
 - **Espera você**: em ordem, só o que pede as mãos do dono (merge de PR, ação
-  manual), cada item com o que destrava. Comando de limpeza não entra aqui:
+  manual), cada item com o que destrava. Comando do plano não entra aqui:
   ou está no plano, ou ficou de fora dele por um motivo.
 - **Decida**: portão e pontas soltas, numerados `D1`, `D2`…, para resposta no
   formato `D1 task, D2 larga`.

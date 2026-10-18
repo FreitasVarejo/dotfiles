@@ -23,8 +23,9 @@ Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031, 0039 e 004
 
 ## O que nunca se faz aqui
 
-Commit, push, merge, `--force`, `branch -D`, `git push --delete`, `mv` ou `rm`
-em task. Limpeza só pelo plano, abaixo.
+Commit (é do dono, antes do `/fechar`), merge, `--force`, `branch -D`,
+`git push --delete`, `mv` ou `rm` em task. Push, limpeza e pull só pelo plano,
+abaixo.
 
 ## O plano
 
@@ -35,14 +36,20 @@ worktree, sem recusar: o motivo do item lista o que vai. Não conte com o
 prompt de permissão: em repo com `Bash(git *)` em allow, e em auto mode, ele
 não aparece.
 
-A lista é fechada:
+**O push não tem essa reserva:** o git aceita qualquer fast-forward, inclusive o
+commit de outra sessão. A reserva dele é só o OK, e o motivo do item lista os
+commits que vão.
 
+A lista é fechada (o que entra e o que fica "fora do plano": `pendencias --help`):
+
+- `git -C <repo ou worktree da sessão> push <remote> <branch>`, sem `--force`
+  nem `-u`;
 - `git -C <clone principal> worktree remove <caminho>`, sem `--force`, junto do
   `git -C <clone principal> branch -d <branch>` dela, nunca `-D`;
 - `git -C <clone principal> branch -d <branch>` de branch fora de worktree;
 - num host que só consome os dotfiles (ADR 0034), `ssh <alias> 'git -C
-  ~/dotfiles pull --ff-only'` e, quando o script o propõe, o `./setup.sh` de
-  lá, em background.
+  ~/dotfiles pull --ff-only'`, que depende do push quando é ele que deixa o
+  host atrás, e, quando o script o propõe, o `./setup.sh` de lá, em background.
 
 Clone de outro repo noutro host nunca vira item. A worktree desta sessão é
 sempre o último; a de outra sessão vem marcada e só entra pelo número.
