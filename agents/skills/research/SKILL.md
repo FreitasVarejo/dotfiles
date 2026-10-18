@@ -10,7 +10,7 @@ metadata:
 Pesquisa respondida mora em `~/ObsidianVault/research/<assunto>/`, uma pasta
 por assunto, fora de qualquer task. Esta skill é o ritual em duas pontas:
 consultar antes, propor no fim. O porquê e as alternativas recusadas: ADR 0040
-em `~/ObsidianVault/projects/workflow-ia/decisoes/`.
+em `~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`.
 
 **Se `~/ObsidianVault/research/` não existe nesta máquina, não crie.** Diga que
 aqui não há onde guardar e siga só com a pesquisa.

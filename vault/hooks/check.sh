@@ -181,7 +181,8 @@ fi
 # 6. Contrato do vault (vault-lint) ------------------------------------------
 # Sempre AVISO, nunca fail_check: ponteiro morto e ADR desatualizado não
 # impedem ninguém de trabalhar, e um healthcheck vermelho por isso ensina a
-# ignorar o vermelho. A decisão é a ADR 0009 em projects/workflow-ia/decisoes/.
+# ignorar o vermelho. A decisão é a ADR 0009 em
+# projects/workflow-ia/decisoes/supersedidas/.
 if command -v vault-lint &>/dev/null && [[ "$HAS_VAULT" == false ]]; then
   log_success "vault-lint encontrado: $(command -v vault-lint) (lint pulado: sem vault principal)"
 elif command -v vault-lint &>/dev/null; then

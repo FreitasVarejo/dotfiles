@@ -115,9 +115,9 @@ decidido-em: 2026-10-17
 <One to three sentences: the context, what was decided, why.>
 ```
 
-- **Number**: the highest `NNNN` in `decisoes/` plus one, or `0001` when there is none. File name `NNNN-slug-in-kebab-case.md`.
+- **Number**: the highest `NNNN` anywhere under `decisoes/`, `supersedidas/` included, plus one, or `0001` when there is none. A number is never reused. File name `NNNN-slug-in-kebab-case.md`.
 - **Frontmatter**: `tipo`, `status` (`vigente` or `supersedida`) and `decidido-em` always. `origem:` only when a note motivated the decision. Don't bring a template from elsewhere.
 - **Optional sections**, most ADRs won't need them: `## Alternativas recusadas` only when the rejection is not obvious, `## Consequências` only when the downstream effect is not obvious.
 - **An ADR is edited in place.** When the decision changes, rewrite the ADR and put the line `Atualizada em AAAA-MM-DD` under the title, replacing the date on each edit instead of accumulating lines. The history is in the vault's checkpoints (`vaultgit`, see `~/ObsidianVault/AGENTS.md`).
-- **A decision that died** is not deleted: set `status: supersedida` and add `supersedida-por:` pointing to where the rule lives now (another ADR or the note that took it over). The ADR that replaces it cites the old one in its text. `supersede:`, `emenda:`, `emendada-por:` and "— parcial" are not part of the format; the ADRs that already carry them keep them.
+- **A decision that died** is not deleted: move it to `decisoes/supersedidas/`, set `status: supersedida` and add `supersedida-por:` pointing to where the rule lives now (another ADR or the note that took it over as a wikilink, or a `~/` path in backticks when the rule left the vault). The top of `decisoes/` holds only what is in force. The ADR that replaces it cites the old one in its text. `supersede:`, `emenda:`, `emendada-por:` and "— parcial" are not part of the format; the ADRs that already carry them keep them.
 - **If the decision contradicts an ADR in force**, say so to the user before writing, then edit that ADR in place or mark it `supersedida`.

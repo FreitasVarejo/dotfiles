@@ -6,7 +6,7 @@
 # antes de cada `cf-write` (agents/settings/claude.json), mas a separação de
 # verdade é o token: uma escrita pelo `cf` volta 403 da própria Cloudflare, em
 # qualquer modo de permissão. O porquê: ADR 0038 em
-# ~/ObsidianVault/projects/workflow-ia/decisoes/.
+# ~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/.
 #
 # O token entra só no ambiente do processo do `cf` e nunca é exportado, porque
 # um segredo exportado chega a todo processo filho, agentes incluídos. Sem o

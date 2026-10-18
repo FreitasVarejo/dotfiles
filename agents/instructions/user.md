@@ -10,7 +10,7 @@
 
 ## Cloudflare
 
-- Ler: `cf`. Mudar qualquer coisa: só `cf-write`, e só depois de eu aprovar o comando. Não contorne (binário do npm direto, `curl` na API, `cf auth login`). Comando certo: `cf cli search`. O porquê: ADR 0038 em `~/ObsidianVault/projects/workflow-ia/decisoes/`.
+- Ler: `cf`. Mudar qualquer coisa: só `cf-write`, e só depois de eu aprovar o comando. Não contorne (binário do npm direto, `curl` na API, `cf auth login`). Comando certo: `cf cli search`. O porquê: ADR 0038 em `~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`.
 
 ## Como decidir comigo
 
@@ -23,4 +23,4 @@
 - Só ponteiro e regra. Sem contagem, sem cópia de estado, sem afirmar o que uma ferramenta faz ou fará (aponte para `--help`).
 - Caminho citado começa em `~/` e precisa existir; o `vault-lint` vigia.
 - Cada regra é enunciada uma vez, onde mora o dado, no escopo mais estreito que a carrega quando precisa; nos outros lugares, ponteiro.
-- O porquê: ADRs 0009, 0014 e 0029 em `~/ObsidianVault/projects/workflow-ia/decisoes/`.
+- O porquê: ADRs 0009, 0014 e 0029 em `~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`.

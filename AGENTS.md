@@ -27,7 +27,7 @@ precommit.sh           # pre-commit gate over every shell/lua file git knows abo
 - Rules that only matter inside one package or file type live in `.claude/rules/<x>.md`
   with `paths:`, and load when a matching file is touched. Never put an `AGENTS.md` or
   `CLAUDE.md` inside a stow package: it would be stowed into its target (`$HOME` for
-  some). The why: ADR 0029 in `~/ObsidianVault/projects/workflow-ia/decisoes/`.
+  some). The why: ADR 0029 in `~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`.
 
 ## Quick Reference
 

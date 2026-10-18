@@ -6,10 +6,10 @@ paths:
 # The `agents/` package
 
 Serves Claude Code (personal machines) and Cursor CLI (work WSL); Claude Code comes first
-(ADRs 0024 and 0027 in `~/ObsidianVault/projects/workflow-ia/decisoes/`). Not stowed: every
-target is a file the agents also write, so the setup hook links or merges instead
-(`agents/hooks/lib.sh` says where each agent reads from). Merges only add or update what
-the repo declares; whatever the machine added stays.
+(ADR 0027 in `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0024 in its
+`supersedidas/`). Not stowed: every target is a file the agents also write, so the setup
+hook links or merges instead (`agents/hooks/lib.sh` says where each agent reads from).
+Merges only add or update what the repo declares; whatever the machine added stays.
 
 - `skills/<skill>/` → one symlink per skill in `~/.claude/skills/`. Never link `~/.claude`
   (it holds state) nor the whole skills dir (Claude Code writes `synced/` there).
@@ -24,6 +24,8 @@ the repo declares; whatever the machine added stays.
 - `settings/claude.json`: keys only Claude Code reads (`skillOverrides`, `autoMode`, …),
   merged key by key into its `settings.json` (ADR 0028). `autoMode` holds no project
   fact: the classifier reads it only from user scope, so it reaches every repo.
+  `disableClaudeAiConnectors` stays on: an MCP reaches Claude Code only through `mcp/`,
+  never through the claude.ai account, so nothing touches the vault around the travas.
 - `instructions/user.md` → `CLAUDE.md`, and `instructions/machines/<hostname>.md` →
   `rules/maquina.md`, both under `~/.claude/`, one symlink per file (ADR 0026). A line
   goes in `user.md` only when it holds in two repos and names no project noun.

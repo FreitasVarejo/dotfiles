@@ -1,9 +1,10 @@
 #!/bin/bash
 # vault-lint — vigia de contrato do vault do Obsidian.
 #
-# A ADR 0009 (projects/workflow-ia/decisoes/) decidiu que contrato só carrega
-# ponteiro e regra, nunca cópia de estado. Corrigir um contrato desatualizado à
-# mão resolve hoje e não impede o próximo; este check é quem impede o próximo.
+# A ADR 0009 (projects/workflow-ia/decisoes/supersedidas/) decidiu que contrato
+# só carrega ponteiro e regra, nunca cópia de estado. Corrigir um contrato
+# desatualizado à mão resolve hoje e não impede o próximo; este check é quem
+# impede o próximo.
 #
 # Deliberadamente SEPARADO do `freitask doctor`: aquele cuida do domínio das
 # tasks (formato do bloco, path x status, links entre tasks) e falha quando o
@@ -324,14 +325,20 @@ done < <(
 )
 
 # --- Check 4: duas ADRs com o mesmo número -----------------------------------
-# A domain-modeling numera pelo maior NNNN da pasta mais um, e duas sessões ao
+# A domain-modeling numera pelo maior NNNN de `decisoes/` mais um, e duas sessões ao
 # mesmo tempo chegam ao mesmo número (a 0036 do workflow-ia, em 11/10). O
 # achado cai em cada repetida depois da primeira, com o próximo número livre.
+# A supersedida mora em `decisoes/supersedidas/` e guarda o número: as duas
+# pastas são uma numeração só. Ela é lida primeiro, para o achado cair na ADR
+# nova, que é a que ainda pode trocar de número sem quebrar citação.
 declare -A ADR_PRIMEIRA ADR_MAIOR
 REPETIDAS=()
+ADRS=$(vault_notes | grep -E '/decisoes/(supersedidas/)?[0-9]{4}-[^/]*\.md$' || true)
 while IFS= read -r file; do
+  [[ -n "$file" ]] || continue
   rel=${file#"$VAULT"/}
   dir=${rel%/*}
+  dir=${dir%/supersedidas}
   base=${rel##*/}
   num=${base:0:4}
   if [[ -z "${ADR_MAIOR[$dir]:-}" ]] || ((10#$num > 10#${ADR_MAIOR[$dir]})); then
@@ -342,11 +349,12 @@ while IFS= read -r file; do
     continue
   fi
   REPETIDAS+=("$rel"$'\t'"${ADR_PRIMEIRA["$dir/$num"]}")
-done < <(vault_notes | grep -E '/decisoes/[0-9]{4}-[^/]*\.md$' || true)
+done < <(grep '/supersedidas/' <<<"$ADRS" || true; grep -v '/supersedidas/' <<<"$ADRS" || true)
 
 for row in ${REPETIDAS+"${REPETIDAS[@]}"}; do
   IFS=$'\t' read -r rel primeira <<<"$row"
   dir=${rel%/*}
+  dir=${dir%/supersedidas}
   # Cada repetida leva um número diferente: três 0036 pedem dois livres.
   ADR_MAIOR[$dir]=$((10#${ADR_MAIOR[$dir]} + 1))
   printf -v livre '%04d' "${ADR_MAIOR[$dir]}"

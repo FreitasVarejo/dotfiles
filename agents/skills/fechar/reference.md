@@ -1,6 +1,7 @@
 # Para onde vai cada resíduo
 
-Regra em `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADRs 0031, 0039 e 0040.
+O porquê: ADRs 0031, 0039 e 0040 em
+`~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`.
 
 | Resíduo | Destino | Quem decide |
 |---|---|---|

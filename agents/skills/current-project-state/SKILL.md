@@ -121,7 +121,7 @@ só em `## Decidido na conversa` e `## Adiado de propósito`, editando a prosa.
 Ela não roda `--gravar`, que somaria uma rodada a cada item da fila, salvo
 para criar o arquivo que ainda não existe. Frontmatter, fila e `## Leitura da
 última rodada` são só desta skill. As regras abaixo valem para as duas (ADR
-0039 em `~/ObsidianVault/projects/workflow-ia/decisoes/`).
+0039 em `~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`).
 
 **Nunca escreva no registro o que o coletor recalcula** — lista de task, de
 commit, de ADR, de container, título de PR. Cópia de estado envelhece e passa a
@@ -134,8 +134,8 @@ arquivar, o `freitask` reescreve os wikilinks de task do vault inteiro na máqui
 que arquivou, e isso inclui o `estado-` da outra máquina: dois hosts escrevendo
 no mesmo arquivo é o `sync-conflict` que o registro por máquina existe para
 evitar. Id entre crases ele não toca. ADR e nota de spec podem ir como
-`[[0057-...]]`. A regra e o porquê: ADR 0032 em
-`~/ObsidianVault/projects/workflow-ia/decisoes/`.
+`[[0057-...]]`. O porquê: ADR 0032 em
+`~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`.
 
 **Fora esse arquivo, não escreva em lugar nenhum.** Mudar fase de task,
 arquivar, renomear ou criar é trabalho do `freitask`, e o `AGENTS.md` do vault

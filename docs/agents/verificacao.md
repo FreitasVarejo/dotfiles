@@ -1,7 +1,7 @@
 # Verificação
 
 Adaptador da skill `verificar` neste repo (ADR 0030 em
-`~/ObsidianVault/projects/workflow-ia/decisoes/`). O bloco abaixo é lido pelo
+`~/ObsidianVault/projects/workflow-ia/decisoes/supersedidas/`). O bloco abaixo é lido pelo
 script da skill: globs do que mudou, dois espaços, o comando na raiz do repo.
 
 ```portoes
