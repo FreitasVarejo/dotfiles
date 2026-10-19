@@ -15,7 +15,7 @@ allowed-tools:
   - Read(~/ObsidianVault/**)
   - Edit(~/ObsidianVault/projects/**)
 metadata:
-  surfaces: "code"
+  surfaces: "code,web"
 ---
 
 # Abrir uma task do freitask
@@ -26,6 +26,10 @@ com uma task criada pela CLI, no projeto certo e com um corpo que diga o que ela
 título, id, estado e corpo.
 
 O pedido do dono: $ARGUMENTS
+
+**No claude.ai**, os fatos e a escrita passam pelo conector do vault, porque lá
+o `freitask` não roda: leia `references/claude-ai.md` agora e siga os §§ abaixo
+com as trocas que ele dá.
 
 ## Contexto desta sessão
 
@@ -133,7 +137,8 @@ Responda curto:
 
 ## Nunca
 
-- Escrever o arquivo da task à mão em vez de `freitask new`.
+- Escrever o arquivo da task à mão onde o `freitask` roda: lá o caminho é o
+  `freitask new`.
 - `mv`, `rm`, renomear, arquivar ou `freitask delete`.
 - `freitask current`, `freitask tui` ou `freitask` sem argumentos: abrem uma tela
   e travam a sessão.
