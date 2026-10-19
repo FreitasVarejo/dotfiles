@@ -504,7 +504,7 @@ planos_json() {
 # do GitHub, as notas avulsas do painel, as pendências declaradas nas specs e
 # (montadas na renderização) as tasks em homologação.
 gh_json() {
-  local o='{"prs":[],"issues":[]}'
+  local o='{"prs":[]}'
   if [[ $REDE -eq 0 ]]; then
     fonte github pulado "--sem-rede"
     echo "$o"; return 0
@@ -513,32 +513,25 @@ gh_json() {
     fonte github ausente "gh não está no PATH"
     echo "$o"; return 0
   fi
-  local slug prs='[]' issues='[]' algum=0
+  local slug prs='[]' algum=0
   while read -r raiz; do
     [[ -n "$raiz" ]] || continue
     slug=$(slug_github "$raiz") || true
     [[ -n "$slug" ]] || continue
     algum=1
-    local p i
+    local p
     p=$(timeout 25 gh pr list --repo "$slug" --state open --limit 30 \
           --json number,title,headRefName,updatedAt,isDraft,reviewDecision,author 2>/dev/null) || p='[]'
-    i=$(timeout 25 gh issue list --repo "$slug" --state open --limit 60 \
-          --json number,title,labels,updatedAt 2>/dev/null) || i='[]'
     # Só o lote novo ganha o slug: marcar o acumulado relabelaria os PRs dos
     # repos anteriores com o do último.
     prs=$(jq -s 'add // []' <(echo "$prs") <(echo "$p" | jq --arg r "$slug" 'map(. + {repo:$r})'))
-    # Label que pede humano: derivada por padrão no nome, não por lista fixa.
-    issues=$(jq -s 'add // []' <(echo "$issues") <(
-      echo "$i" | jq --arg r "$slug" '
-        map(. + {repo: $r, labels: [.labels[].name]})
-        | map(select(.labels | any(test("human|revis|homolog|aprova"; "i"))))'))
   done < <(repos_do_projeto)
   if [[ $algum -eq 0 ]]; then
     fonte github vazio "nenhum repo do projeto tem remote no GitHub"
   else
-    fonte github ok "PRs abertos e issues com label pedindo humano"
+    fonte github ok "PRs abertos"
   fi
-  jq -n --argjson prs "$prs" --argjson issues "$issues" '{prs:$prs, issues:$issues}'
+  jq -n --argjson prs "$prs" '{prs:$prs}'
 }
 
 notas_avulsas_json() {
@@ -690,12 +683,11 @@ gravar_registro() {
 
   # Item que já estava mantém a data de entrada e ganha uma rodada; item novo
   # entra com hoje. Item que saiu da pendência some — MAS só se a fonte dele
-  # foi lida de verdade: com --sem-rede, PR e issue ficam como estavam, senão
+  # foi lida de verdade: com --sem-rede, PR fica como estava, senão
   # a primeira rodada offline apagaria o histórico inteiro.
   fila=$(printf '%s' "$DOC" | jq -r --arg hoje "$hoje" '
     . as $r
     | ( [ $r.esperando.prs[]    | "PR #\(.number)" ]
-      + [ $r.esperando.issues[] | "issue #\(.number)" ]
       + [ $r.tasks[] | select(.arquivada == "" and .callout == "question") | "task `\(.id)`" ]
       ) as $agora
     | ( $r.registro.fila | map({key: .chave, value: .}) | from_entries ) as $antes
@@ -864,8 +856,6 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" --argjson ocultas "$OCU
     + (if (.reviewDecision // "") != "" then "  [\(.reviewDecision)]" else "  [sem review]" end)
     + "\n      \(.title)"
     + "\n      atualizado \(.updatedAt[0:10]) por \(.author.login // "?")" ]; $semgh),
-  "### issues com label pedindo humano",
-  bloco([ $r.esperando.issues[] | "  #\(.number)  \(.repo)  [\(.labels|join(", "))]\n      \(.title)   (atualizada \(.updatedAt[0:10]))" ]; $semgh),
   "### tasks em homologação",
   bloco([ $ativas[] | select(.callout == "question") | "  - \(.id)  ·  \(.titulo)" ]),
   "### notas avulsas do painel que citam o projeto",

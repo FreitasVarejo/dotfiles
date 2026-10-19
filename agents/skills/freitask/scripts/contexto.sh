@@ -124,13 +124,6 @@ while read -r p; do
   echo "- \`$p\` — $(escopo "$p")"
 done < <(projetos)
 
-echo
-echo "## tracker do repo"
-if [[ -n "$REPO" && -f "$REPO/docs/agents/issue-tracker.md" ]]; then
-  echo "$(head -n1 "$REPO/docs/agents/issue-tracker.md" | sed 's/^#* *//') (docs/agents/issue-tracker.md)"
-else
-  echo "não declarado"
-fi
 
 echo
 echo "## hoje"

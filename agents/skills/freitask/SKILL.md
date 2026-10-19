@@ -83,7 +83,7 @@ chamada, e a resposta do dono já roda no modelo da sessão.
   da branch git, e é a única coisa cara de mudar depois: renomear reescreve
   referências no vault inteiro. Escolha curto e específico, e nunca um que já
   esteja na lista do projeto. Nem o de uma task de outro projeto: o `doctor`
-  do §6 acusa id repetido entre projetos.
+  do §5 acusa id repetido entre projetos.
 - **Estado** (`--desc`): uma linha começando pela data, no tom das existentes:
   "Aberta em DD/MM; <de onde veio, ou o que falta para começar>".
 - **Fase**: a task nasce `todo`. Não mude.
@@ -115,16 +115,7 @@ com `freitask set <id> --title "…" --desc "…"`.
   freitask reaponta o link quando ela muda de lugar). ADR vai como `[[NNNN-slug]]`.
 - **Nunca escreva `## Histórico`**: é do freitask.
 
-## 5. Task ou issue
-
-Se `tracker do repo` diz GitHub, a execução desse repo mora em issue, e a task
-do freitask é **frente de trabalho**: dura semanas e carrega pesquisa (ADR 0005
-do `workflow-ia`). Crie a task mesmo assim, porque foi o que o dono pediu. Mas
-se a descrição for claramente execução pequena dentro deste repo (um bug, uma
-mudança que cabe numa PR), diga isso numa linha no fim e ofereça abrir a issue.
-Não abra a issue sem ele dizer sim.
-
-## 6. Fim
+## 5. Fim
 
 ```bash
 freitask doctor --quiet
@@ -138,8 +129,7 @@ Responda curto:
 
 - projeto, e por que esse, em uma linha;
 - `id` e caminho;
-- o estado;
-- quando for o caso, a linha da seção 5.
+- o estado.
 
 ## Nunca
 

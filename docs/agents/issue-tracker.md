@@ -1,8 +1,7 @@
 # Issue tracker: freitask (vault do Obsidian)
 
-Este repo **não tem esteira** (nenhum GitHub Action lê issue nenhuma), então o
-trabalho não vive em GitHub Issues: vive como **task do freitask** no vault.
-Decisão em
+O trabalho deste repo vive como **task do freitask** no vault, e não em GitHub
+Issues. Decisão em
 `~/ObsidianVault/projects/workflow-ia/decisoes/0005-freitask-e-frente-issue-e-execucao-onde-ha-esteira.md`.
 Regras do vault: `~/ObsidianVault/AGENTS.md` — leia antes de criar ou mexer em task.
 

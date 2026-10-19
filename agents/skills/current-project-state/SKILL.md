@@ -145,9 +145,9 @@ a conversa, use a CLI.
 ## Armadilhas
 
 - **`--sem-rede` esconde quase toda a seção "esperando você".** Hoje é no GitHub
-  que moram os PRs abertos e as issues que pedem humano. Sem rede, você está
-  respondendo sobre metade da pergunta; diga isso. Gravar offline **não** apaga
-  a fila de PR e issue — o coletor preserva o que não conseguiu conferir.
+  que moram os PRs abertos. Sem rede, você está respondendo sobre metade da
+  pergunta; diga isso. Gravar offline **não** apaga a fila de PR — o coletor
+  preserva o que não conseguiu conferir.
 - **Worktree não é frente nova.** O coletor deduplica pelo `git-common-dir` e
   mostra os worktrees de um clone como um repo com N branches em voo.
 - **Task `dropped` que ficou com callout `todo`.** Ela aparece arquivada, não em
