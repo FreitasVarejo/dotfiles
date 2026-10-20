@@ -5,15 +5,15 @@ argument-hint: "<o que a task é, em uma ou duas frases>"
 model: claude-sonnet-5-5
 effort: xhigh
 allowed-tools:
-  - Bash(~/.claude/skills/freitask/scripts/contexto.sh)
-  - Bash(~/.claude/skills/freitask/scripts/contexto.sh *)
-  - Bash(freitask new *)
-  - Bash(freitask kebab *)
-  - Bash(freitask list *)
-  - Bash(freitask set *)
-  - Bash(freitask doctor *)
-  - Read(~/ObsidianVault/**)
-  - Edit(~/ObsidianVault/projects/**)
+- Bash(~/.claude/skills/freitask/scripts/contexto.sh)
+- Bash(~/.claude/skills/freitask/scripts/contexto.sh *)
+- Bash(freitask new *)
+- Bash(freitask kebab *)
+- Bash(freitask list *)
+- Bash(freitask set *)
+- Bash(freitask doctor *)
+- Read(~/ObsidianVault/**)
+- Edit(~/ObsidianVault/projects/**)
 metadata:
   surfaces: "code,web"
 ---
