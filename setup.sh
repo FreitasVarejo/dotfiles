@@ -70,7 +70,7 @@ backup_path() {
 # $HOME pode conter .config/, .local/ ou .claude/ — diretórios reais cheios de
 # estado que não podem ir para o backup só porque existem. Só o que conflita de
 # verdade (um arquivo no lugar onde o stow quer pôr um symlink) é movido.
-# Pula hooks/ e os arquivos que o stow ignora (.stow-local-ignore, README.md).
+# Pula hooks/, tests/ e os arquivos que o stow ignora (.stow-local-ignore, README.md).
 backup_package_files() {
   local pkg_name="$1"
   local local_target="${STOW_TARGETS[$pkg_name]}"
@@ -81,6 +81,7 @@ backup_package_files() {
     backup_path "$local_target/$rel_path" "$local_target/$rel_path"
   done < <(find "$pkg_path" -type f \
     -not -path "$pkg_path/hooks/*" \
+    -not -path "$pkg_path/tests/*" \
     -not -name '.stow-local-ignore' \
     -not -name 'README.md' \
     -print0 2>/dev/null)

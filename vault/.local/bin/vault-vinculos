@@ -1,0 +1,265 @@
+#!/bin/bash
+# vault-vinculos — os vínculos entre os projetos do vault, os repos e os hosts.
+#
+# Responde o que os scripts do workflow perguntam sobre vínculo, derivando do
+# disco na hora da consulta: que projetos existem, que projetos um repo
+# alimenta, que repos um projeto tem, qual nota de hosts/ é esta máquina e por
+# que alias de ssh se chega às outras. As regras moram aqui. Quem precisa delas
+# chama este executável pelo nome no PATH e não as copia.
+#
+# Uso:
+#   vault-vinculos projetos           <projeto>
+#   vault-vinculos repo <dir>         <clone> TAB <projetos>
+#   vault-vinculos repos [<projeto>]  <dir> TAB <clone> TAB <projetos>
+#   vault-vinculos hosts              <nome> TAB <esta> TAB <ssh> TAB <projetos> TAB <nota>
+#   vault-vinculos esta-maquina       <nome>
+#
+# Uma linha por registro, lista separada por espaço. Campo vazio fica vazio:
+# `read` com IFS de tab junta dois tabs seguidos, então leia com `cut` ou
+# `awk -F'\t'`. Sai 0 mesmo com resposta vazia, e 2 em erro de uso.
+#
+# As regras:
+# - Projeto: o que o `freitask projects --json` lista. Sem o freitask, ou com
+#   ele falhando, toda pasta de projects/ que tenha tasks/.
+# - Clone: o clone principal do repo em que <dir> está, pelo --git-common-dir.
+#   Os worktrees de um clone são um repo só, e vale o contrato do principal:
+#   contrato mudado numa branch ainda não vale. Fora de git, não há clone.
+# - Repo vinculado: o contrato é AGENTS.md, CLAUDE.md e docs/agents/*.md da
+#   raiz do clone; contrato aninhado não conta. Se ele cita o tasks/ de algum
+#   projeto (`projects/<p>/tasks`), mesmo de um que não existe mais, o repo
+#   alimenta só os projetos cujo tasks/ cita. Sem tasks/ nenhum, alimenta todo
+#   projeto que cita como `projects/<p>` seguido de `/`, espaço, crase ou fim
+#   de linha.
+# - Onde moram os repos: os diretórios ~/dotfiles, ~/dev/* e ~/projects/*.
+#   `repos` sem projeto lista cada um, com o clone vazio fora de git; com
+#   projeto, um por clone vinculado a ele.
+# - Host: cada nota de hosts/, menos as cópias de conflito do Syncthing.
+#   <nome> é o basename da nota, sem .md. <esta> é 1 quando o primeiro token
+#   do H1 é o hostname desta máquina, sem diferenciar caixa. <ssh> são os
+#   aliases a tentar, em ordem: esse token e <token>-local. <projetos> são as
+#   tags do frontmatter, em linha ou em bloco, que são projeto. <nota> é o
+#   caminho da nota.
+# - Esta máquina: o <nome> da nota com <esta> 1; sem nota, o hostname.
+#
+# Não abre ssh, não usa rede e não escreve nada. Vault sem projects/, como o
+# do WSL do trabalho, dá respostas vazias. O vault é o de $HOME e o hostname é
+# o `hostname -s`; os testes trocam os dois pelo HOME e pelo VAULT_HOSTNAME.
+
+set -euo pipefail
+
+# Fixo, como no config.lua do freitask: trocar de vault é trocar $HOME.
+VAULT="$HOME/ObsidianVault"
+
+# O cabeçalho inteiro, até a primeira linha que não é comentário.
+uso() { awk 'NR == 1 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0"; }
+
+erro_de_uso() {
+  echo "vault-vinculos: $1 (veja --help)" >&2
+  exit 2
+}
+
+# --- Projetos ----------------------------------------------------------------
+# Sem projects/ não há o que perguntar ao freitask, e ele não é chamado: num
+# vault que não é este, quem responde é o glob, que não acha nada.
+projetos() {
+  [[ -d "$VAULT/projects" ]] || return 0
+  local json d
+  if command -v freitask >/dev/null && json=$(freitask projects --json 2>/dev/null); then
+    printf '%s' "$json" | grep -oE '"project"[[:space:]]*:[[:space:]]*"[^"]*"' |
+      sed -E 's/.*"([^"]*)"$/\1/' || true
+    return 0
+  fi
+  for d in "$VAULT"/projects/*/; do
+    [[ -d "${d}tasks" ]] && basename "$d"
+  done
+  return 0
+}
+
+PROJETOS=()
+declare -A EH_PROJETO=()
+carregar_projetos() {
+  local p
+  while IFS= read -r p; do
+    [[ -n "$p" && -z "${EH_PROJETO[$p]:-}" ]] || continue
+    PROJETOS+=("$p")
+    EH_PROJETO[$p]=1
+  done < <(projetos)
+}
+
+# Os projetos de uma lista (um por linha) que existem, na ordem de PROJETOS e
+# sem repetição, separados por espaço.
+so_projetos() {
+  local -A citado=()
+  local p saida=""
+  while IFS= read -r p; do [[ -n "$p" ]] && citado[$p]=1; done
+  for p in ${PROJETOS+"${PROJETOS[@]}"}; do
+    [[ -n "${citado[$p]:-}" ]] && saida+="${saida:+ }$p"
+  done
+  printf '%s' "$saida"
+}
+
+# --- Repos -------------------------------------------------------------------
+clone_de() {
+  local comum
+  comum=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  dirname "$comum"
+}
+
+contrato_de() {
+  local f
+  for f in "$1/AGENTS.md" "$1/CLAUDE.md" "$1"/docs/agents/*.md; do
+    [[ -f "$f" ]] && printf '%s\n' "$f"
+  done
+  return 0
+}
+
+projetos_do_clone() {
+  local arquivos=()
+  mapfile -t arquivos < <(contrato_de "$1")
+  ((${#arquivos[@]})) || return 0
+  if grep -qE 'projects/[a-z0-9][a-z0-9_.-]*/tasks' "${arquivos[@]}" 2>/dev/null; then
+    grep -ohE 'projects/[a-z0-9][a-z0-9_.-]*/tasks' "${arquivos[@]}" 2>/dev/null |
+      sed -E 's#^projects/##; s#/tasks$##' | so_projetos
+  else
+    { grep -ohE 'projects/[a-z0-9][a-z0-9_.-]*([/[:space:]`]|$)' "${arquivos[@]}" 2>/dev/null || true; } |
+      sed -E 's#^projects/##; s#[/[:space:]`]$##' | so_projetos
+  fi
+}
+
+# Sem a barra no fim do glob, como no REMOTE da pendencias: com ela, `x-wt/`
+# ordena antes de `x/`.
+raizes() {
+  local d
+  for d in "$HOME/dotfiles" "$HOME"/dev/* "$HOME"/projects/*; do
+    [[ -d "$d" ]] && printf '%s\n' "$d"
+  done
+  return 0
+}
+
+cmd_repo() {
+  local clone
+  clone=$(clone_de "$1") || return 0
+  printf '%s\t%s\n' "$clone" "$(projetos_do_clone "$clone")"
+}
+
+cmd_repos() {
+  local alvo=$1 dir clone vinculo
+  local -A do_clone=() linha=()
+  local clones=()
+  while IFS= read -r dir; do
+    clone=$(clone_de "$dir") || clone=""
+    vinculo=""
+    if [[ -n "$clone" ]]; then
+      [[ -n "${do_clone[$clone]+x}" ]] || do_clone[$clone]=$(projetos_do_clone "$clone")
+      vinculo=${do_clone[$clone]}
+    fi
+    if [[ -z "$alvo" ]]; then
+      printf '%s\t%s\t%s\n' "$dir" "$clone" "$vinculo"
+      continue
+    fi
+    [[ " $vinculo " == *" $alvo "* ]] || continue
+    # Um por clone, e a linha é a do próprio principal quando ele está nas
+    # raízes, seja qual for o nome dos worktrees.
+    if [[ -z "${linha[$clone]:-}" ]]; then
+      clones+=("$clone")
+    elif [[ "$dir" != "$clone" ]]; then
+      continue
+    fi
+    linha[$clone]="$dir"$'\t'"$clone"$'\t'"$vinculo"
+  done < <(raizes)
+  for clone in ${clones+"${clones[@]}"}; do printf '%s\n' "${linha[$clone]}"; done
+}
+
+# --- Hosts -------------------------------------------------------------------
+hostname_desta() {
+  local hn=${VAULT_HOSTNAME:-}
+  [[ -n "$hn" ]] || hn=$(hostname -s 2>/dev/null || uname -n)
+  printf '%s' "${hn%%.*}"
+}
+
+token_do_h1() {
+  awk '
+    NR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+    fm { if (/^---[[:space:]]*$/) fm = 0; next }
+    /^# / { print $2; exit }
+  ' "$1"
+}
+
+# As tags do frontmatter, uma por linha: `tags: [a, b]`, `tags: a` ou a lista
+# em bloco, que é como o painel de propriedades do Obsidian grava. Só awk
+# POSIX: o pi01 roda mawk.
+tags_de() {
+  awk -v aspa="'" '
+    function sai(t) { gsub(/"/, "", t); gsub(aspa, "", t); sub(/^#/, "", t); if (t != "") print t }
+    NR == 1 { if (!/^---[[:space:]]*$/) exit; next }
+    /^---[[:space:]]*$/ { exit }
+    bloco && /^[[:space:]]*-[[:space:]]/ { v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); sai(v); next }
+    { bloco = 0 }
+    /^tags:/ {
+      v = $0
+      sub(/^tags:[[:space:]]*/, "", v)
+      if (v == "") { bloco = 1; next }
+      gsub(/\[/, " ", v)
+      gsub(/\]/, " ", v)
+      gsub(/,/, " ", v)
+      n = split(v, item, /[[:space:]]+/)
+      for (i = 1; i <= n; i++) sai(item[i])
+    }
+  ' "$1"
+}
+
+cmd_hosts() {
+  [[ -d "$VAULT/hosts" ]] || return 0
+  local hn nota token esta ssh
+  hn=$(hostname_desta)
+  for nota in "$VAULT"/hosts/*.md; do
+    [[ -f "$nota" && "$nota" != *.sync-conflict-* ]] || continue
+    token=$(token_do_h1 "$nota")
+    esta=0
+    [[ -n "$token" && "${token,,}" == "${hn,,}" ]] && esta=1
+    ssh=""
+    [[ -n "$token" ]] && ssh="$token $token-local"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$(basename "$nota" .md)" "$esta" "$ssh" \
+      "$(tags_de "$nota" | so_projetos)" "$nota"
+  done
+}
+
+cmd_esta_maquina() {
+  local nome
+  # Sem `exit` no awk: fechar o pipe cedo mata o cmd_hosts com SIGPIPE, e o
+  # pipefail transforma isso em erro.
+  nome=$(cmd_hosts | awk -F'\t' '$2 == 1 && !achou++ { print $1 }')
+  printf '%s\n' "${nome:-$(hostname_desta)}"
+}
+
+# --- Despacho ----------------------------------------------------------------
+case "${1:-}" in
+  -h | --help) uso ;;
+  projetos)
+    [[ $# -eq 1 ]] || erro_de_uso "projetos não leva argumento"
+    carregar_projetos
+    for p in ${PROJETOS+"${PROJETOS[@]}"}; do printf '%s\n' "$p"; done
+    ;;
+  repo)
+    [[ $# -eq 2 && -n "$2" ]] || erro_de_uso "repo quer um diretório"
+    carregar_projetos
+    cmd_repo "$2"
+    ;;
+  repos)
+    [[ $# -le 2 ]] || erro_de_uso "repos leva no máximo um projeto"
+    carregar_projetos
+    cmd_repos "${2:-}"
+    ;;
+  hosts)
+    [[ $# -eq 1 ]] || erro_de_uso "hosts não leva argumento"
+    carregar_projetos
+    cmd_hosts
+    ;;
+  esta-maquina)
+    [[ $# -eq 1 ]] || erro_de_uso "esta-maquina não leva argumento"
+    cmd_esta_maquina
+    ;;
+  "") erro_de_uso "falta o subcomando" ;;
+  *) erro_de_uso "subcomando desconhecido: $1" ;;
+esac
+exit 0

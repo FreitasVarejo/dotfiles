@@ -8,6 +8,7 @@ script da skill: globs do que mudou, dois espaços, o comando na raiz do repo.
 *                                                       ./precommit.sh
 agents/**|*/hooks/**|lib/**|setup.sh|healthcheck.sh     ./healthcheck.sh
 agents/**                                               python3 -I -m unittest discover -s agents/tests
+vault/**|agents/skills/fechar/scripts/pendencias        ./vault/tests/vault-vinculos.sh
 ```
 
 ## Como testar à mão
