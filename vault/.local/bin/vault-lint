@@ -45,6 +45,11 @@ if [[ ! -d "$VAULT" ]]; then
   echo "vault-lint: vault não encontrado em $VAULT" >&2
   exit 2
 fi
+# Sem a resposta do vault-vinculos, o lint varreria só o vault e diria "limpo".
+if ! REPOS=$(vault-vinculos repos); then
+  echo "vault-lint: o vault-vinculos não respondeu (o ~/dotfiles/setup.sh o põe no PATH)" >&2
+  exit 2
+fi
 
 # --- Coleta de achados ------------------------------------------------------
 # Um achado por linha em FINDINGS: check<TAB>arquivo<TAB>linha<TAB>detalhe
@@ -94,20 +99,27 @@ nested_contracts() {
     ! -path "$root/AGENTS.md" ! -path "$root/CLAUDE.md" -print 2>/dev/null
 }
 
-# Raízes varridas: o vault, os dotfiles e todo repo em ~/dev e ~/projects que
-# tenha contrato. Derivado do disco, nunca uma lista fixa — o clone já mudou de
-# ~/projects para ~/dev uma vez, e foi justamente isso que gerou esta task.
+# Raízes varridas: o vault e os diretórios onde moram os repos que tenham
+# contrato. Onde os repos moram, e o clone de cada um, quem diz é o
+# vault-vinculos (`vault-vinculos --help`): o clone já mudou de ~/projects para
+# ~/dev uma vez, e uma lista copiada aqui ficou para trás.
+#
+# Worktree não é repo: quatro worktrees do mesmo clone carregam o mesmo
+# docs/agents/, e contá-las como quatro repos multiplicava cada achado por
+# quatro — o número passava a medir branches abertas, não podridão. Por isso
+# cada raiz sai com o grupo, que é o clone, e se ela é o principal. Fora de
+# git, a raiz é o próprio grupo. Uma linha por raiz: raiz<TAB>grupo<TAB>principal.
 lint_roots() {
-  printf '%s\n' "$VAULT"
-  local parent dir
-  for parent in "$HOME/dotfiles" "$HOME"/dev/*/ "$HOME"/projects/*/; do
-    dir=${parent%/}
-    [[ -d "$dir" ]] || continue
+  printf '%s\t%s\t1\n' "$VAULT" "$VAULT"
+  local dir clone
+  while IFS=$'\t' read -r dir clone; do
+    [[ -n "$dir" ]] || continue
     # Monorepo com contrato só por app (apps/web/AGENTS.md) também é raiz.
     [[ -f "$dir/AGENTS.md" || -f "$dir/CLAUDE.md" || -d "$dir/.claude/rules" ]] \
       || [[ -n "$(nested_contracts "$dir" 3 | head -1)" ]] || continue
-    printf '%s\n' "$dir"
-  done
+    # -ef e não ==: o git resolve symlink no caminho do clone, e o glob não.
+    printf '%s\t%s\t%s\n' "$dir" "${clone:-$dir}" "$([[ -z "$clone" || "$dir" -ef "$clone" ]] && echo 1 || echo 0)"
+  done < <(cut -f1,2 <<<"$REPOS")
 }
 
 # Só caminho ancorado no home (`~/...`). A primeira versão aceitava qualquer
@@ -140,23 +152,11 @@ extract_paths() {
   ' "$@"
 }
 
-# Worktree não é repo: quatro worktrees do mesmo clone carregam o mesmo
-# docs/agents/, e contá-las como quatro repos multiplicava cada achado por
-# quatro — o número passava a medir branches abertas, não podridão. O git
-# responde quem é o mesmo repo: `--git-common-dir` é igual em todas as
-# worktrees de um clone. Fora de git, a raiz é o próprio grupo.
-git_dir_abs() { (cd "$1" && cd "$(git rev-parse "$2" 2>/dev/null)" 2>/dev/null && pwd -P); }
-
 declare -A PATH_SHOWN PATH_WT PATH_IS_MAIN
 PATH_KEYS=()
-while read -r root; do
+while IFS=$'\t' read -r root group is_main; do
   mapfile -t contracts < <(contract_files "$root")
   ((${#contracts[@]})) || continue
-  group=$(git_dir_abs "$root" --git-common-dir) || group=""
-  [[ -n "$group" ]] || group=$root
-  # Principal é a worktree cujo git-dir é o próprio common-dir.
-  is_main=0
-  [[ "$(git_dir_abs "$root" --git-dir)" == "$group" || "$group" == "$root" ]] && is_main=1
   while IFS=$'\t' read -r file lineno tok; do
     # O '~' vem citado no contrato como texto; quem expande é este script.
     target="$HOME/${tok:2}"

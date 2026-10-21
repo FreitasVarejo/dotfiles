@@ -23,7 +23,8 @@
 #   ele falhando, toda pasta de projects/ que tenha tasks/.
 # - Clone: o clone principal do repo em que <dir> está, pelo --git-common-dir.
 #   Os worktrees de um clone são um repo só, e vale o contrato do principal:
-#   contrato mudado numa branch ainda não vale. Fora de git, não há clone.
+#   contrato mudado numa branch ainda não vale. Num repo bare, o clone é o
+#   próprio repo. Fora de git, não há clone.
 # - Repo vinculado: o contrato é AGENTS.md, CLAUDE.md e docs/agents/*.md da
 #   raiz do clone; contrato aninhado não conta. Se ele cita o tasks/ de algum
 #   projeto (`projects/<p>/tasks`), mesmo de um que não existe mais, o repo
@@ -99,10 +100,11 @@ so_projetos() {
 }
 
 # --- Repos -------------------------------------------------------------------
+# Num clone comum, o common-dir é <clone>/.git; num repo bare, é o próprio repo.
 clone_de() {
   local comum
   comum=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  dirname "$comum"
+  if [[ "${comum##*/}" == .git ]]; then dirname "$comum"; else printf '%s\n' "$comum"; fi
 }
 
 contrato_de() {
@@ -159,10 +161,11 @@ cmd_repos() {
     fi
     [[ " $vinculo " == *" $alvo "* ]] || continue
     # Um por clone, e a linha é a do próprio principal quando ele está nas
-    # raízes, seja qual for o nome dos worktrees.
+    # raízes, seja qual for o nome dos worktrees. -ef e não ==: o git resolve
+    # symlink no caminho do clone, e o glob não.
     if [[ -z "${linha[$clone]:-}" ]]; then
       clones+=("$clone")
-    elif [[ "$dir" != "$clone" ]]; then
+    elif ! [[ "$dir" -ef "$clone" ]]; then
       continue
     fi
     linha[$clone]="$dir"$'\t'"$clone"$'\t'"$vinculo"

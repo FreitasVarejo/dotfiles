@@ -186,12 +186,18 @@ fi
 if command -v vault-lint &>/dev/null && [[ "$HAS_VAULT" == false ]]; then
   log_success "vault-lint encontrado: $(command -v vault-lint) (lint pulado: sem vault principal)"
 elif command -v vault-lint &>/dev/null; then
-  if vault-lint --quiet; then
-    log_success "vault-lint: contrato em dia"
-  else
-    log_warn "vault-lint encontrou contrato desatualizado"
-    echo "    -> Detalhes: vault-lint"
-  fi
+  vault-lint --quiet 2>/dev/null
+  case $? in
+    0) log_success "vault-lint: contrato em dia" ;;
+    1)
+      log_warn "vault-lint encontrou contrato desatualizado"
+      echo "    -> Detalhes: vault-lint"
+      ;;
+    *)
+      log_warn "vault-lint não rodou"
+      echo "    -> O porquê: vault-lint"
+      ;;
+  esac
 else
   log_optional "vault-lint não encontrado no PATH (rode ~/dotfiles/setup.sh)."
 fi

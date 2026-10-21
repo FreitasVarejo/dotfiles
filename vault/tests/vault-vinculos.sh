@@ -186,6 +186,22 @@ confere "repos <p>: um por clone vinculado, worktrees num repo só" "$(
   linha "$D/com-tasks" "$D/com-tasks" alfa
 )" "$(vv repos alfa)"
 confere "repos <p>: projeto sem repo é resposta vazia" "" "$(vv repos nenhum)"
+ln -s "$HOME" "$FIX/home-link"
+confere "repos <p>: com HOME por symlink, a linha ainda é a do principal" "$FIX/home-link/dev/principal" \
+  "$(HOME="$FIX/home-link" vv repos alfa | awk -F'\t' '$2 ~ /\/principal$/ { print $1 }')"
+
+# Dois repos bare na mesma pasta, cada um com um worktree em dev/.
+BARE="$FIX/bare"
+novo_repo "$FIX/semente" README.md 'semente'
+for r in p q; do
+  git clone -q --bare "$FIX/semente" "$BARE/bares/$r.git"
+  git -C "$BARE/bares/$r.git" worktree add -q "$BARE/dev/$r-main" main
+done
+confere "repos: repo bare é o próprio clone, e dois na mesma pasta são dois" "$(
+  linha "$BARE/dev/p-main" "$BARE/bares/p.git" ""
+  echo
+  linha "$BARE/dev/q-main" "$BARE/bares/q.git" ""
+)" "$(HOME="$BARE" vv repos)"
 
 # O REMOTE da pendencias roda no outro host e fica autocontido de propósito
 # (desenho da vault-vinculos, Q5), mas as raízes dele têm que ser estas.
