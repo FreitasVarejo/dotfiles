@@ -8,11 +8,10 @@
 # Escreve em exatamente um lugar, e só com --gravar: o registro da própria
 # rodada, em projects/<projeto>/estado-<host>.md. Nunca toca em tasks/.
 #
-# Nada aqui é lista fixa. Projeto é pasta com `tasks/`; repo pertence ao
-# projeto cujo `tasks/` o contrato dele aponta, ou, sem nenhum, ao que ele
-# cita em `projects/<projeto>/`; host se vincula
-# pela tag do frontmatter em `hosts/`. O mesmo princípio do `lint_roots()` do
-# vault-lint: derivado do disco, porque o clone já mudou de lugar uma vez.
+# Nada aqui é lista fixa. Que projetos existem, que repos e que host se
+# vinculam a cada um e qual nota de hosts/ é esta máquina, o coletor pergunta ao
+# vault-vinculos, que deriva tudo do disco; as regras estão no
+# `vault-vinculos --help`.
 #
 # Uso:
 #   coletar-estado.sh <projeto> [opções]
@@ -78,6 +77,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 command -v jq >/dev/null || { echo "coletar-estado: precisa do jq" >&2; exit 2; }
+command -v vault-vinculos >/dev/null ||
+  { echo "coletar-estado: precisa do vault-vinculos (o ~/dotfiles/setup.sh o põe no PATH)" >&2; exit 2; }
 [[ -d "$VAULT/projects" ]] || { echo "coletar-estado: vault sem projects/ em $VAULT" >&2; exit 2; }
 
 # --- Fontes: o que foi lido e o que não foi --------------------------------
@@ -90,15 +91,10 @@ FONTES_FILE="$TMP/fontes"
 fonte() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$FONTES_FILE"; }
 
 # --- Projetos ---------------------------------------------------------------
-# A definição é a do AGENTS.md do vault: "o que define um projeto é ter um
-# tasks/ dentro". Projeto sem frente aberta não aparece no board nem aqui.
-projetos() {
-  local d
-  for d in "$VAULT"/projects/*/; do
-    [[ -d "${d}tasks" ]] || continue
-    basename "${d%/}"
-  done
-}
+# Perguntados uma vez por rodada: o resolver percorre a lista várias vezes.
+PROJETOS_DO_VAULT=$(vault-vinculos projetos)
+HOSTS_DO_VAULT=$(vault-vinculos hosts)
+projetos() { [[ -z "$PROJETOS_DO_VAULT" ]] || printf '%s\n' "$PROJETOS_DO_VAULT"; }
 
 # Apelidos declarados: o `aliases:` do frontmatter do MOC do projeto, que é
 # onde o Obsidian já guarda apelido. Ausente na maioria — daí o fallback.
@@ -116,24 +112,17 @@ apelidos() {
   ' "$moc" | tr ' ' '\n' | grep -v '^$' || true
 }
 
-# Projeto vinculado a um host: `hosts/<x>.md` cujo frontmatter `tags:` nomeia
-# o projeto. É como o vault já registra "esta máquina é o homelab".
+# O host do projeto: a primeira nota de hosts/ que o vault-vinculos vincula a
+# ele. Sai `<nome>\t<nota>\t<ssh>`, com o ssh por último porque pode vir vazio.
 host_do_projeto() {
-  local p=$1 h nome
-  [[ -d "$VAULT/hosts" ]] || return 0
-  for h in "$VAULT"/hosts/*.md; do
-    [[ -f "$h" ]] || continue
-    nome=$(basename "$h" .md)
-    if awk '
-      NR == 1 && $0 == "---" { fm = 1; next }
-      fm && $0 == "---" { exit }
-      fm && /^tags:/ { print }
-    ' "$h" | grep -qw "$p"; then
-      printf '%s\t%s\n' "$nome" "$h"
-      return 0
-    fi
-  done
-  return 0
+  [[ -n "$HOSTS_DO_VAULT" ]] || return 0
+  awk -F'\t' -v p="$1" '
+    !achou {
+      n = split($4, ps, " ")
+      for (i = 1; i <= n; i++) if (ps[i] == p) achou = 1
+      if (achou) print $1 "\t" $5 "\t" $3
+    }
+  ' <<<"$HOSTS_DO_VAULT"
 }
 
 # Prefixo comum entre duas palavras, em caracteres.
@@ -206,26 +195,9 @@ fi
 
 PDIR="$VAULT/projects/$PROJETO"
 
-# O nome desta máquina como o vault a chama: a nota de hosts/ cujo H1 começa
-# pelo hostname. `fedora-41` vira `fedora-workstation`; `pi01` é ele mesmo.
-# Sem nota correspondente, o hostname serve — o que importa é ser único por
-# máquina, porque é isso que torna o conflito de Syncthing impossível.
-host_desta_maquina() {
-  local hn h nome
-  hn=$(hostname -s 2>/dev/null || echo maquina)
-  if [[ -d "$VAULT/hosts" ]]; then
-    for h in "$VAULT"/hosts/*.md; do
-      [[ -f "$h" ]] || continue
-      nome=$(basename "$h" .md)
-      if grep -qiE "^# *$hn( |$|—|-)" "$h" 2>/dev/null; then
-        printf '%s\n' "$nome"
-        return 0
-      fi
-    done
-  fi
-  printf '%s\n' "$hn"
-}
-HOST_LOCAL=$(host_desta_maquina)
+# O nome desta máquina no vault nomeia o registro. O que importa é ser único
+# por máquina, porque é isso que torna o conflito de Syncthing impossível.
+HOST_LOCAL=$(vault-vinculos esta-maquina)
 REGISTRO="$PDIR/estado-$HOST_LOCAL.md"
 
 # --- Registro da rodada anterior --------------------------------------------
@@ -382,52 +354,14 @@ vault_json() {
 }
 
 # --- Repos ------------------------------------------------------------------
-# Um repo pertence ao projeto quando o contrato dele aponta para a pasta do
-# projeto no vault — que é o elo que a ADR 0001 já mandou existir ("o repo
-# carrega contrato, o vault carrega o porquê"). Nenhuma lista fixa.
-#
-# Quem decide é o backlog: contrato que aponta o `tasks/` de algum projeto (o
-# issue tracker do repo) pertence só aos projetos apontados. Citar outro, como
-# uma ADR emprestada, não puxa o repo para lá. Sem `tasks/` nenhum, vale
-# qualquer citação.
-contrato_cita() {
-  local dir=$1 arquivos=()
-  local f
-  for f in "$dir/AGENTS.md" "$dir/CLAUDE.md"; do [[ -f "$f" ]] && arquivos+=("$f"); done
-  if [[ -d "$dir/docs/agents" ]]; then
-    while IFS= read -r f; do arquivos+=("$f"); done \
-      < <(find "$dir/docs/agents" -maxdepth 1 -name '*.md' -type f 2>/dev/null)
-  fi
-  [[ ${#arquivos[@]} -gt 0 ]] || return 1
-  if grep -qE "projects/[a-z0-9][a-z0-9_.-]*/tasks" "${arquivos[@]}" 2>/dev/null; then
-    grep -qE "projects/$PROJETO/tasks" "${arquivos[@]}" 2>/dev/null
-  else
-    grep -qlE "projects/$PROJETO([/[:space:]]|\$)" "${arquivos[@]}" 2>/dev/null
-  fi
-}
-
-# Worktree e repo principal são o MESMO repo. Sem isto, os sete worktrees do
-# mesmo clone apareceriam como sete frentes de trabalho.
-raiz_do_repo() {
-  local dir=$1 comum
-  comum=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  dirname "$comum"
-}
+# Os clones que o vault-vinculos vincula ao projeto, com os worktrees de cada
+# um juntos. Perguntados uma vez: quatro seções percorrem a lista.
+REPOS_DO_PROJETO=$(vault-vinculos repos "$PROJETO" | cut -f2 | sort -u)
+repos_do_projeto() { [[ -z "$REPOS_DO_PROJETO" ]] || printf '%s\n' "$REPOS_DO_PROJETO"; }
 
 slug_github() {
   git -C "$1" remote get-url origin 2>/dev/null |
     sed -nE 's#^(git@github\.com:|https://github\.com/)##; s#\.git$##; /^[^/]+\/[^/]+$/p'
-}
-
-repos_do_projeto() {
-  local parent dir raiz
-  for parent in "$HOME/dotfiles" "$HOME"/dev/*/ "$HOME"/projects/*/; do
-    dir=${parent%/}
-    [[ -d "$dir" ]] || continue
-    contrato_cita "$dir" || continue
-    raiz=$(raiz_do_repo "$dir") || continue
-    printf '%s\n' "$raiz"
-  done | sort -u
 }
 
 repos_json() {
@@ -566,24 +500,30 @@ pendencias_json() {
 # --- Host --------------------------------------------------------------------
 # Para frente cuja realidade não está em repo nenhum: o que está no ar é o
 # estado. Read-only (docker ps), BatchMode (nunca pede senha) e timeout curto.
+# Os aliases de ssh são os do vault-vinculos, na ordem dele; com --host, só o
+# alias dado.
 host_json() {
-  local alias="" nota=""
+  local nome="" nota="" ssh=""
   if [[ -n "$HOST_FORCADO" ]]; then
-    alias=$HOST_FORCADO
+    nome=$HOST_FORCADO
+    ssh=$HOST_FORCADO
   else
-    IFS=$'\t' read -r alias nota < <(host_do_projeto "$PROJETO")
+    IFS=$'\t' read -r nome nota ssh < <(host_do_projeto "$PROJETO") || true
   fi
-  if [[ -z "$alias" ]]; then
+  if [[ -z "$nome" ]]; then
     echo 'null'; return 0
   fi
+  local candidatos=()
+  read -ra candidatos <<<"$ssh"
+  local alias=${candidatos[0]:-}
   if [[ $REDE -eq 0 ]]; then
-    fonte host pulado "--sem-rede (vínculo: $alias)"
-    jq -n --arg a "$alias" --arg n "${nota:-}" '{alias:$a, nota:$n, estado:"não consultado", containers:[]}'
+    fonte host pulado "--sem-rede (vínculo: $nome)"
+    jq -n --arg a "$alias" --arg n "$nota" '{alias:$a, nota:$n, estado:"não consultado", containers:[]}'
     return 0
   fi
   local saida="" usado=""
   local tentativa
-  for tentativa in "$alias" "$alias-local"; do
+  for tentativa in ${candidatos+"${candidatos[@]}"}; do
     if saida=$(timeout 25 ssh -o BatchMode=yes -o ConnectTimeout=5 \
         -o StrictHostKeyChecking=accept-new "$tentativa" \
         'docker ps -a --format "{{.Names}}\t{{.Status}}"' 2>/dev/null); then
@@ -593,12 +533,18 @@ host_json() {
     saida=""
   done
   if [[ -z "$usado" ]]; then
-    fonte host inacessivel "$alias e $alias-local não responderam"
-    jq -n --arg a "$alias" --arg n "${nota:-}" '{alias:$a, nota:$n, estado:"inacessível", containers:[]}'
+    if [[ -z "$alias" ]]; then
+      fonte host inacessivel "a nota de $nome não tem H1, e é dele que sai o alias de ssh"
+    elif [[ ${#candidatos[@]} -eq 1 ]]; then
+      fonte host inacessivel "$alias não respondeu"
+    else
+      fonte host inacessivel "${ssh// / e } não responderam"
+    fi
+    jq -n --arg a "$alias" --arg n "$nota" '{alias:$a, nota:$n, estado:"inacessível", containers:[]}'
     return 0
   fi
   fonte host ok "docker ps -a via $usado"
-  jq -n --arg a "$usado" --arg n "${nota:-}" --argjson c "$(
+  jq -n --arg a "$usado" --arg n "$nota" --argjson c "$(
     printf '%s\n' "$saida" | jq -R -s 'split("\n")|map(select(length>0))|map(split("\t"))|map({nome:.[0],status:.[1]})'
   )" '{alias:$a, nota:$n, estado:"ok", containers:$c}'
 }

@@ -165,7 +165,8 @@ a conversa, use a CLI.
 - **Sai 2 com "não sei qual projeto é"**: nome não resolvido. Rode `--listar`.
 - **`host: inacessível`**: o alias de SSH não respondeu. Verifique se o `Host` do
   host existe em `~/.ssh/config.local` (`ssh -G <alias>` mostra o usuário que
-  seria usado) e se a VPN está de pé. O coletor tenta `<alias>` e `<alias>-local`.
+  seria usado) e se a VPN está de pé. Os aliases que o coletor tenta, em ordem, são
+  os da coluna de ssh do `vault-vinculos hosts`.
 - **`github: ausente` ou PRs vazios num repo que tem PR**: `gh auth status`.
 - **`vault-lint: tem achado`** em `## avisos` é aviso por decisão, não erro.
   Não gaste a resposta com isso a menos que o dono pergunte.
