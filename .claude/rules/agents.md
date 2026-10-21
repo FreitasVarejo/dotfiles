@@ -34,7 +34,8 @@ Merges only add or update what the repo declares; whatever the machine added sta
   marketplace plugin or submodule. A skill is global only when it was really used in two
   repos and names no project noun; one whose object is the vault or the machine's config
   from `~/dotfiles/setup.sh` is born global, and derives every project, repo, host and
-  setting from disk or from the tool at query time. `metadata.surfaces` (`code`, `web`,
-  `code,web`) says where a skill runs; `agents/hooks/build-web-zip.sh` zips the `web`
-  ones for manual upload to claude.ai. Don't rewrite a vendored skill in the vendoring
-  commit.
+  setting from disk or from the tool at query time. Any skill asks `vault-vinculos` which
+  projects exist and which repos and hosts each one is linked to (the rule is in its
+  `--help`). `metadata.surfaces` (`code`, `web`, `code,web`) says where a skill runs;
+  `agents/hooks/build-web-zip.sh` zips the `web` ones for manual upload to claude.ai.
+  Don't rewrite a vendored skill in the vendoring commit.

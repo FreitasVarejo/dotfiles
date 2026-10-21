@@ -148,8 +148,8 @@ a conversa, use a CLI.
   que moram os PRs abertos. Sem rede, você está respondendo sobre metade da
   pergunta; diga isso. Gravar offline **não** apaga a fila de PR — o coletor
   preserva o que não conseguiu conferir.
-- **Worktree não é frente nova.** O coletor deduplica pelo `git-common-dir` e
-  mostra os worktrees de um clone como um repo com N branches em voo.
+- **Worktree não é frente nova.** O coletor junta os worktrees de um clone
+  (`vault-vinculos --help`) e os mostra como um repo com N branches em voo.
 - **Task `dropped` que ficou com callout `todo`.** Ela aparece arquivada, não em
   "Não iniciada". Abandonada não é pendente.
 - **Migração em massa entope o log do vault.** O bloco traz a contagem por gênero
