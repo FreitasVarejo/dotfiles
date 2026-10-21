@@ -18,6 +18,7 @@ from unittest import mock
 
 sys.dont_write_bytecode = True  # o script testado não ganha __pycache__ ao lado
 SCRIPT = Path(__file__).resolve().parents[1] / "skills" / "fechar" / "scripts" / "pendencias"
+VAULT_VINCULOS = Path(__file__).resolve().parents[2] / "vault" / ".local" / "bin" / "vault-vinculos"
 GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_CONFIG_NOSYSTEM": "1",
@@ -316,7 +317,7 @@ class PlanHosts(Repo):
         self.commit(self.work, "mexe no deny", "agents/permissions/deny.json")
         items, _ = self.plan(self.work)
         (self.push,) = self.pushes(items)
-        patcher = mock.patch.object(P, "other_hosts", return_value=["pi01"])
+        patcher = mock.patch.object(P, "other_hosts", return_value=[["pi01", "pi01-local"]])
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -359,6 +360,106 @@ class PlanHosts(Repo):
         items, fora = self.hosts(self.fact(head=lateral, up=lateral))
         self.assertEqual(items, [])
         self.assertEqual(len(fora), 1)
+
+
+class Vinculos(unittest.TestCase):
+    """Os vínculos vêm do `vault-vinculos` do repo, num HOME de fixture e sem freitask no PATH."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = Path(os.path.realpath(tmp.name))
+        bin_dir = self.home / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "vault-vinculos").symlink_to(VAULT_VINCULOS)
+        path = [d for d in os.environ["PATH"].split(os.pathsep) if not os.access(os.path.join(d, "freitask"), os.X_OK)]
+        patcher = mock.patch.dict(os.environ, {
+            **GIT_ENV, "HOME": str(self.home), "VAULT_HOSTNAME": "notebook",
+            "GIT_CEILING_DIRECTORIES": str(self.home), "PATH": os.pathsep.join([str(bin_dir)] + path)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.vault = self.home / "ObsidianVault"
+        (self.vault / "projects" / "workflow-ia" / "tasks").mkdir(parents=True)
+
+    def repo(self, name, contract):
+        root = self.home / "dev" / name
+        subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+        (root / "docs" / "agents").mkdir(parents=True)
+        (root / "docs" / "agents" / "domain.md").write_text(contract + "\n")
+        git(root, "add", "-A")
+        git(root, "commit", "-q", "-m", "inicial")
+        return root
+
+    def test_contrato_que_cita_so_a_pasta_do_projeto_o_alimenta(self):
+        # O ~/dev/freitask.nvim de 20/10 cita projects/workflow-ia/ e nenhum tasks/.
+        root = self.repo("freitask.nvim", "O porquê mora em `~/ObsidianVault/projects/workflow-ia/`.")
+        self.assertEqual(P.contract_projects(str(root)), {"workflow-ia"})
+
+    def test_worktree_responde_pelo_clone_principal(self):
+        root = self.repo("r", "projects/workflow-ia/tasks")
+        wt = self.home / "wt"
+        git(root, "worktree", "add", "-q", "-b", "wt", str(wt))
+        self.assertEqual(P.main_clone(str(wt)), str(root))
+        self.assertEqual(P.contract_projects(str(wt)), {"workflow-ia"})
+
+    def test_outras_maquinas_com_os_aliases_em_ordem(self):
+        hosts = self.vault / "hosts"
+        hosts.mkdir()
+        (hosts / "notebook-de-casa.md").write_text("# NoteBook — esta máquina\n")
+        (hosts / "servidor.md").write_text("# srv01 — servidor\n")
+        self.assertEqual(P.other_hosts(), [["srv01", "srv01-local"]])
+
+    def sem_vault_vinculos(self):
+        return os.pathsep.join(d for d in os.environ["PATH"].split(os.pathsep)
+                               if not os.access(os.path.join(d, "vault-vinculos"), os.X_OK))
+
+    def vault_vinculos_quebrado(self):
+        quebrado = self.home / "quebrado"
+        quebrado.mkdir(exist_ok=True)
+        (quebrado / "vault-vinculos").write_text("#!/bin/sh\necho lixo\nexit 2\n")
+        (quebrado / "vault-vinculos").chmod(0o755)
+        return os.pathsep.join([str(quebrado), os.environ["PATH"]])
+
+    def test_sem_resposta_do_vault_vinculos_as_secoes_dizem_que_ele_falta(self):
+        self.assertEqual(P.sem_vinculos("x"), [])
+        for path in (self.sem_vault_vinculos(), self.vault_vinculos_quebrado()):
+            with self.subTest(path=path), mock.patch.dict(os.environ, {"PATH": path}):
+                self.assertIn("o vault-vinculos não respondeu", P.report_hosts(["o/r"], True)[0])
+                self.assertIn("o vault-vinculos não respondeu", P.report_registro(set())[0])
+
+    def test_sem_resposta_do_vault_vinculos_o_plano_diz_que_nao_sabe_as_outras_maquinas(self):
+        with mock.patch.dict(os.environ, {"PATH": self.vault_vinculos_quebrado()}):
+            _, fora = P.plan_hosts(True, ["o/r"], [], {})
+        self.assertEqual(fora, [P.falta_vinculos("quais são as outras máquinas")])
+
+    def plano_de_um_worktree(self, path):
+        """A seção `## plano` rodada de um worktree de um clone com origin, com este PATH."""
+        origin = self.home / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        root = self.repo("r", "projects/workflow-ia/tasks")
+        git(root, "remote", "add", "origin", str(origin))
+        git(root, "push", "-q", "-u", "origin", "main")
+        git(root, "remote", "set-head", "origin", "main")
+        wt = self.home / "wt"
+        git(root, "worktree", "add", "-q", "-b", "feat", str(wt))
+        out = subprocess.run([sys.executable, "-I", str(SCRIPT), "--sem-rede", "--plano"], cwd=wt,
+                             env={**os.environ, "PATH": path, "XDG_RUNTIME_DIR": str(self.home)},
+                             capture_output=True, text=True, check=True).stdout
+        return out.split("## plano", 1)[1]
+
+    def test_sem_vault_vinculos_no_path_nao_ha_plano(self):
+        # Sem o clone principal, o worktree passaria por principal e o plano mandaria remover o principal.
+        plano = self.plano_de_um_worktree(self.sem_vault_vinculos())
+        self.assertIn("o vault-vinculos não respondeu", plano)
+        self.assertNotIn("worktree remove", plano)
+
+    def test_vault_vinculos_que_falha_tambem_suspende_o_plano(self):
+        plano = self.plano_de_um_worktree(self.vault_vinculos_quebrado())
+        self.assertIn("o vault-vinculos não respondeu", plano)
+        self.assertNotIn("worktree remove", plano)
+
+    def test_com_vault_vinculos_o_plano_segue(self):
+        self.assertNotIn("o vault-vinculos não respondeu", self.plano_de_um_worktree(os.environ["PATH"]))
 
 
 if __name__ == "__main__":

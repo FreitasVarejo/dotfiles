@@ -9,8 +9,8 @@ Nada aqui é lista fixa (ADR 0017):
   `toques-vault-<sessão>`. Quem grava os dois são as travas `verificacao-no-stop`
   e `doctor-no-stop`, em $XDG_RUNTIME_DIR/claude-travas/;
 - o que é de outra sessão sai resumido; item enterrado e sync-conflict, sempre;
-- outras máquinas: as notas de hosts/ do vault que não são esta, com o alias de
-  ssh tirado do H1, como faz o coletor da current-project-state;
+- outras máquinas, os projetos que um contrato alimenta e o clone principal de
+  um worktree: o `vault-vinculos` (as regras estão no `vault-vinculos --help`);
 - o "Decidido" e o "Adiado" de cada projeto tocado, pelo coletor da
   current-project-state.
 
@@ -48,7 +48,6 @@ import json
 import os
 import re
 import shlex
-import socket
 import subprocess
 import sys
 import time
@@ -145,9 +144,28 @@ def repo_root(path):
     return out if rc == 0 and out else None
 
 
+def vinculos(*args, cols=1):
+    """Linhas do `vault-vinculos`, cada uma com `cols` colunas; None quando ele falta ou falha."""
+    rc, out = run(["vault-vinculos", *args])
+    if rc != 0:
+        return None
+    # O run tira o fim da saída, e com ele o tab de uma última coluna vazia.
+    return [(l.split("\t") + [""] * cols)[:cols] for l in out.split("\n") if l]
+
+
+def falta_vinculos(o_que):
+    return "o vault-vinculos não respondeu (o ~/dotfiles/setup.sh o põe no PATH), não sei %s" % o_que
+
+
+def sem_vinculos(o_que):
+    """A linha que diz o que ficou sem resposta quando o `vault-vinculos` falta ou falha: sem ela, a falta parece "nada"."""
+    return [] if vinculos("projetos") is not None else [falta_vinculos(o_que)]
+
+
 def main_clone(root):
-    rc, out = git(root, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    return os.path.dirname(out) if rc == 0 and out else root
+    """O clone principal de `root`; None quando o `vault-vinculos` não respondeu."""
+    rows = vinculos("repo", root, cols=2)
+    return None if rows is None else rows[0][0] if rows else root
 
 
 def slug(root):
@@ -271,16 +289,14 @@ def report_repo(main, roots, ours, net):
 
 
 def other_hosts():
-    hn = socket.gethostname().split(".")[0]
-    out = []
-    for note in sorted(glob.glob(os.path.join(VAULT, "hosts", "*.md"))):
-        h1 = next((l for l in open(note, encoding="utf-8") if l.startswith("# ")), "")
-        alias = h1[2:].split()[0] if h1[2:].split() else ""
-        if alias and alias != hn:
-            out.append(alias)
-    return out
+    """Os aliases de ssh de cada outra máquina, em ordem, e o primeiro a nomeia; None sem resposta do `vault-vinculos`."""
+    rows = vinculos("hosts", cols=3)
+    return None if rows is None else [ssh.split() for _, esta, ssh in rows if esta == "0" and ssh.split()]
 
 
+# Autocontido de propósito: roda com os dotfiles do outro host, que podem estar
+# atrasados, e é esse atraso que ele mede. As raízes são as do vault-vinculos, e
+# o ~/dotfiles/vault/tests/vault-vinculos.sh confere que continuam sendo.
 REMOTE = r"""
 for d in ~/dotfiles ~/dev/* ~/projects/*; do
   [ -d "$d/.git" ] || [ -f "$d/.git" ] || continue
@@ -325,12 +341,16 @@ def report_hosts(slugs, net, facts=None):
     lines = []
     if not slugs:
         return ["nenhum repo com remoto no GitHub para comparar"]
-    for alias in other_hosts():
+    hosts = other_hosts()
+    if hosts is None:
+        return [falta_vinculos("quais são as outras máquinas")]
+    for ssh in hosts:
+        alias = ssh[0]
         if not net:
             lines.append("%s: não consultei (--sem-rede)" % alias)
             continue
         found = False
-        for target in (alias, alias + "-local"):
+        for target in ssh:
             got = []
             ok = True
             for s in slugs:
@@ -365,7 +385,7 @@ def report_hosts(slugs, net, facts=None):
                               "head": head, "up": up, "upname": upname.strip()})
             break
         if not found:
-            lines.append("%s: não consultei (ssh não respondeu em %s nem %s-local)" % (alias, alias, alias))
+            lines.append("%s: não consultei (ssh não respondeu em %s)" % (alias, " nem ".join(ssh)))
             facts.append({"alias": alias, "mudo": True})
     return lines or ["nenhuma outra máquina em hosts/"]
 
@@ -630,8 +650,11 @@ def plan_hosts(net, slugs, facts, slug_root, pushes=()):
 
     `pushes`: os itens de push do plano. O host que segue a branch que um deles publica ficará atrás depois
     dele, e o diff do setup é então `HEAD do host..HEAD local`, não o do upstream do host (que é o de antes)."""
+    hosts = other_hosts()
+    if hosts is None:
+        return [], [falta_vinculos("quais são as outras máquinas")]
     items, fora = [], []
-    for alias in other_hosts():
+    for alias, *_ in hosts:
         if not (net and slugs):
             fora.append("%s: não consultei (%s)" % (alias, "--sem-rede" if not net else "nenhum repo tocado tem remoto no GitHub"))
             continue
@@ -751,23 +774,18 @@ def report_vault(since, toques, tasks, mine, missing, files):
 
 
 def contract_projects(root):
-    """Projetos cujo backlog o contrato do repo aponta (a regra do coletor da current-project-state)."""
-    found = set()
-    for f in [os.path.join(root, "AGENTS.md"), os.path.join(root, "CLAUDE.md")] + \
-            glob.glob(os.path.join(root, "docs", "agents", "*.md")):
-        try:
-            found |= set(re.findall(r"projects/([a-z0-9][a-z0-9_.-]*)/tasks", open(f, encoding="utf-8").read()))
-        except OSError:
-            pass
-    return found
+    """Projetos que o contrato do repo alimenta."""
+    rows = vinculos("repo", root, cols=2)
+    return set(rows[0][1].split()) if rows else set()
 
 
 def report_registro(projects):
+    falta = sem_vinculos("que projetos o contrato de cada repo alimenta")
     if not projects:
-        return ["nenhum projeto identificado"]
+        return falta + ["nenhum projeto identificado"]
     if not os.access(COLETOR, os.X_OK):
-        return ["não consultei (coletor da current-project-state ausente)"]
-    lines = []
+        return falta + ["não consultei (coletor da current-project-state ausente)"]
+    lines = falta
     for p in sorted(projects):
         rc, out = run([COLETOR, p, "--sem-rede", "--json"], timeout=60)
         try:
@@ -808,9 +826,10 @@ def main():
         if r:
             roots.append(r)
     roots = list(dict.fromkeys(r for r in roots if r and os.path.isdir(r)))
+    clones = {root: main_clone(root) for root in roots}
     groups = {}
     for root in roots:
-        groups.setdefault(main_clone(root), []).append(root)
+        groups.setdefault(clones[root] or root, []).append(root)
 
     toques = vault_toques(a.sessao)
     active, archived = all_tasks()
@@ -825,6 +844,11 @@ def main():
     print("id %s · %s desta sessão · vault: %s" % (
         a.sessao or "(não informado)", plural(len(groups), "repo", "repos"), vault))
     print("\n## repos")
+    # Sem resposta do vault-vinculos, um worktree conta como clone principal, e o
+    # plano proporia remover o principal. Aí não há plano.
+    sem_clone = None in clones.values()
+    if sem_clone:
+        print(falta_vinculos("o clone principal de cada worktree"))
     slugs, slug_root, itens, fora = [], {}, [], []
     for main_root, rs in groups.items():
         lines, s = report_repo(main_root, rs, {r: touched_files(r, lists, a.sessao) for r in rs}, net)
@@ -833,7 +857,7 @@ def main():
             slugs.append(s)
         if s:
             slug_root.setdefault(s, main_root)
-        if a.plano:
+        if a.plano and not sem_clone:
             i, f = plan_repo(main_root, rs, net)
             itens += i
             fora += f
@@ -849,12 +873,18 @@ def main():
     projects |= {f.split("/")[1] for f in files if f.startswith("projects/") and f.count("/") >= 2}
     for root in roots:
         projects |= contract_projects(root)
-    projects = {p for p in projects if os.path.isdir(os.path.join(VAULT, "projects", p))}
+    # Sem resposta do vault-vinculos não há lista, e o filtro apagaria até os projetos das tasks tocadas.
+    known = vinculos("projetos")
+    if known is not None:
+        projects &= {p for p, in known}
     print("\n## registro dos projetos (não reapresentar como ponta solta)")
     print("\n".join(report_registro(projects)))
     if a.plano:
-        i, f = plan_hosts(net, slugs, facts, slug_root, [it for it in itens if it["push"]])
         print("\n## plano")
+        if sem_clone:
+            print(falta_vinculos("o clone principal de cada worktree, e sem ele não proponho nada"))
+            return
+        i, f = plan_hosts(net, slugs, facts, slug_root, [it for it in itens if it["push"]])
         print("\n".join(render_plan(itens + i, fora + f)))
 
 

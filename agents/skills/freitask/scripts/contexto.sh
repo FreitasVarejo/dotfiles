@@ -5,10 +5,9 @@
 # Não decide o projeto: quem escolhe é a skill, pelo escopo de cada um, que é
 # o primeiro parágrafo depois do H1 do MOC (`projects/<p>/<p>.md`). Daqui saem
 # os escopos e duas pistas: a pasta do vault em que a sessão está, e os
-# backlogs que o contrato do repo (AGENTS.md, CLAUDE.md, docs/agents/*.md)
-# alimenta. É o mesmo elo que o coletor da current-project-state segue no
-# sentido contrário (projeto -> repos): contrato que cita o `tasks/` de algum
-# projeto alimenta só esses; sem `tasks/` nenhum, vale qualquer citação.
+# projetos que o contrato do repo alimenta. Que projetos existem e o que o
+# contrato alimenta vêm do vault-vinculos; a regra está no
+# `vault-vinculos --help`.
 #
 # Tudo é derivado do disco (ADR 0017): nenhuma lista de projeto, repo ou host.
 # O vault é o de `$HOME`, como no freitask: testar noutro é trocar o HOME.
@@ -23,23 +22,29 @@
 set -uo pipefail
 
 VAULT="$HOME/ObsidianVault"
+# Perguntados uma vez. Se o vault-vinculos falta ou falha, as seções que
+# dependem dele dizem isso.
+SEM_VINCULOS="o vault-vinculos não respondeu (o ~/dotfiles/setup.sh o põe no PATH): não sei que projetos existem nem o que o contrato alimenta"
+if PROJETOS=$(vault-vinculos projetos 2>/dev/null); then
+  SEM_VINCULOS=""
+else
+  PROJETOS=""
+fi
 
-projetos() {
-  local d
-  for d in "$VAULT"/projects/*/; do [[ -d "${d}tasks" ]] && basename "$d"; done
-}
+projetos() { [[ -z "$PROJETOS" ]] || printf '%s\n' "$PROJETOS"; }
 
 if [[ "${1:-}" == "tasks" ]]; then
   p=${2:-}
   if [[ -z "$p" ]]; then
     echo "uso: contexto.sh tasks <projeto>"
-  elif [[ ! -d "$VAULT/projects/$p/tasks" ]]; then
+  elif [[ -z "$SEM_VINCULOS" ]] && ! projetos | grep -xF -- "$p" >/dev/null; then
     echo "projeto '$p' não existe; os do vault: $(projetos | paste -sd' ' -)"
   elif ! command -v freitask >/dev/null; then
     echo "freitask não está no PATH — não dá para listar nem criar task nesta máquina"
   elif ! lista=$(freitask list --json 2>/dev/null); then
     echo "freitask list --json falhou"
   else
+    [[ -z "$SEM_VINCULOS" ]] || echo "$SEM_VINCULOS; não conferi se '$p' existe"
     saida=$(printf '%s' "$lista" | jq -r --arg p "$p" \
       '.[] | select(.project == $p) | "- `\(.id)` · \(.status) · \(.title)"')
     echo "${saida:-(nenhuma task ativa em $p)}"
@@ -48,17 +53,6 @@ if [[ "${1:-}" == "tasks" ]]; then
 fi
 
 DIR=${1:-$PWD}
-
-# Projetos citados num conjunto de arquivos, um por linha, sem repetição.
-# $1 é o que vem depois de `projects/<p>`: "/tasks" para backlog.
-citados() {
-  local sufixo=$1 p
-  shift
-  [[ $# -gt 0 ]] || return 0
-  while read -r p; do
-    grep -qE "projects/$p$sufixo" "$@" 2>/dev/null && echo "$p"
-  done < <(projetos)
-}
 
 # O primeiro parágrafo depois do H1, numa linha só.
 escopo() {
@@ -78,13 +72,22 @@ escopo() {
 echo "## onde"
 echo "pwd: $DIR"
 
+# O clone principal e o que o contrato dele alimenta: um worktree responde
+# pelo clone. Sem o vault-vinculos, o repo é o worktree mesmo.
 REPO=""
-# Worktree e clone principal são o mesmo repo: o contrato mora no principal.
-if comum=$(git -C "$DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null); then
-  REPO=$(dirname "$comum")
-  topo=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null)
+ALIMENTA=""
+SEM_REPO=$SEM_VINCULOS
+if [[ -z "$SEM_REPO" ]]; then
+  if linha=$(vault-vinculos repo "$DIR" 2>/dev/null); then
+    REPO=$(cut -f1 <<<"$linha")
+    ALIMENTA=$(cut -f2 <<<"$linha")
+  else
+    SEM_REPO="o vault-vinculos não respondeu sobre este repo (o ~/dotfiles/setup.sh o põe no PATH): não sei o clone principal nem o que o contrato alimenta"
+  fi
+fi
+if topo=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null); then
   branch=$(git -C "$DIR" branch --show-current 2>/dev/null)
-  echo "repo: $REPO${topo:+$([[ "$topo" != "$REPO" ]] && echo " (worktree em $topo)")}"
+  echo "repo: ${REPO:-$topo}$([[ -n "$REPO" && "$topo" != "$REPO" ]] && echo " (worktree em $topo)")"
   echo "branch: ${branch:-(detached)}"
 else
   echo "repo: nenhum (fora de repositório git)"
@@ -96,22 +99,16 @@ PISTA=""
 case "$DIR/" in
   "$VAULT"/projects/*/*)
     p=${DIR#"$VAULT"/projects/}; p=${p%%/*}
-    [[ -d "$VAULT/projects/$p/tasks" ]] && { PISTA=1; echo "projeto: $p (a sessão está na pasta dele no vault)"; }
+    projetos | grep -xF -- "$p" >/dev/null && { PISTA=1; echo "projeto: $p (a sessão está na pasta dele no vault)"; }
     ;;
 esac
-if [[ -n "$REPO" ]]; then
+if [[ -n "$SEM_REPO" ]]; then
   PISTA=1
-  arquivos=()
-  for f in "$REPO/AGENTS.md" "$REPO/CLAUDE.md" "$REPO"/docs/agents/*.md; do [[ -f "$f" ]] && arquivos+=("$f"); done
-  # Como o coletor: citar um `tasks/` qualquer, mesmo de projeto que não existe
-  # mais, já tira o repo do caso "vale qualquer citação".
-  if [[ ${#arquivos[@]} -gt 0 ]] && grep -qE "projects/[a-z0-9][a-z0-9_.-]*/tasks" "${arquivos[@]}" 2>/dev/null; then
-    mapfile -t ALIMENTA < <(citados "/tasks" "${arquivos[@]}")
-  else
-    mapfile -t ALIMENTA < <(citados "([/[:space:]\`]|\$)" "${arquivos[@]}")
-  fi
-  if [[ ${#ALIMENTA[@]} -gt 0 ]]; then
-    echo "o contrato deste repo alimenta: ${ALIMENTA[*]}"
+  echo "$SEM_REPO"
+elif [[ -n "$REPO" ]]; then
+  PISTA=1
+  if [[ -n "$ALIMENTA" ]]; then
+    echo "o contrato deste repo alimenta: $ALIMENTA"
   else
     echo "o contrato deste repo não cita projeto nenhum do vault"
   fi
@@ -120,6 +117,7 @@ fi
 
 echo
 echo "## projetos do vault e o escopo de cada um"
+[[ -z "$SEM_VINCULOS" ]] || echo "$SEM_VINCULOS"
 while read -r p; do
   echo "- \`$p\` — $(escopo "$p")"
 done < <(projetos)
