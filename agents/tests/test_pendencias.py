@@ -1,9 +1,10 @@
 """Testes do `agents/skills/fechar/scripts/pendencias --plano`: o item de push, o
-pull e o setup do outro host que dependem dele, e quando o diff pede `./setup.sh`.
+pull e o setup do outro host que dependem dele, e quando o diff pede `./setup.sh`;
+o fast-forward do clone principal e a limpeza que depende dele; as redes do docker.
 
-`decide_host`, `setup_reason` e `render_plan` são puras. O push e o diff local
-precisam de git de verdade: cada teste monta um bare como `origin` num diretório
-temporário."""
+`decide_host`, `setup_reason` e `render_plan` são puras. O push, a limpeza e o diff
+local precisam de git de verdade: cada teste monta um bare como `origin` num
+diretório temporário. O docker é um falso no PATH."""
 
 import importlib.machinery
 import importlib.util
@@ -277,7 +278,10 @@ class PlanPush(Repo):
         self.commit(outro, "de outra maquina")
         git(outro, "push", "-q")
         git(self.work, "fetch", "-q")
-        self.assertEqual(self.plan(self.work), ([], []))
+        items, fora = self.plan(self.work)
+        self.assertEqual(self.pushes(items), [])
+        self.assertEqual([i["cmd"] for i in items], ["git -C %s merge --ff-only origin/main" % P.shpath(str(self.work))])
+        self.assertEqual(fora, [])
 
     def test_upstream_com_outro_nome_nunca_vira_push(self):
         # `worktree add -b x origin/main` faz a branch seguir origin/main: `push origin x:main` seria o desastre.
@@ -306,6 +310,168 @@ class PlanPush(Repo):
     def test_cabeca_destacada_nao_aparece(self):
         git(self.work, "checkout", "-q", "--detach")
         self.assertEqual(self.plan(self.work), ([], []))
+
+
+class PlanLimpeza(Repo):
+    """O fast-forward do clone principal, os `worktree remove`/`branch -d` que dependem dele e o motivo de cada um."""
+
+    def avanca_origin(self, subject="mergeado noutro lugar"):
+        """Um commit novo no origin/main, visto pelo fetch, e o clone principal fica atrás."""
+        outro = self.tmp / "outro"
+        if not outro.exists():
+            subprocess.run(["git", "clone", "-q", str(self.origin), str(outro)], check=True, capture_output=True)
+        git(outro, "pull", "-q")
+        self.commit(outro, subject)
+        git(outro, "push", "-q")
+        git(self.work, "fetch", "-q")
+
+    def sub_branch_mergeada(self, branch):
+        """Worktree de uma sub-branch sem upstream que o PR levou ao origin/main, com o principal parado antes dele:
+        o `branch -d` só aceita depois do fast-forward (as `issue-105-*` do bjju-vision em 21/10)."""
+        wt = self.worktree(branch)
+        self.commit(wt, "da " + branch)
+        git(wt, "push", "-q", "origin", "%s:main" % branch)
+        git(self.work, "fetch", "-q")
+        return wt
+
+    def ff_cmd(self):
+        return "git -C %s merge --ff-only origin/main" % P.shpath(str(self.work))
+
+    def by_cmd(self, items, needle):
+        (found,) = [i for i in items if needle in i["cmd"]]
+        return found
+
+    def test_principal_atras_e_limpo_ganha_o_fast_forward(self):
+        self.avanca_origin()
+        (self.work / "novo.txt").write_text("arquivo novo não impede\n")
+        items, fora = self.plan(self.work)
+        (ff,) = items
+        self.assertEqual(ff["cmd"], self.ff_cmd())
+        self.assertIn("1 commit atrás de origin/main", ff["why"])
+        self.assertEqual(fora, [])
+
+    def test_sem_rede_o_fast_forward_vai_ate_onde_o_fetch_viu(self):
+        self.avanca_origin()
+        self.assertEqual([i["cmd"] for i in self.plan(self.work, net=False)[0]], [self.ff_cmd()])
+
+    def test_arquivo_rastreado_modificado_tira_o_fast_forward(self):
+        self.avanca_origin()
+        (self.work / "inicial.txt").write_text("mexido\n")
+        items, fora = self.plan(self.work)
+        self.assertEqual(items, [])
+        (motivo,) = fora
+        self.assertIn("arquivo rastreado modificado", motivo)
+
+    def test_principal_fora_da_branch_padrao_ou_divergido_nao_ganha_fast_forward(self):
+        self.avanca_origin()
+        git(self.work, "checkout", "-q", "-b", "outra")
+        self.assertEqual(self.plan(self.work), ([], []))
+        git(self.work, "checkout", "-q", "main")
+        self.commit(self.work, "local")
+        items, fora = self.plan(self.work)
+        self.assertEqual(items, [])
+        self.assertNotIn("fast-forward", " ".join(fora))
+
+    def test_worktree_que_so_sai_depois_do_fast_forward_depende_dele(self):
+        wt = self.sub_branch_mergeada("sub")
+        items, fora = self.plan(self.work)
+        self.assertEqual(fora, [])
+        ff = self.by_cmd(items, "merge --ff-only")
+        rm = self.by_cmd(items, "worktree remove")
+        self.assertIs(rm["dep"], ff)
+        lines = P.render_plan(items, fora)
+        self.assertTrue(lines[0].startswith("P1. " + self.ff_cmd()))
+        self.assertIn("depende do fast-forward (P1)", lines[1])
+        # Rodados na ordem do plano, o git aceita os dois.
+        for it in (ff, rm):
+            subprocess.run(["bash", "-c", it["cmd"]], check=True, capture_output=True)
+        self.assertFalse(wt.exists())
+        self.assertEqual(git(self.work, "branch", "--list", "sub"), "")
+
+    def test_branch_fora_de_worktree_que_so_sai_depois_do_fast_forward_depende_dele(self):
+        wt = self.sub_branch_mergeada("sub")
+        git(self.work, "worktree", "remove", str(wt))
+        items, _ = self.plan(self.work)
+        self.assertIs(self.by_cmd(items, "branch -d sub")["dep"], self.by_cmd(items, "merge --ff-only"))
+
+    def test_sem_fast_forward_possivel_a_worktree_fica_fora(self):
+        self.sub_branch_mergeada("sub")
+        (self.work / "inicial.txt").write_text("mexido\n")
+        items, fora = self.plan(self.work)
+        self.assertEqual(items, [])
+        self.assertIn("atualize o clone principal antes", " ".join(fora))
+
+    def test_worktree_de_outra_sessao_entra_e_o_motivo_so_informa(self):
+        wt = self.worktree("feita")
+        self.commit(wt, "da feita")
+        git(wt, "push", "-q", "-u", "origin", "feita")
+        git(self.work, "merge", "-q", "--ff-only", "feita")
+        git(self.work, "push", "-q")
+        (rm,) = self.plan(self.work)[0]
+        self.assertIn("worktree remove", rm["cmd"])
+        self.assertIsNone(rm["dep"])
+        self.assertFalse(rm["last"])
+        self.assertIn("worktree [feita] de outra sessão já está em origin/main", rm["why"])
+        (rm,) = self.plan(self.work, wt)[0]
+        self.assertTrue(rm["last"])
+        self.assertIn("desta sessão", rm["why"])
+
+    def test_o_motivo_nomeia_todo_arquivo_ignorado_avulso_e_resume_as_pastas(self):
+        wt = self.worktree("ign")
+        avulsos = [".env", ".impeccable/hook.cache.json", "a.log", "b.log", "c.log", "d.log"]
+        pastas = ["build", "dist", "node_modules", "out", "target"]
+        self.commit(wt, "gitignore", ".gitignore")
+        (wt / ".gitignore").write_text("\n".join([".env", "hook.cache.json", "*.log"] + [p + "/" for p in pastas]) + "\n")
+        git(wt, "commit", "-q", "-am", "ignora")
+        git(wt, "push", "-q", "origin", "ign:main")
+        git(self.work, "pull", "-q")
+        for f in avulsos + [p + "/x" for p in pastas]:
+            (wt / f).parent.mkdir(parents=True, exist_ok=True)
+            (wt / f).write_text("x\n")
+        (rm,) = self.plan(self.work)[0]
+        self.assertIn("os arquivos ignorados %s" % ", ".join(sorted(avulsos)), rm["why"])
+        self.assertIn("as pastas ignoradas build/, dist/, node_modules/, out/, …", rm["why"])
+
+    def test_nunca_forca_nem_poda(self):
+        self.sub_branch_mergeada("sub")
+        for text in [i["cmd"] for i in self.plan(self.work)[0]]:
+            self.assertNotRegex(text, r"--force| -D |prune")
+
+
+class PlanDocker(unittest.TestCase):
+    """As redes vêm de um `docker` falso no PATH: `network ls` e `ps --all`, como o script os chama."""
+
+    def docker(self, redes, usadas, rc=0):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        fake = Path(tmp.name) / "docker"
+        fake.write_text('#!/bin/sh\ncase "$1" in network) printf %%s %s ;; ps) printf %%s %s ;; esac\nexit %d\n'
+                        % (shlex.quote("\n".join(redes)), shlex.quote("\n".join(usadas)), rc))
+        fake.chmod(0o755)
+        patcher = mock.patch.dict(os.environ, {"PATH": tmp.name + os.pathsep + "/usr/bin:/bin"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_rede_sem_container_nenhum_vira_um_item_so(self):
+        # `parada` só tem container parado; `bridge`, `host` e `none` são do docker.
+        self.docker(["bridge", "host", "none", "a_default", "parada", "b_default"], ["parada", "bridge,parada", ""])
+        (rm,), fora = P.plan_docker()
+        self.assertEqual(rm["cmd"], "docker network rm a_default b_default")
+        self.assertIn("2 redes do docker", rm["why"])
+        self.assertEqual(fora, [])
+        self.assertNotRegex(rm["cmd"], r"--force|-f |prune")
+
+    def test_toda_rede_com_container_nao_propoe_nada(self):
+        self.docker(["bridge", "host", "none", "a"], ["a"])
+        self.assertEqual(P.plan_docker(), ([], []))
+
+    def test_docker_que_falha_diz_que_nao_consultou(self):
+        self.docker(["a"], [], rc=1)
+        self.assertEqual(P.plan_docker(), ([], ["docker: não consultei as redes (o docker não respondeu)"]))
+
+    def test_sem_docker_nada(self):
+        with mock.patch.object(P.shutil, "which", return_value=None):
+            self.assertEqual(P.plan_docker(), ([], []))
 
 
 class PlanHosts(Repo):

@@ -18,27 +18,34 @@ Só lê. A exceção é o `git fetch`, que atualiza as refs remotas para "atrás
 origin" não mentir; --sem-rede pula fetch, GitHub e ssh.
 
 --plano acrescenta, no fim da saída (que não muda), a seção `## plano`: os
-comandos que a saída já deixa ver, um por linha, `P<n>. <comando> —
-<motivo>`. O script só os imprime; quem roda é a skill, e só o que o dono
-aprovar. O conjunto é fechado e nunca força:
+comandos que a saída já deixa ver, mais o das redes do docker, um por linha,
+`P<n>. <comando> — <motivo>`. O script só os imprime; quem roda é a skill, e só
+o que o dono aprovar. O conjunto é fechado e nunca força:
 - push de cada repo e worktree desta sessão que está à frente do upstream, sem
   estar atrás, e cujo upstream tem o nome da própria branch: `git push <remote>
   <branch>`. A reserva é o OK do dono, não o git, que aceitaria o commit de outra
   sessão: o motivo diz quantos commits vão e quais. A branch padrão de repo com
   `.github/workflows/` não entra (o merge ali é por PR), nem a branch sem
   upstream, divergida, de upstream com outro nome ou vista com --sem-rede;
-- worktree local que pode sair, está limpa e não está trancada: `worktree
-  remove` e `branch -d` da branch dela, num item só (o motivo lista o que o git
-  ignora ali, que o remove apaga junto);
-- branch local fora de worktree que pode sair: `branch -d`;
+- o clone principal na branch padrão, atrás do upstream (o origin/HEAD), sem
+  commit à frente e sem arquivo rastreado modificado: `merge --ff-only
+  <upstream>`. Com --sem-rede também, até onde o último fetch viu;
+- worktree local que pode sair, está limpa e não está trancada, desta sessão ou
+  de outra (o motivo diz de qual): `worktree remove` e `branch -d` da branch
+  dela, num item só. O motivo nomeia cada arquivo que o git ignora ali, que o
+  remove apaga junto, e resume as pastas ignoradas;
+- branch local fora de worktree que pode sair: `branch -d`. Este item e o de
+  cima, quando o `branch -d` só aceitaria depois do fast-forward, dependem dele;
+- as redes do docker sem container nenhum, nem parado, fora `bridge`, `host` e
+  `none`: `docker network rm <nomes>`, num item só;
 - o ~/dotfiles de outro host, limpo e sem commit à frente, que está atrás do
   origin ou ficará atrás depois de um item de push (o pull então depende do
   push): `pull --ff-only` por ssh e, se o diff pede (`setup_reason`), o
   `./setup.sh` num item à parte;
 - o que podia sair e não cabe num item (sujo, trancado, `branch -d` que
-  recusaria, push que o git recusaria, host à frente, ssh mudo, --sem-rede) sai
-  depois dos itens, em `- fora do plano: ...`. A worktree desta sessão vai por
-  último.
+  recusaria, push que o git recusaria, fast-forward com arquivo modificado, host
+  à frente, ssh mudo, docker mudo, --sem-rede) sai depois dos itens, em `- fora
+  do plano: ...`. A worktree desta sessão vai por último.
 """
 
 import argparse
@@ -48,6 +55,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -390,15 +398,16 @@ def report_hosts(slugs, net, facts=None):
     return lines or ["nenhuma outra máquina em hosts/"]
 
 
-# --plano: só texto. Nada abaixo roda comando; o conjunto é fechado (push, worktree/branch
-# que pode sair, pull e setup do ~/dotfiles de outro host).
+# --plano: só texto. Nada abaixo roda comando; o conjunto é fechado (push, fast-forward do clone
+# principal, worktree/branch que pode sair, redes vazias do docker, pull e setup do ~/dotfiles de outro host).
 
 
-def item(cmd, why, last=False, dep=None, push=None):
+def item(cmd, why, last=False, dep=None, push=None, ff=None):
     """Um item do plano. `last`: vai por último (a worktree da sessão). `dep`: item de que este depende;
     o NUL no `why` vira o número dele na hora de numerar. `push`: o que um item de push publica
-    (`main`, `upstream`, `head`, `ahead`), de onde o host prevê que ficará atrás."""
-    return {"cmd": cmd, "why": why, "last": last, "dep": dep, "push": push}
+    (`main`, `upstream`, `head`, `ahead`), de onde o host prevê que ficará atrás. `ff`: o upstream a que um
+    item de fast-forward leva o clone principal, contra o qual o `branch -d` passa a conferir."""
+    return {"cmd": cmd, "why": why, "last": last, "dep": dep, "push": push, "ff": ff}
 
 
 def shpath(path):
@@ -416,11 +425,34 @@ def is_clean(root):
     return rc == 0 and not out
 
 
-def ignored(root, limit=4):
-    """O que o git ignora na worktree (`.env`, cache, build): o `worktree remove` sem --force apaga junto, sem recusar."""
-    _, out = git(root, "--no-optional-locks", "status", "--porcelain", "--ignored", "--untracked-files=normal")
-    found = [l[3:] for l in out.split("\n") if l.startswith("!! ")]
-    return ", ".join(found[:limit]) + (", …" if len(found) > limit else "")
+def is_clean_tracked(root):
+    """Sem arquivo rastreado modificado? Arquivo novo não conta: o merge recusa sobrescrevê-lo."""
+    rc, out = git(root, "--no-optional-locks", "status", "--porcelain", "--untracked-files=no")
+    return rc == 0 and not out
+
+
+def ignored(root):
+    """(arquivos, pastas) que o git ignora na worktree: o `worktree remove` sem --force apaga junto, sem recusar.
+
+    O modo `matching` dá pelo nome o arquivo ignorado numa pasta que não é ignorada, mesmo que tudo nela seja (o
+    `.impeccable/hook.cache.json`); o modo padrão o esconderia atrás de `.impeccable/`. Com -z o caminho vem cru."""
+    _, out = git(root, "--no-optional-locks", "status", "--porcelain", "-z", "--ignored=matching",
+                 "--untracked-files=normal")
+    found = [e[3:] for e in out.split("\0") if e.startswith("!! ")]
+    return [f for f in found if not f.endswith("/")], [f for f in found if f.endswith("/")]
+
+
+def apaga_junto(root, limit=4):
+    """O trecho do motivo com o que o remove apaga junto: todo arquivo ignorado avulso pelo nome, as pastas resumidas."""
+    arquivos, pastas = ignored(root)
+    trechos = []
+    if arquivos:
+        trechos.append("%s %s" % ("o arquivo ignorado" if len(arquivos) == 1 else "os arquivos ignorados",
+                                  ", ".join(arquivos)))
+    if pastas:
+        trechos.append("%s %s" % ("a pasta ignorada" if len(pastas) == 1 else "as pastas ignoradas",
+                                  ", ".join(pastas[:limit]) + (", …" if len(pastas) > limit else "")))
+    return "; apaga junto %s" % "; e ".join(trechos) if trechos else ""
 
 
 def locked(main):
@@ -434,10 +466,11 @@ def can_leave(main, branch, base):
     return leftover(main, branch, base).endswith("pode sair")
 
 
-def deletable(main, branch):
-    """O `git branch -d` aceita? Ele confere o upstream da branch e, sem upstream (ou com ele sumido), o HEAD do clone."""
+def deletable(main, branch, head="HEAD"):
+    """O `git branch -d` aceita? Ele confere o upstream da branch e, sem upstream (ou com ele sumido), o HEAD do clone.
+    `head`: onde o HEAD do clone estará, para saber se aceita depois do fast-forward."""
     rc, up = git(main, "rev-parse", "--verify", "--quiet", branch + "@{upstream}")
-    return git(main, "merge-base", "--is-ancestor", "refs/heads/" + branch, up if rc == 0 else "HEAD")[0] == 0
+    return git(main, "merge-base", "--is-ancestor", "refs/heads/" + branch, up if rc == 0 else head)[0] == 0
 
 
 def esteira(root):
@@ -500,11 +533,48 @@ def plan_pushes(main, roots, net):
     return items, fora
 
 
+def plan_ff(main):
+    """(itens, fora) do fast-forward do clone principal: na branch padrão, só atrás do upstream e sem arquivo
+    rastreado modificado. A reserva é o git: o `--ff-only` recusa o que não for fast-forward, e o merge, sobrescrever
+    arquivo novo. Divergido não ganha linha: o `branch -d` que recusaria já diz "atualize o clone principal"."""
+    base = default_ref(main)
+    _, branch = git(main, "rev-parse", "--abbrev-ref", "HEAD")
+    rc, upstream = git(main, "rev-parse", "--abbrev-ref", "@{upstream}")
+    if not base or branch != base.split("/", 1)[-1] or rc != 0 or upstream != base:
+        return [], []
+    rc, counts = git(main, "rev-list", "--left-right", "--count", "@{upstream}...HEAD")
+    behind, ahead = (int(n) for n in counts.split()) if rc == 0 else (0, 0)
+    if not behind or ahead:
+        return [], []
+    where = "%s [%s]" % (tilde(main), branch)
+    if not is_clean_tracked(main):
+        return [], ["%s: %s atrás de %s, mas tem arquivo rastreado modificado; não proponho o fast-forward"
+                    % (where, plural(behind, "commit", "commits"), upstream)]
+    return [item("git -C %s merge --ff-only %s" % (shpath(main), shlex.quote(upstream)),
+                 "o clone principal %s está %s atrás de %s, sem commit à frente nem arquivo rastreado modificado"
+                 % (where, plural(behind, "commit", "commits"), upstream), ff=upstream)], []
+
+
 def plan_repo(main, roots, net=True):
-    """(itens, fora) do push e da limpeza local de um clone; `roots` são as worktrees e clones desta sessão."""
+    """(itens, fora) do push, do fast-forward e da limpeza local de um clone; `roots` são as worktrees e clones desta
+    sessão. O `branch -d` que só aceitaria depois do fast-forward vira item que depende dele."""
     items, fora = plan_pushes(main, roots, net)
+    ffs, f = plan_ff(main)
+    items += ffs
+    fora += f
+    ff = ffs[0] if ffs else None
     base = default_ref(main)
     where = tilde(main)
+
+    def after_ff(branch):
+        """(dep, motivo de fora): o item do fast-forward se o `branch -d` só aceita depois dele."""
+        if deletable(main, branch):
+            return None, ""
+        if ff and deletable(main, branch, ff["ff"]):
+            return ff, ""
+        return None, ("mas o `branch -d` recusaria (nem o upstream nem o HEAD de %s a contêm); atualize o clone "
+                      "principal antes" % where)
+
     mine = {os.path.realpath(r) for r in roots}
     wts = worktrees(main)
     trancadas = locked(main)
@@ -518,20 +588,20 @@ def plan_repo(main, roots, net=True):
         if not is_clean(path):
             fora.append("%s: [%s] já está em %s, mas tem arquivo sujo ou novo; não removo" % (tilde(path), branch, base))
             continue
-        if not deletable(main, branch):
-            fora.append("%s: [%s] já está em %s, mas o `branch -d` recusaria (nem o upstream nem o HEAD de %s a contêm); "
-                        "atualize o clone principal antes" % (tilde(path), branch, base, where))
+        dep, nao = after_ff(branch)
+        if nao:
+            fora.append("%s: [%s] já está em %s, %s" % (tilde(path), branch, base, nao))
             continue
         cmd = "git -C %s worktree remove %s && git -C %s branch -d %s" % (
             shpath(main), shpath(path), shpath(main), shlex.quote(branch))
-        junto = ignored(path)
-        junto = "; apaga junto o que o git ignora: %s" % junto if junto else ""
+        antes = "depende do fast-forward (\0), sem o qual o `branch -d` recusaria: " if dep else ""
+        junto = apaga_junto(path)
         if os.path.realpath(path) in mine:
-            items.append(item(cmd, "worktree [%s] desta sessão já está em %s e está limpa%s; vai por último "
-                              "porque removê-la tira o cwd do Bash" % (branch, base, junto), last=True))
+            items.append(item(cmd, "%sworktree [%s] desta sessão já está em %s e está limpa%s; vai por último "
+                              "porque removê-la tira o cwd do Bash" % (antes, branch, base, junto), last=True, dep=dep))
         else:
-            items.append(item(cmd, "worktree [%s] já está em %s e está limpa%s (de outra sessão, pode estar aberta)"
-                              % (branch, base, junto)))
+            items.append(item(cmd, "%sworktree [%s] de outra sessão já está em %s e está limpa%s"
+                              % (antes, branch, base, junto), dep=dep))
     # Fora de worktree: nem checada em worktree nenhuma, nem o HEAD do clone, nem a padrão (`origin/main` → `main`).
     checked = {b for _, b in wts if b}
     _, heads = git(main, "rev-parse", "--abbrev-ref", "HEAD")
@@ -539,13 +609,35 @@ def plan_repo(main, roots, net=True):
     for b in refs.split("\n"):
         if not b or b in checked or b == heads or b == base.split("/", 1)[-1] or not can_leave(main, b, base):
             continue
-        if deletable(main, b):
-            items.append(item("git -C %s branch -d %s" % (shpath(main), shlex.quote(b)),
-                              "branch local [%s] fora de worktree já está em %s" % (b, base)))
-        else:
-            fora.append("%s: [%s] já está em %s, mas o `branch -d` recusaria (nem o upstream nem o HEAD de %s a contêm); "
-                        "atualize o clone principal antes" % (where, b, base, where))
+        dep, nao = after_ff(b)
+        if nao:
+            fora.append("%s: [%s] já está em %s, %s" % (where, b, base, nao))
+            continue
+        antes = "depende do fast-forward (\0), sem o qual o `branch -d` recusaria: " if dep else ""
+        items.append(item("git -C %s branch -d %s" % (shpath(main), shlex.quote(b)),
+                          "%sbranch local [%s] fora de worktree já está em %s" % (antes, b, base), dep=dep))
     return items, fora
+
+
+# Os nomes que o docker cria sozinho e não deixa remover.
+REDES_DO_DOCKER = ("bridge", "host", "none")
+
+
+def plan_docker():
+    """(itens, fora) das redes do docker sem container nenhum, nem parado: `docker network rm`, sem prune nem --force.
+    O container parado conta: removida a rede, ele não sobe mais. Sem o docker na máquina, nada."""
+    if not shutil.which("docker"):
+        return [], []
+    rc, redes = run(["docker", "network", "ls", "--format", "{{.Name}}"], timeout=15)
+    rc2, usadas = run(["docker", "ps", "--all", "--no-trunc", "--format", "{{.Networks}}"], timeout=15)
+    if rc or rc2:
+        return [], ["docker: não consultei as redes (o docker não respondeu)"]
+    usadas = {n for l in usadas.split("\n") for n in l.split(",") if n}
+    vazias = [n for n in redes.split("\n") if n and n not in REDES_DO_DOCKER and n not in usadas]
+    if not vazias:
+        return [], []
+    return [item("docker network rm %s" % " ".join(shlex.quote(n) for n in vazias),
+                 "%s sem container nenhum, nem parado" % plural(len(vazias), "rede do docker", "redes do docker"))], []
 
 
 # Sob agents/, por exclusão: o que o pull atualiza sozinho é o que o setup liga por symlink; o resto ele
@@ -813,7 +905,8 @@ def main():
     ap.add_argument("--repo", action="append", default=[])
     ap.add_argument("--horas", type=float)
     ap.add_argument("--sem-rede", action="store_true")
-    ap.add_argument("--plano", action="store_true", help="acrescenta `## plano`: os comandos de push, limpeza e pull, só impressos")
+    ap.add_argument("--plano", action="store_true",
+                    help="acrescenta `## plano`: os comandos de push, fast-forward, limpeza e pull, só impressos")
     a = ap.parse_args()
     # Nome de arquivo que não é UTF-8 sai como veio, em qualquer locale.
     sys.stdout.reconfigure(errors="surrogateescape")
@@ -884,8 +977,9 @@ def main():
         if sem_clone:
             print(falta_vinculos("o clone principal de cada worktree, e sem ele não proponho nada"))
             return
+        d, g = plan_docker()
         i, f = plan_hosts(net, slugs, facts, slug_root, [it for it in itens if it["push"]])
-        print("\n".join(render_plan(itens + i, fora + f)))
+        print("\n".join(render_plan(itens + d + i, fora + g + f)))
 
 
 if __name__ == "__main__":
