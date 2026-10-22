@@ -474,6 +474,84 @@ class PlanDocker(unittest.TestCase):
             self.assertEqual(P.plan_docker(), ([], []))
 
 
+class Arquivar(unittest.TestCase):
+    """`## arquivar sem perguntar` num vault de fixture; os repos de cada projeto e as PRs vêm de dublês."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.vault = Path(os.path.realpath(tmp.name))
+        self.prs = {}
+        for target, fake in (("VAULT", str(self.vault)),
+                             ("vinculos", lambda *a, cols=1: [["/r/" + a[1], "/r/" + a[1], a[1]]] if a[0] == "repos" else [["x"]]),
+                             ("slug", lambda root: "o/" + os.path.basename(root)),
+                             ("pr_states", lambda s, branch: self.prs.get((s, branch), []))):
+            patcher = mock.patch.object(P, target, fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def task(self, project, tid, callout="question", aberto=False):
+        path = self.vault / "projects" / project / "tasks" / (tid + ".md")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("> [!%s] %s\n> [[projects/%s/tasks/%s|%s]]\n\n- [x] feito\n%s"
+                        % (callout, tid, project, tid, tid, "- [ ] falta\n" if aberto else ""))
+        return str(path)
+
+    def arquivar(self, projects=("p",), net=True):
+        active = sorted(str(f) for f in self.vault.glob("projects/*/tasks/*.md"))
+        return P.report_arquivar(set(projects), active, net)
+
+    def test_pr_mergeada_sem_item_aberto_entra_mesmo_de_outra_sessao(self):
+        self.task("p", "pronta")
+        self.prs[("o/p", "pronta")] = [(7, "MERGED")]
+        self.assertEqual(self.arquivar(), ["p `pronta`: PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`"])
+
+    def test_item_aberto_fica(self):
+        self.task("p", "falta", aberto=True)
+        self.prs[("o/p", "falta")] = [(7, "MERGED")]
+        self.assertEqual(self.arquivar(), ["nada"])
+
+    def test_pr_aberta_da_mesma_branch_fica(self):
+        self.task("p", "outra-pr")
+        self.prs[("o/p", "outra-pr")] = [(7, "MERGED"), (9, "OPEN")]
+        self.assertEqual(self.arquivar(), ["nada"])
+
+    def test_pr_aberta_noutro_repo_do_projeto_fica(self):
+        self.task("p", "dois-repos")
+        self.prs[("o/a", "dois-repos")] = [(7, "MERGED")]
+        self.prs[("o/b", "dois-repos")] = [(3, "OPEN")]
+        dois = lambda *a, cols=1: [["/r/a", "/r/a", "p"], ["/r/b", "/r/b", "p"]] if a[0] == "repos" else [["x"]]
+        with mock.patch.object(P, "vinculos", dois):
+            self.assertEqual(self.arquivar(), ["nada"])
+            del self.prs[("o/b", "dois-repos")]
+            self.assertEqual(self.arquivar(), ["p `dois-repos`: PR #7 em o/a mergeada, nenhuma aberta, nenhum `- [ ]`"])
+
+    def test_so_pr_fechada_ou_nenhuma_fica(self):
+        self.task("p", "fechada")
+        self.task("p", "sem-pr")
+        self.prs[("o/p", "fechada")] = [(7, "CLOSED")]
+        self.assertEqual(self.arquivar(), ["nada"])
+
+    def test_fora_de_homologacao_ou_de_projeto_nao_tocado_fica(self):
+        self.task("p", "em-implementacao", callout="example")
+        self.task("q", "de-outro-projeto")
+        self.prs[("o/p", "em-implementacao")] = [(7, "MERGED")]
+        self.prs[("o/q", "de-outro-projeto")] = [(8, "MERGED")]
+        self.assertEqual(self.arquivar(), ["nada"])
+
+    def test_gh_que_falha_tira_a_task_e_diz_por_que(self):
+        self.task("p", "pronta")
+        with mock.patch.object(P, "pr_states", return_value=None):
+            (linha,) = self.arquivar()
+        self.assertIn("não consultei", linha)
+        self.assertIn("não arquive", linha)
+
+    def test_sem_rede_nao_consulta(self):
+        self.task("p", "pronta")
+        self.prs[("o/p", "pronta")] = [(7, "MERGED")]
+        self.assertEqual(self.arquivar(net=False), ["não consultei (--sem-rede)"])
+
+
 class PlanHosts(Repo):
     """O host que fica atrás depois do push: o diff é `HEAD do host..HEAD local`."""
 

@@ -12,7 +12,11 @@ Nada aqui é lista fixa (ADR 0017):
 - outras máquinas, os projetos que um contrato alimenta e o clone principal de
   um worktree: o `vault-vinculos` (as regras estão no `vault-vinculos --help`);
 - o "Decidido" e o "Adiado" de cada projeto tocado, pelo coletor da
-  current-project-state.
+  current-project-state;
+- em `## arquivar sem perguntar`, a task em `question` de projeto tocado, de
+  qualquer sessão, sem `- [ ]` aberto, cuja branch `<id>` tem PR mergeada e
+  nenhuma aberta nos repos do projeto. Repo que o gh não respondeu tira a task
+  da lista, com a linha do porquê.
 
 Só lê. A exceção é o `git fetch`, que atualiza as refs remotas para "atrás do
 origin" não mentir; --sem-rede pula fetch, GitHub e ssh.
@@ -59,6 +63,7 @@ import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 VAULT = os.path.realpath(os.path.expanduser(os.environ.get("FECHAR_VAULT", "~/ObsidianVault")))
 OPEN_ITEM = re.compile(r"^\s*- \[ \]", re.M)
@@ -781,7 +786,8 @@ def render_plan(items, fora):
 
 
 def task_info(path):
-    text = open(path, encoding="utf-8").read()
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
     status = re.search(r"^> \[!(\w+)\]", text, re.M)
     desc = re.search(r"^> _(.*)_\s*$", text, re.M)
     return {
@@ -898,6 +904,51 @@ def report_registro(projects):
     return lines
 
 
+def pr_states(s, branch):
+    """(número, estado) de cada PR da branch no repo, aberta, fechada ou mergeada; None quando o gh falha."""
+    rc, out = run(["gh", "pr", "list", "--repo", s, "--head", branch, "--state", "all", "--limit", "100",
+                   "--json", "number,state"], timeout=25)
+    try:
+        return [(p["number"], p["state"]) for p in json.loads(out or "[]")] if rc == 0 else None
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def report_arquivar(projects, active, net):
+    """Linhas de `## arquivar sem perguntar`: a task em `question` dos projetos tocados, de qualquer sessão, sem
+    `- [ ]` aberto, cuja branch `<id>` tem PR mergeada e nenhuma aberta nos repos vinculados ao projeto."""
+    if not net:
+        return ["não consultei (--sem-rede)"]
+    tasks = []
+    for path in active:
+        m = TASK_PATH.match(os.path.relpath(path, VAULT))
+        info = task_info(path)
+        if m and m.group(1) in projects and info["status"] == "question" and not info["abertos"]:
+            tasks.append(m.groups())
+    if not tasks:
+        return ["nada"]
+    falta = sem_vinculos("que repos cada projeto tem")
+    if falta:
+        return falta
+    slugs = {p: [s for s in (slug(clone) for _, clone, _ in vinculos("repos", p, cols=3) or []) if s]
+             for p in {p for p, _ in tasks}}
+    pares = [(t, s) for p, t in tasks for s in slugs[p]]
+    # Uma chamada por branch e repo, que `--head` não aceita lista: em paralelo, para não somar segundos.
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        found = dict(zip(pares, ex.map(lambda par: pr_states(par[1], par[0]), pares)))
+    lines = []
+    for p, t in sorted(tasks):
+        falhou = [s for s in slugs[p] if found[(t, s)] is None]
+        if falhou:
+            lines.append("%s `%s`: não consultei as PRs em %s (gh falhou); não arquive" % (p, t, ", ".join(falhou)))
+            continue
+        prs = [(s, n, st) for s in slugs[p] for n, st in found[(t, s)]]
+        mergeadas = ["#%d em %s" % (n, s) for s, n, st in prs if st == "MERGED"]
+        if mergeadas and not any(st == "OPEN" for _, _, st in prs):
+            lines.append("%s `%s`: PR %s mergeada, nenhuma aberta, nenhum `- [ ]`" % (p, t, ", ".join(mergeadas)))
+    return lines or ["nada"]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     # Sem valor quando o agente não substitui ${CLAUDE_SESSION_ID} (Cursor).
@@ -972,6 +1023,8 @@ def main():
         projects &= {p for p, in known}
     print("\n## registro dos projetos (não reapresentar como ponta solta)")
     print("\n".join(report_registro(projects)))
+    print("\n## arquivar sem perguntar")
+    print("\n".join(report_arquivar(projects, active, net)))
     if a.plano:
         print("\n## plano")
         if sem_clone:

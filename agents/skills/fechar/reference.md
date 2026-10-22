@@ -12,7 +12,8 @@ O porquê: ADRs 0031, 0039 e 0040 em
 | pesquisa respondida | nota em `research/`, pela skill `research` | o dono |
 | regra para agentes | proposta de mudança no contrato | o dono |
 | ponta solta sem task | task nova, pela skill `freitask` | o dono |
-| task terminada | `freitask archive <id> done`, depois do portão | o dono |
+| task em `## arquivar sem perguntar` do script | `freitask archive <id> done` | você |
+| outra task terminada | `freitask archive <id> done`, depois do portão | o dono |
 
 ## O que não se escreve
 
@@ -72,7 +73,8 @@ como a do `Bash(cf-write *)` em `~/.claude/settings.json`.
 ## De qual sessão é a task
 
 Quem diz é o script, pelo que as travas anotaram. Só escreva em task desta
-sessão; a de outra sessão vai para o relatório.
+sessão; a de outra sessão vai para o relatório. A exceção é arquivar a de
+`## arquivar sem perguntar`, que pode ser de outra sessão.
 
 ## "Para retomar"
 
