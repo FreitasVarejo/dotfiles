@@ -65,10 +65,10 @@ sempre a última; a de outra sessão entra como as outras, e o "de outra
 sessão" do motivo só informa.
 
 **Como o plano cresce:** tipo novo de comando entra no gerador do
-`pendencias --plano` e nesta lista, na mesma mudança. O `allowed-tools` da
-skill só ganha comando que não muda nada. Para o prompt de permissão voltar a
-valer como reserva num comando que muda, a regra é uma `ask` em `permissions`,
-como a do `Bash(cf-write *)` em `~/.claude/settings.json`.
+`pendencias --plano` e nesta lista, na mesma mudança. Comando do plano nunca
+entra no `allowed-tools` da skill. Para o prompt de permissão voltar a valer
+como reserva num deles, a regra é uma `ask` em `permissions`, como a do
+`Bash(cf-write *)` em `~/.claude/settings.json`.
 
 ## De qual sessão é a task
 

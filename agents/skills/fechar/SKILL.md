@@ -6,6 +6,7 @@ argument-hint: "[o que mais registrar antes de fechar]"
 allowed-tools:
   - Bash(~/.claude/skills/fechar/scripts/pendencias *)
   - Bash(freitask set *)
+  - Bash(freitask archive *)
   - Bash(freitask list *)
   - Bash(freitask doctor *)
   - Read(~/ObsidianVault/**)
@@ -71,7 +72,8 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
 ## Relatório
 
 - **Feito no freitask**: o que você escreveu, task a task. A arquivada sem
-  perguntar sai como "arquivei; `freitask unarchive <id>` desfaz".
+  perguntar sai como "arquivei; `freitask unarchive <id>` e
+  `freitask set <id> --status question` desfazem".
 - **Plano**: os itens do `## plano` do script, como ele os imprimiu
   (`P1`, `P2`…), para resposta como `P: ok`, `P: 1, 3` ou `P: nenhum`.
   Sem item, diga que não há o que rodar.
