@@ -438,35 +438,62 @@ class PlanLimpeza(Repo):
             self.assertNotRegex(text, r"--force| -D |prune")
 
 
+def compose(projeto, chave="default", nome=None):
+    """Rede que o compose criou, com os rótulos de projeto e de chave. `nome`: o `name:` próprio."""
+    return (nome or "%s_%s" % (projeto, chave), projeto, chave)
+
+
+def avulsa(nome):
+    """Rede sem o rótulo do compose: as do docker e a criada à mão."""
+    return (nome, "", "")
+
+
 class PlanDocker(unittest.TestCase):
-    """As redes vêm de um `docker` falso no PATH: `network ls` e `ps --all`, como o script os chama."""
+    """As redes vêm de um `docker` falso no PATH: `network ls` e `ps --all`, como o script os chama. O falso
+    carrega os rótulos: com o `--filter label=com.docker.compose.network`, só lista as redes do compose."""
 
     def docker(self, redes, usadas, rc=0):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         fake = Path(tmp.name) / "docker"
-        fake.write_text('#!/bin/sh\ncase "$1" in network) printf %%s %s ;; ps) printf %%s %s ;; esac\nexit %d\n'
-                        % (shlex.quote("\n".join(redes)), shlex.quote("\n".join(usadas)), rc))
+        linhas = lambda rs: shlex.quote("\n".join("\t".join(r) for r in rs))
+        fake.write_text('#!/bin/sh\ncase "$1" in\n'
+                        'network) case "$*" in *label=com.docker.compose.network*) printf %%s %s ;; *) printf %%s %s ;; esac ;;\n'
+                        'ps) printf %%s %s ;;\nesac\nexit %d\n'
+                        % (linhas([r for r in redes if r[2]]), linhas(redes), shlex.quote("\n".join(usadas)), rc))
         fake.chmod(0o755)
         patcher = mock.patch.dict(os.environ, {"PATH": tmp.name + os.pathsep + "/usr/bin:/bin"})
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_rede_sem_container_nenhum_vira_um_item_so(self):
-        # `parada` só tem container parado; `bridge`, `host` e `none` são do docker.
-        self.docker(["bridge", "host", "none", "a_default", "parada", "b_default"], ["parada", "bridge,parada", ""])
+    def test_rede_do_compose_sem_container_nenhum_vira_um_item_so(self):
+        # `parada_default` só tem container parado; `bridge`, `host` e `none` são do docker.
+        self.docker([avulsa("bridge"), avulsa("host"), avulsa("none"), compose("a"), compose("parada"), compose("b")],
+                    ["parada_default", "bridge,parada_default", ""])
         (rm,), fora = P.plan_docker()
         self.assertEqual(rm["cmd"], "docker network rm a_default b_default")
-        self.assertIn("2 redes do docker", rm["why"])
+        self.assertIn("2 redes do compose", rm["why"])
         self.assertEqual(fora, [])
         self.assertNotRegex(rm["cmd"], r"--force|-f |prune")
 
+    def test_rede_sem_o_rotulo_e_sem_container_nao_entra(self):
+        # A criada à mão e usada como `external: true`: vazia, o docker a removeria sem recusar.
+        self.docker([avulsa("bridge"), avulsa("externa"), compose("a")], [])
+        (rm,), _ = P.plan_docker()
+        self.assertEqual(rm["cmd"], "docker network rm a_default")
+
+    def test_rede_do_compose_com_name_proprio_nao_entra(self):
+        # Como a `proxy_net` do pi01: o compose que a criou com `name:` pode declará-la `external` depois.
+        self.docker([compose("traefik", "proxy_net", nome="proxy_net"),
+                     compose("bjju-vision", "interna", nome="bjju-vision-prod-interna")], [])
+        self.assertEqual(P.plan_docker(), ([], []))
+
     def test_toda_rede_com_container_nao_propoe_nada(self):
-        self.docker(["bridge", "host", "none", "a"], ["a"])
+        self.docker([avulsa("bridge"), avulsa("host"), avulsa("none"), compose("a")], ["a_default"])
         self.assertEqual(P.plan_docker(), ([], []))
 
     def test_docker_que_falha_diz_que_nao_consultou(self):
-        self.docker(["a"], [], rc=1)
+        self.docker([compose("a")], [], rc=1)
         self.assertEqual(P.plan_docker(), ([], ["docker: não consultei as redes (o docker não respondeu)"]))
 
     def test_sem_docker_nada(self):

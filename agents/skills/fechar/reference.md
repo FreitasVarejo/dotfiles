@@ -54,8 +54,8 @@ A lista é fechada (o que entra e o que fica "fora do plano": `pendencias --help
 - `git -C <clone principal> branch -d <branch>` de branch fora de worktree;
   este e o de cima dependem do fast-forward quando o `branch -d` só aceita
   depois dele;
-- `docker network rm <nomes>` das redes sem container, sem `prune` nem
-  `--force`;
+- `docker network rm <nomes>` das redes do compose com o nome padrão
+  (`<projeto>_<chave>`) e sem container, sem `prune` nem `--force`;
 - num host que só consome os dotfiles (ADR 0034), `ssh <alias> 'git -C
   ~/dotfiles pull --ff-only'`, que depende do push quando é ele que deixa o
   host atrás, e, quando o script o propõe, o `./setup.sh` de lá, em background.

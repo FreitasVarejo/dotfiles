@@ -40,8 +40,10 @@ o que o dono aprovar. O conjunto é fechado e nunca força:
   remove apaga junto, e resume as pastas ignoradas;
 - branch local fora de worktree que pode sair: `branch -d`. Este item e o de
   cima, quando o `branch -d` só aceitaria depois do fast-forward, dependem dele;
-- as redes do docker sem container nenhum, nem parado, fora `bridge`, `host` e
-  `none`: `docker network rm <nomes>`, num item só;
+- as redes que o compose criou com o nome padrão (`<projeto>_<chave>`), sem
+  container nenhum, nem parado: `docker network rm <nomes>`, num item só. A
+  rede feita à mão ou com `name:` próprio nunca entra: é a que um compose usa
+  como `external: true`, e o `up` dele não a recria;
 - o ~/dotfiles de outro host, limpo e sem commit à frente, que está atrás do
   origin ou ficará atrás depois de um item de push (o pull então depende do
   push): `pull --ff-only` por ssh e, se o diff pede (`setup_reason`), o
@@ -624,25 +626,30 @@ def plan_repo(main, roots, net=True):
     return items, fora
 
 
-# Os nomes que o docker cria sozinho e não deixa remover.
-REDES_DO_DOCKER = ("bridge", "host", "none")
-
-
 def plan_docker():
-    """(itens, fora) das redes do docker sem container nenhum, nem parado: `docker network rm`, sem prune nem --force.
-    O container parado conta: removida a rede, ele não sobe mais. Sem o docker na máquina, nada."""
+    """(itens, fora) das redes que o compose criou com o nome padrão, sem container nenhum, nem parado:
+    `docker network rm`, sem prune nem --force. Só essas o `compose up` recria. A rede feita à mão, ou com
+    `name:` próprio, é a que um compose declara `external: true`: removida, o `up` dele não sobe mais, e por
+    isso nunca entra. O container parado conta: removida a rede, ele não sobe mais. Sem o docker, nada."""
     if not shutil.which("docker"):
         return [], []
-    rc, redes = run(["docker", "network", "ls", "--format", "{{.Name}}"], timeout=15)
+    rc, redes = run(["docker", "network", "ls", "--filter", "label=com.docker.compose.network", "--format",
+                     '{{.Name}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.network"}}'],
+                    timeout=15)
     rc2, usadas = run(["docker", "ps", "--all", "--no-trunc", "--format", "{{.Networks}}"], timeout=15)
     if rc or rc2:
         return [], ["docker: não consultei as redes (o docker não respondeu)"]
     usadas = {n for l in usadas.split("\n") for n in l.split(",") if n}
-    vazias = [n for n in redes.split("\n") if n and n not in REDES_DO_DOCKER and n not in usadas]
+    vazias = []
+    for linha in redes.split("\n"):
+        nome, _, resto = linha.partition("\t")
+        projeto, _, chave = resto.partition("\t")
+        if nome and nome == "%s_%s" % (projeto, chave) and nome not in usadas:
+            vazias.append(nome)
     if not vazias:
         return [], []
     return [item("docker network rm %s" % " ".join(shlex.quote(n) for n in vazias),
-                 "%s sem container nenhum, nem parado" % plural(len(vazias), "rede do docker", "redes do docker"))], []
+                 "%s sem container nenhum, nem parado" % plural(len(vazias), "rede do compose", "redes do compose"))], []
 
 
 # Sob agents/, por exclusão: o que o pull atualiza sozinho é o que o setup liga por symlink; o resto ele
