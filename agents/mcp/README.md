@@ -32,8 +32,9 @@ O JSON não aceita comentário, então o porquê fica aqui:
   interativo. O viewport fica no default: um projeto que precise de outro (o
   bjj-vision usa 390×844) declara um `playwright` no `.mcp.json` dele, e o
   escopo de projeto vence o de user.
-- **`${HOME}`** é o único placeholder. O `lib.sh` o troca pelo `$HOME` de quem
-  roda o hook, porque o agente precisa de path absoluto. Nada mais é expandido.
+- **`${HOME}`** é o único placeholder. O `agent_config.py` o troca pelo `$HOME`
+  de quem roda o hook, porque o agente precisa de path absoluto. Nada mais é
+  expandido.
 - **Chave só do Claude Code** (hoje, `headersHelper`): um servidor que dependa
   dela **não** vai para o Cursor, porque lá subiria sem ela. O setup avisa e pula.
 - **Não há MCP de Obsidian local.** Onde o vault está em disco, o agente lê e
