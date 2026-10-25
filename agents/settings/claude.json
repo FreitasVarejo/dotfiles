@@ -27,6 +27,7 @@
     ]
   },
   "disableClaudeAiConnectors": true,
+  "tui": "fullscreen",
   "permissions": {
     "allow": ["Bash(cf *)"],
     "ask": ["Bash(cf-write *)"]
