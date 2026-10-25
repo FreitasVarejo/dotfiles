@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+"""Fatos do disco para a triagem de um lote (skill `implementar`).
+
+  lote [--sem-rede] [<id>...]
+
+Sem id, o lote são as tasks ativas em Refinada (`tip`) e Em implementação
+(`example`), na ordem do `freitask list`, que põe a de prioridade alta na frente.
+Com ids, são essas, em qualquer fase: recusar a fase é da skill. Id que não está
+entre as ativas sai em `## não achei`.
+
+Por task: projeto, fase, prioridade, arquivo, estado, checklist, as tasks que o
+corpo cita por wikilink com a fase de cada uma hoje, e, em cada repo vinculado
+ao projeto, o que já existe do id: branch local e remota, worktree da branch
+`<id>` ou `<id>-<área>` (sujos e idade do último commit) e PR da branch `<id>`.
+
+Nada aqui é lista fixa (ADR 0017): tasks e fases do `freitask list --json`,
+projetos, repos e a nota desta máquina do `vault-vinculos` (as regras estão no
+`vault-vinculos --help`), esteira de PR do `.github/workflows/` do repo.
+
+Só lê. Não faz fetch: branch remota é até onde o último fetch viu. --sem-rede
+pula o GitHub.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+LOTE = ("tip", "example")
+CHECKED = re.compile(r"^\s*- \[[xX]\]", re.M)
+OPEN_ITEM = re.compile(r"^\s*- \[ \]", re.M)
+WIKILINK = re.compile(r"\[\[([^\]|#]+)")
+TASK_LINK = re.compile(r"^projects/[^/]+/tasks/(?:archived/[^/]+/)?([^/]+?)(?:\.md)?$")
+HOME = os.path.expanduser("~")
+
+
+def run(args, cwd=None, timeout=30):
+    try:
+        r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, errors="surrogateescape",
+                           timeout=timeout)
+        return r.returncode, r.stdout.rstrip()
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+
+
+def git(root, *args):
+    return run(["git", "-C", root, *args])
+
+
+def tilde(path):
+    return "~" + path[len(HOME):] if path == HOME or path.startswith(HOME + os.sep) else path
+
+
+def vinculos(*args, cols=1):
+    """Linhas do `vault-vinculos`, cada uma com `cols` colunas; None quando ele falta ou falha."""
+    rc, out = run(["vault-vinculos", *args])
+    if rc != 0:
+        return None
+    return [(l.split("\t") + [""] * cols)[:cols] for l in out.split("\n") if l]
+
+
+def freitask_list(*extra):
+    rc, out = run(["freitask", "list", "--json", *extra])
+    if rc != 0:
+        return None
+    try:
+        return json.loads(out or "[]")
+    except ValueError:
+        return None
+
+
+def select(active, ids):
+    """(tasks do lote, ids que não estão entre as ativas)."""
+    if not ids:
+        return [t for t in active if t.get("callout") in LOTE and not t.get("hidden")], []
+    by_id = {t["id"]: t for t in active}
+    ids = list(dict.fromkeys(ids))
+    return [by_id[i] for i in ids if i in by_id], [i for i in ids if i not in by_id]
+
+
+def checklist(text):
+    done, todo = len(CHECKED.findall(text)), len(OPEN_ITEM.findall(text))
+    return "sem checklist" if not done + todo else "%d de %d marcados" % (done, done + todo)
+
+
+def cited(text, own_id, active, archived):
+    """`id` (fase hoje) de cada task que o corpo cita, na ordem em que aparece.
+
+    O link com caminho de task entra sempre, e o de task que não existe mais diz isso. O curto
+    (`[[id]]`) entra só quando o nome é de uma task: o mesmo formato cita ADR e nota.
+    """
+    status = {t["id"]: t["status"] for t in active}
+    status.update({t["id"]: "arquivada, %s" % t["archived"] for t in archived if t["id"] not in status})
+    ids = []
+    for target in (t.strip() for t in WIKILINK.findall(text)):
+        m = TASK_LINK.match(target)
+        if m:
+            ids.append(m.group(1))
+        elif "/" not in target and target in status:
+            ids.append(target)
+    ids = [i for i in dict.fromkeys(ids) if i != own_id]
+    return ["`%s` (%s)" % (i, status.get(i, "não existe")) for i in ids]
+
+
+def slug(root):
+    _, url = git(root, "remote", "get-url", "origin")
+    m = re.match(r"^(?:git@github\.com:|https://github\.com/)([^/]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else ""
+
+
+def esteira(root):
+    """O repo tem esteira de PR? Sai do disco (`.github/workflows/`), sem lista de repos (ADR 0017)."""
+    return os.path.isdir(os.path.join(root, ".github", "workflows"))
+
+
+def default_ref(root):
+    rc, out = git(root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    return out if rc == 0 else ""
+
+
+def plural(n, one, many):
+    return "%d %s" % (n, one if n == 1 else many)
+
+
+def age(root):
+    """Há quanto tempo foi o último commit, em português: é o que separa a worktree em voo da parada."""
+    _, out = git(root, "log", "-1", "--format=%ct")
+    if not out.isdigit():
+        return "sem commit"
+    s = max(0, int(time.time()) - int(out))
+    if s < 3600:
+        return "há %d min" % (s // 60)
+    if s < 48 * 3600:
+        return "há %d h" % (s // 3600)
+    return "há %d dias" % (s // 86400)
+
+
+def dirty(root):
+    _, out = git(root, "--no-optional-locks", "status", "--porcelain")
+    return len([l for l in out.split("\n") if l])
+
+
+def worktrees(main):
+    """(caminho, branch ou None) de cada worktree além do clone principal."""
+    _, out = git(main, "worktree", "list", "--porcelain")
+    found = []
+    for block in out.split("\n\n"):
+        path = re.search(r"^worktree (.+)$", block, re.M)
+        branch = re.search(r"^branch refs/heads/(.+)$", block, re.M)
+        if path and path.group(1) != main:
+            found.append((path.group(1), branch.group(1) if branch else None))
+    return found
+
+
+def of_task(branch, task_id):
+    return bool(branch) and (branch == task_id or branch.startswith(task_id + "-"))
+
+
+def repo_lines(main, task_id, prs):
+    """O que o repo já tem do id: o clone, a branch, as worktrees e as PRs (None: não consultei)."""
+    _, head = git(main, "branch", "--show-current")
+    n = dirty(main)
+    tem = "esteira de PR" if esteira(main) else "sem esteira de PR"
+    lines = ["repo %s (%s): clone principal em `%s`, %s" % (
+        tilde(main), tem, head or "HEAD solto", plural(n, "sujo", "sujos") if n else "limpo")]
+    local = git(main, "show-ref", "--verify", "--quiet", "refs/heads/" + task_id)[0] == 0
+    remote = git(main, "show-ref", "--verify", "--quiet", "refs/remotes/origin/" + task_id)[0] == 0
+    if local or remote:
+        onde = " e ".join(w for w, ok in (("local", local), ("no origin", remote)) if ok)
+        lines.append("  branch `%s`: %s" % (task_id, onde))
+    base = default_ref(main)
+    for path, branch in worktrees(main):
+        if of_task(branch, task_id):
+            n = dirty(path)
+            # Branch sem commit além da base herda a idade dela: pareceria em voo sem estar.
+            if base and git(main, "merge-base", "--is-ancestor", branch, base)[0] == 0:
+                quando = "sem commit próprio (está em `%s`)" % base
+            else:
+                quando = "último commit " + age(path)
+            lines.append("  worktree %s [%s]: %s, %s" % (
+                tilde(path), branch, plural(n, "sujo", "sujos") if n else "limpa", quando))
+    if not esteira(main) and not prs:
+        return lines
+    if prs is None:
+        lines.append("  PR: não consultei")
+    elif prs:
+        for p in prs:
+            labels = ", ".join(l["name"] for l in p.get("labels", []))
+            lines.append("  PR #%d %s%s" % (p["number"], p["state"], " [%s]" % labels if labels else ""))
+    elif slug(main):
+        lines.append("  PR: nenhuma da branch `%s`" % task_id)
+    return lines
+
+
+def pr_list(s, branch):
+    """As PRs da branch no repo, de qualquer estado; None quando o gh falha."""
+    rc, out = run(["gh", "pr", "list", "--repo", s, "--head", branch, "--state", "all", "--limit", "20",
+                   "--json", "number,state,labels"], timeout=25)
+    try:
+        return json.loads(out or "[]") if rc == 0 else None
+    except ValueError:
+        return None
+
+
+def machine():
+    rows = vinculos("hosts", cols=5)
+    if rows is None:
+        return "máquina: o vault-vinculos não respondeu (o ~/dotfiles/setup.sh o põe no PATH)"
+    mine = [r for r in rows if r[1] == "1"]
+    if not mine:
+        return "máquina: %s, sem nota em hosts/" % (run(["hostname", "-s"])[1] or "?")
+    return "máquina: %s · nota: %s" % (mine[0][0], tilde(mine[0][4]))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--sem-rede", action="store_true")
+    ap.add_argument("ids", nargs="*")
+    a = ap.parse_args()
+
+    active = freitask_list()
+    if active is None:
+        print("o `freitask list --json` falhou: sem tasks, não há lote")
+        return 1
+    archived = freitask_list("--archived") or []
+    tasks, missing = select(active, a.ids)
+
+    repos = {}
+    for p in {t["project"] for t in tasks}:
+        rows = vinculos("repos", p, cols=3)
+        repos[p] = None if rows is None else list(dict.fromkeys(clone for _, clone, _ in rows if clone))
+    pares = [(t["id"], clone) for t in tasks for clone in repos[t["project"]] or []]
+    slugs = {clone: slug(clone) for _, clone in pares}
+    if a.sem_rede:
+        prs = {par: None for par in pares}
+    else:
+        # Uma chamada por branch e repo, que `--head` não aceita lista: em paralelo.
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            prs = dict(zip(pares, ex.map(
+                lambda par: pr_list(slugs[par[1]], par[0]) if slugs[par[1]] else [], pares)))
+
+    print("# lote: %d %s" % (len(tasks), "task" if len(tasks) == 1 else "tasks"))
+    print()
+    print(machine())
+    for t in tasks:
+        with open(t["path"], encoding="utf-8") as fh:
+            text = fh.read()
+        print()
+        print("## %s" % t["id"])
+        print("- projeto %s · %s · %s" % (t["project"], t["status"],
+                                           "prioridade alta" if t.get("prioridade") == "alta" else "normal"))
+        print("- arquivo: %s" % tilde(t["path"]))
+        print("- estado: %s" % (t.get("desc") or "(sem descrição)"))
+        print("- checklist: %s" % checklist(text))
+        cita = cited(text, t["id"], active, archived)
+        if cita:
+            print("- cita: %s" % "; ".join(cita))
+        if repos[t["project"]] is None:
+            print("- repo: o vault-vinculos não respondeu, não sei os repos do projeto")
+        elif not repos[t["project"]]:
+            print("- repo: nenhum vinculado ao projeto")
+        for clone in repos[t["project"]] or []:
+            for line in repo_lines(clone, t["id"], prs[(t["id"], clone)]):
+                print(("- " if not line.startswith("  ") else "  - ") + line.strip())
+    if missing:
+        print()
+        print("## não achei")
+        for i in missing:
+            print("- `%s`: não está entre as tasks ativas" % i)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
