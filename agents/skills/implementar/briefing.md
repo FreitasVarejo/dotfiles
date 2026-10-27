@@ -5,6 +5,12 @@ Ele não tem esta conversa: o que não estiver no briefing ele não sabe. Para
 agente de área ou revisor que o contrato do repo pede, troque "Implemente a
 task" pelo papel que o contrato dá e mantenha o resto.
 
+O `general-purpose` vai com `model: sonnet`. Sem o `model`, ele herda o modelo
+desta sessão, e a task chega refinada: escrever o código não pede Opus, e quem
+revisa o que volta é você. A exceção é a task que é investigação antes de ser
+código (um bug sem causa conhecida, uma falha que só aparece no CI): essa vai
+sem `model`. Agente de área do contrato usa o modelo do próprio frontmatter.
+
 ```text
 Implemente a task <id> no repo <clone>.
 

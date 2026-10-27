@@ -28,6 +28,13 @@
   },
   "disableClaudeAiConnectors": true,
   "tui": "fullscreen",
+  "model": "opus",
+  "effortLevel": "high",
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "high"
+    }
+  },
   "permissions": {
     "allow": ["Bash(cf *)"],
     "ask": ["Bash(cf-write *)"]
