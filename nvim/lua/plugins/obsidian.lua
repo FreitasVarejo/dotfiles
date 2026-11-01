@@ -13,7 +13,7 @@
 -- The vault contract (~/ObsidianVault/AGENTS.md) closes the vault root and
 -- reserves `tasks/`, `decisoes/` and `daily/`, but the plugin's default
 -- (`new_notes_location = "current_dir"`) drops a new note next to the buffer
--- you are in, which from a task lands it inside `tasks/`. `new_note` below
+-- you are in, which from a task lands it inside `tasks/`. `note_folder` below
 -- puts it at the project root instead, or in `inbox/` when the buffer is in no
 -- project. The daily-note keys are gone for the
 -- same reason: `daily/` holds generated snapshots, and with no
@@ -45,17 +45,48 @@ local function random_id()
   return table.concat(id)
 end
 
--- A bare title goes to the root of the project the current buffer belongs to,
--- or stays where the plugin would put it inside `study/` or `hosts/`; typing a
--- path ("study/foo") is taken as is. Anywhere else goes to `inbox/`, the free
--- area for a note with no project yet: the vault root is closed. An empty title
--- is a random name, for `<leader>or` to rename once the note has a subject.
-local function new_note()
+-- Where a new note with a bare name goes: the root of the project the current
+-- buffer belongs to, or where the plugin would put it (next to the buffer)
+-- inside `study/` or `hosts/`. Anywhere else, the dashboard included, is
+-- `inbox/`, the free area for a note with no project yet: the vault root is
+-- closed.
+local function note_folder()
   local name = vim.api.nvim_buf_get_name(0)
   local rel = name ~= "" and vim.fs.relpath(vault, name) or nil
   local project = rel and rel:match("^projects/[^/]+/")
-  local free_area = rel and (rel:match("^study/") or rel:match("^hosts/"))
+  if project then
+    return project
+  end
+  if rel and (rel:match("^study/") or rel:match("^hosts/")) then
+    return ""
+  end
+  return "inbox/"
+end
 
+-- `require` is also what loads the plugin when the call comes from outside a
+-- markdown buffer (the dashboard).
+local function create_note(id)
+  local ok, actions = pcall(require, "obsidian.actions")
+  if not ok then
+    return vim.notify("obsidian.nvim is not loaded", vim.log.levels.WARN)
+  end
+  actions.new(id, function(note)
+    note:open({ sync = true })
+  end)
+end
+
+-- No prompt: a random name in `note_folder()`, for `<leader>or` to rename once
+-- the note has a subject.
+local function new_note()
+  create_note(note_folder() .. random_id())
+end
+
+-- The prompt: a bare title goes to `note_folder()`, a path ("study/foo") is
+-- taken as is, and an empty title is a random name. It stays next to the direct
+-- one because `<leader>or` renames in the same folder (the LSP handler builds
+-- `dirname(old_path)/new_name.md`), so a folder is only chosen at creation.
+local function new_note_prompt()
+  local folder = note_folder()
   vim.ui.input({ prompt = "New note (title or path from the vault root; empty for a random name): " }, function(id)
     if not id then
       return
@@ -65,19 +96,9 @@ local function new_note()
       id = random_id()
     end
     if not id:find("/", 1, true) then
-      if project then
-        id = project .. id
-      elseif not free_area then
-        id = "inbox/" .. id
-      end
+      id = folder .. id
     end
-    local ok, actions = pcall(require, "obsidian.actions")
-    if not ok then
-      return vim.notify("obsidian.nvim is not loaded", vim.log.levels.WARN)
-    end
-    actions.new(id, function(note)
-      note:open({ sync = true })
-    end)
+    create_note(id)
   end)
 end
 
@@ -148,6 +169,7 @@ return {
       { "<leader>oo", "<cmd>Obsidian quick_switch<cr>", desc = "Quick switch note" },
       { "<leader>os", "<cmd>Obsidian search<cr>", desc = "Search notes" },
       { "<leader>on", new_note, desc = "New note" },
+      { "<leader>oN", new_note_prompt, desc = "New note (title or path)" },
       { "<leader>oi", insert_link, desc = "Insert link from this note's folder" },
       { "<leader>oT", "<cmd>Obsidian template<cr>", desc = "Insert template" },
       { "<leader>ol", "<cmd>Obsidian links<cr>", desc = "Links in note" },
@@ -177,6 +199,13 @@ return {
   -- matches the whole relative path, so a folder name narrows the list. It
   -- lives on snacks, not on obsidian.nvim, so it works from any buffer
   -- without loading the plugin.
+  --
+  -- The dashboard's `n` creates a note like `<leader>on` instead of an empty
+  -- buffer (`<leader>fn` still does that). lazy.nvim replaces a list when it
+  -- merges `opts`, so a `keys = {...}` table would wipe LazyVim's items and the
+  -- `p` the snacks_picker extra inserts; the item is swapped in place, found by
+  -- its key so the order the specs run in does not matter (freitask.lua puts
+  -- its `K` after this one the same way).
   {
     "folke/snacks.nvim",
     keys = {
@@ -188,6 +217,14 @@ return {
         desc = "Find vault files (fd)",
       },
     },
+    opts = function(_, opts)
+      local items = vim.tbl_get(opts, "dashboard", "preset", "keys") or {}
+      for i, item in ipairs(items) do
+        if item.key == "n" then
+          items[i] = { icon = "󰠮 ", key = "n", desc = "New Note", action = new_note }
+        end
+      end
+    end,
   },
 
   -- Name the <leader>o group in which-key. The function form mutates the
