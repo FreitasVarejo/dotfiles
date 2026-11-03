@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Status line do Claude Code: modelo, contexto em uso e limites da assinatura.
+#
+# O Claude Code passa o JSON da sessão no stdin a cada atualização e mostra a
+# primeira linha do stdout no rodapé. O formato desse JSON é o que o próprio
+# Claude Code documenta (peça `/statusline` numa sessão para vê-lo). Registrado
+# em agents/settings/claude.json.
+#
+#   Opus 5.5 · ctx 123k/1M 12% · out 2.1k · 5h 23% · 7d 41%
+#
+# ctx: tokens de entrada no contexto agora (cache incluído) / janela do modelo.
+# out: tokens de saída da última resposta. 5h/7d: só para quem assina o claude.ai.
+# Sem jq, imprime só um aviso: a linha nunca derruba a sessão.
+
+if ! command -v jq &>/dev/null; then
+  echo "statusline: falta jq"
+  exit 0
+fi
+
+jq -r '
+  def k: if . == null then "?"
+         elif . >= 1000000 then "\(. / 100000 | floor / 10)M"
+         elif . >= 1000 then "\(. / 100 | floor / 10)k"
+         else "\(.)" end;
+  def pct: "\(. | round)%";
+  # verde abaixo de 50%, amarelo até 80%, vermelho acima
+  def cor: if . == null then "" elif . >= 80 then "\u001b[31m"
+           elif . >= 50 then "\u001b[33m" else "\u001b[32m" end;
+  def reset: "\u001b[0m";
+
+  .context_window as $c
+  | .rate_limits as $r
+  | [ (.model.display_name // .model.id // "?"),
+      ( if $c.used_percentage == null
+        then "ctx -/\($c.context_window_size | k)"
+        else "ctx \($c.used_percentage | cor)\($c.total_input_tokens | k)/\($c.context_window_size | k) \($c.used_percentage | pct)\(reset)"
+        end ),
+      ( if ($c.current_usage // null) == null then empty
+        else "out \($c.total_output_tokens | k)" end ),
+      ( $r.five_hour.used_percentage // empty | "5h \(cor)\(pct)\(reset)" ),
+      ( $r.seven_day.used_percentage // empty | "7d \(cor)\(pct)\(reset)" )
+    ]
+  | join(" · ")
+' 2>/dev/null || echo "statusline: JSON inesperado"

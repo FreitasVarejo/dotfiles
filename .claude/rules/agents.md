@@ -26,6 +26,8 @@ Merges only add or update what the repo declares; whatever the machine added sta
   fact: the classifier reads it only from user scope, so it reaches every repo.
   `disableClaudeAiConnectors` stays on: an MCP reaches Claude Code only through `mcp/`,
   never through the claude.ai account, so nothing touches the vault around the travas.
+- `statusline/claude-statusline`: the command `settings/claude.json` sets as `statusLine`.
+  It reads the JSON Claude Code pipes on stdin; never let it exit non-zero or hang.
 - `instructions/user.md` → `CLAUDE.md`, and `instructions/machines/<hostname>.md` →
   `rules/maquina.md`, both under `~/.claude/`, one symlink per file (ADR 0026). A line
   goes in `user.md` only when it holds in two repos and names no project noun.
