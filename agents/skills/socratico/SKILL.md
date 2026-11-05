@@ -1,9 +1,8 @@
 ---
 name: socratico
-description: "Sessão socrática sobre um capítulo de um livro do `study/` do vault. O Claude é tutor, trabalha com casos fictícios, uma pergunta por vez, cobra as definições dos termos-chave, intercala termos de outros capítulos pelo placar do livro e corrige contra o livro. No \"fechar\", propõe cards no formato do repeater a partir dos erros e hesitações do dono, mais o placar atualizado, e grava só depois da aprovação. Argumentos: a pasta do livro e o número do capítulo."
-disable-model-invocation: true
+description: "Sessão socrática sobre um capítulo de um livro do `study/` do vault: o Claude é tutor, monta casos fictícios, faz uma pergunta por vez, cobra as definições dos termos-chave, intercala termos de outros capítulos pelo placar do livro e corrige contra o livro. No \"fechar\", propõe cards do repeater a partir dos erros e hesitações do dono, mais o placar atualizado, e grava só depois da aprovação. Use quando o dono quiser estudar, revisar ou ser testado num capítulo de um livro de `study/` (\"socrático do cap. 6\", \"me testa no capítulo 4\"). Argumentos: a pasta do livro e o número do capítulo."
 metadata:
-  surfaces: "code"
+  surfaces: "code,web"
 ---
 
 # Sessão socrática de um capítulo
@@ -15,12 +14,17 @@ a pergunta e corrige.
 A sessão tem duas fases: **abrir** e **fechar**. Entre as duas, nada é gravado
 no disco.
 
+A skill roda no Claude Code e no claude.ai. No Claude Code, leia e grave os
+arquivos de `~/ObsidianVault/` direto. No claude.ai, tudo passa pelo conector
+do vault, com os mesmos caminhos relativos à raiz dele; o que muda no fechar
+está em 3.3 e 3.4.
+
 ## Argumentos
 
 `<pasta-do-livro> <capítulo>`, por exemplo `study/<livro> 4`. A pasta é
-relativa a `~/ObsidianVault/`. Se faltar a pasta e o diretório atual estiver
-dentro de `~/ObsidianVault/study/<livro>/`, use essa. Se faltar o capítulo,
-pergunte. Não chute nenhum dos dois.
+relativa a `~/ObsidianVault/`. Se faltar a pasta e, no Claude Code, o
+diretório atual estiver dentro de `~/ObsidianVault/study/<livro>/`, use essa.
+Se faltar o capítulo, pergunte. Não chute nenhum dos dois.
 
 ## 1. Abrir
 
@@ -37,20 +41,18 @@ conta própria.
 
 ### 1.2 Leia o capítulo na fonte
 
-A fonte é a que o adaptador aponta. Para `.epub` (é um zip de HTML):
+A fonte é a pasta de Markdown que o adaptador aponta: um arquivo por
+capítulo, com o mesmo nome da nota do dono (`<NN>-<slug>.md`) e o título do
+capítulo no `title` do frontmatter. O `00-index.md` dela lista os capítulos.
 
-```bash
-unzip -l "<livro>.epub" | grep -iE 'x?html'      # achar o arquivo do capítulo
-unzip -p "<livro>.epub" <caminho/do/capitulo.html> | python3 -c 'import sys,re,html
-s=sys.stdin.read()
-s=re.sub(r"<h([1-6])[^>]*>",lambda m:"\n"+"#"*int(m.group(1))+" ",s)
-s=re.sub(r"</(p|h[1-6]|li|div)>","\n",s)
-s=html.unescape(re.sub(r"<[^>]+>","",s))
-print(re.sub(r"\n{3,}","\n\n",s))'
-```
+Se o adaptador aponta um `.epub` ou um `.pdf`, o livro ainda não foi
+convertido e não tem sessão: diga isso ao dono e pare. A conversão se faz no
+Claude Code (`livro-para-md --help`).
 
-O nome do arquivo nem sempre bate com o número do capítulo. Confirme pelo
-primeiro heading. Para PDF, `pdftotext -layout -f INI -l FIM`.
+As figuras chegam pelos callouts `> [!figure]- Descrição da Figura N-M`, abaixo
+de cada imagem e legenda: é deles que você tira o que a figura mostra. O que
+você cobra e corrige sai do texto e desses callouts. Figura sem callout fica
+fora do roteiro.
 
 Leia o capítulo **inteiro**. Anote para você, sem mostrar ao dono:
 
@@ -86,9 +88,9 @@ novo. Cada um entra dentro de um caso do capítulo atual, onde o sistema
 fictício o exija de verdade. O termo que não cabe em caso nenhum fica para
 outra sessão. Sem placar ou sem candidato, a sessão fica só no capítulo.
 
-De cada termo intercalado, leia no livro só a § que o placar aponta: o texto
-do 1.2, do heading da § até o próximo heading do mesmo nível. É contra ela que
-você corrige esse termo.
+De cada termo intercalado, leia na fonte, no arquivo do capítulo dele, só a §
+que o placar aponta: do heading da § até o próximo heading do mesmo nível. É
+contra ela que você corrige esse termo.
 
 Restrições dos casos:
 
@@ -137,9 +139,9 @@ Só hesitação e erro viram card. Acerto não vira card, mas entra no placar,
 como todo termo cobrado, intercalado ou não.
 
 **Não escreva nada no vault durante a sessão.** Nem nota, nem rascunho de card.
-Queda de conexão e fechamento do Claude Code têm outra cobertura (tmux e
-`claude --resume`). Sessão largada sem "fechar" não deixa nada, e isso é de
-propósito.
+Queda de conexão tem outra cobertura (no Claude Code, tmux e
+`claude --resume`; no claude.ai, a conversa fica salva). Sessão largada sem
+"fechar" não deixa nada, e isso é de propósito.
 
 Se o dono pedir para sair do caso e tirar uma dúvida de conteúdo, responda
 direto, citando a seção, e volte ao caso.
@@ -156,7 +158,7 @@ sobre as palavras exatas dele. Diga isso antes de propor qualquer card.
 ### 3.2 Proponha os cards e o placar
 
 Leia o formato do repeater antes de escrever um card só:
-`~/.claude/skills/socratico/references/repeater-format.md`. Siga a regra de
+`references/repeater-format.md`, nesta skill. Siga a regra de
 contagem e as armadilhas de lá. Não há orçamento: o número de cards é o número
 de erros e hesitações.
 
@@ -187,18 +189,19 @@ contam). **Pare e espere.** O dono aprova, corta ou edita os cards e o placar.
 
 Cada card vai para o fim da nota do capítulo do termo, em
 `## Repeater Exercises`, que é sempre a última seção do arquivo. É a nota do
-capítulo da sessão ou, no termo intercalado, a do capítulo dele.
+capítulo da sessão ou, no termo intercalado, a do capítulo dele. A nota mora
+na raiz da pasta do livro; a pasta da fonte é só leitura, e o arquivo de mesmo
+nome lá é o livro.
 
 - **A nota existe e tem a seção**: acrescente os cards ao fim, depois do
   último `---`. Nunca reescreva um card que já está lá: o repeater guarda o
   histórico pelo hash do texto.
 - **A nota existe sem a seção**: acrescente `## Repeater Exercises` ao fim do
   arquivo, com os cards.
-- **A nota não existe**: crie `<NN>-<slug>.md` com só o frontmatter, o H1 e a
-  seção. O slug é o título do capítulo no livro, em minúsculas, com hífens e
-  sem pontuação. No termo intercalado, o título sai do primeiro heading do
-  capítulo dele, que o 1.4 não leu. Copie a forma do frontmatter e do H1 de
-  outra nota de capítulo da pasta, se houver. Se não houver:
+- **A nota não existe**: crie-a com o nome do arquivo do capítulo na fonte, e
+  com só o frontmatter, o H1 e a seção. O título é o `title` do frontmatter
+  da fonte. Copie a forma do frontmatter e do H1 de outra nota de capítulo da
+  pasta, se houver. Se não houver:
 
   ```markdown
   ---
@@ -214,20 +217,29 @@ capítulo da sessão ou, no termo intercalado, a do capítulo dele.
 
 Em nenhum caso escreva acima de `## Repeater Exercises`. O que está acima é do
 dono. Agrupe os cards novos sob um `### <assunto>` curto, por caso ou por
-tema.
+tema. No claude.ai, se o conector só grava o arquivo inteiro, grave o texto da
+nota tal como você acabou de lê-la, com os cards acrescentados ao fim.
 
 Por último, grave no `placar.md` o placar que o dono aprovou, pelas regras de
 [Placar](#placar). Sem placar na pasta, ele nasce agora.
 
 ### 3.4 Confira
 
+No Claude Code, sobre os arquivos do vault:
+
 ```bash
-python3 ~/.claude/skills/socratico/scripts/count_cards.py <notas que receberam card> <placar>
+python3 <pasta desta skill>/scripts/count_cards.py <notas que receberam card> <placar>
 repeater check --plain <notas que receberam card>
 ```
 
-Em cada nota, os dois têm de bater com a contagem que você mostrou mais os
-cards que já existiam. O placar tem de dar 0 cards e nenhum aviso. Se algo não
+No claude.ai, o `repeater` não existe e o sandbox não vê o vault. Releia pelo
+conector cada nota que recebeu card e o placar, grave o texto lido em arquivos
+de mesmo nome no sandbox e rode neles o `scripts/count_cards.py` desta skill.
+Na releitura, confira também que o que está acima de `## Repeater Exercises`
+ficou igual ao que você leu antes de gravar.
+
+Em cada nota, cada contagem tem de bater com a que você mostrou mais os cards
+que já existiam. O placar tem de dar 0 cards e nenhum aviso. Se algo não
 bater, alguma armadilha passou: ache e corrija antes de encerrar. O script
 também aponta armadilha nas anotações do dono (`::`, linha começando com
 `Q:`). Nessas, só avise.

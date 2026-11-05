@@ -192,6 +192,14 @@ return {
       end,
       -- render-markdown.nvim owns in-buffer rendering.
       ui = { enable = false },
+      -- `study/<book>/book/` comes from `livro-para-md` with no `id`: the chapter
+      -- note beside it has the same file name, so an `id` written on save would
+      -- make the two the same note. `fname` is vault-relative.
+      frontmatter = {
+        enabled = function(fname)
+          return not (fname or ""):find("^study/[^/]+/book/")
+        end,
+      },
     },
   },
 

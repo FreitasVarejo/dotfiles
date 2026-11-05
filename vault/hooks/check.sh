@@ -214,6 +214,16 @@ else
   log_optional "bookorbit-organize não encontrado no PATH (rode ~/dotfiles/setup.sh)."
 fi
 
+# 5c. livro-para-md ------------------------------------------------------------
+# Também manual (converte um livro de study/ uma vez): sem pandoc, só a
+# conversão fica de fora, então é aviso.
+if command -v livro-para-md &>/dev/null; then
+  log_success "livro-para-md encontrado: $(command -v livro-para-md)"
+  check_cmd pandoc "$PM_INSTALL pandoc" optional
+else
+  log_optional "livro-para-md não encontrado no PATH (rode ~/dotfiles/setup.sh)."
+fi
+
 # 7. Vaults extras -----------------------------------------------------------
 for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
   [[ -f "$env_file" ]] || continue

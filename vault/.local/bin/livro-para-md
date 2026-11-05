@@ -1,0 +1,491 @@
+#!/usr/bin/env python3
+"""livro-para-md — converte um livro .epub em Markdown, um arquivo por capítulo.
+
+O claude.ai lê o vault pelo conector, que só entrega texto de `.md`. Este
+script percorre o *spine* do .opf e passa cada capítulo e apêndice pelo pandoc
+(html -> AST em JSON -> gfm), corrigindo no AST o que o HTMLBook da O'Reilly
+faz diferente:
+
+  - as seções também usam <h1>: o título do capítulo, que se acha pelo
+    <span class="label">, fica `#`, e as seções descem um nível;
+  - a figura vira a imagem em img/ e a legenda em texto, `**Figura N-M.** ...`
+    (tabela, exemplo e equação do mesmo jeito);
+  - sidebar, tip, note e warning viram callout; âncora de índice remissivo,
+    span e link interno somem, e fica o texto.
+
+Grava em DIR: NN-slug.md por capítulo, A-slug.md por apêndice, img/ e
+00-index.md com os capítulos agrupados por Part. Capa, folha de rosto,
+dedicatória, prefácio, páginas de Part, sumário, índice remissivo e colophon
+ficam de fora. O frontmatter não tem `id`: a nota do dono na pasta do livro tem
+o mesmo nome de arquivo, e o obsidian.nvim identifica a nota pelo `id`.
+
+Capítulo que já tem callout [!figure] não é sobrescrito: a descrição das
+figuras se faz depois, com o prompt de --prompt-figuras. Arquivo igual ao que
+já está no disco não é regravado (o vault sincroniza com o celular).
+
+Uso:
+  livro-para-md LIVRO.epub [-o DIR]    DIR padrão: book/ ao lado do .epub
+  livro-para-md --prompt-figuras
+
+Saída: 0 = tudo gravado; 1 = algum capítulo recusado; 2 = erro de uso, de
+leitura do .epub ou do pandoc.
+"""
+import argparse
+import json
+import posixpath
+import re
+import shutil
+import subprocess
+import sys
+import unicodedata
+import zipfile
+from pathlib import Path
+from urllib.parse import unquote
+from xml.etree import ElementTree
+
+NS = {
+    "c": "urn:oasis:names:tc:opendocument:xmlns:container",
+    "opf": "http://www.idpf.org/2007/opf",
+    "dc": "http://purl.org/dc/elements/1.1/",
+}
+# O tipo HTMLBook de um documento do spine é o primeiro data-type depois do
+# <body data-type="book">.
+DATA_TYPE_RE = re.compile(r'\bdata-type="(?!book")([a-z-]+)"')
+CALLOUTS = {"tip": "tip", "note": "note", "warning": "warning", "caution": "warning", "important": "important"}
+# Rótulo do livro -> rótulo da legenda em texto.
+ROTULOS = {"Figure": "Figura", "Table": "Tabela", "Example": "Exemplo", "Equation": "Equação"}
+MARCA_FIGURA = "[!figure]"
+VAZIO = ["", [], []]
+
+PROMPT_FIGURAS = """\
+Para cada `book/NN-*.md`, encontre cada imagem. Leia a imagem, a legenda e o
+parágrafo anterior e o seguinte. Logo abaixo da imagem e da legenda
+(`**Figura N-M.**`), insira um callout
+`> [!figure]- Descrição da Figura N-M` contendo: (1) tipo de diagrama;
+(2) componentes/caixas com rótulos exatos; (3) conexões/setas com direção e
+rótulo; (4) agrupamentos/camadas/fronteiras; (5) a ideia que a figura
+demonstra, em 1–2 frases, sem inventar nada que não esteja na imagem. Em
+português, mantendo termos técnicos do livro em inglês. Se a imagem for
+decorativa ou ilegível, escreva isso. Processe um capítulo por vez e me mostre
+um resumo ao final.
+
+Se a figura for o *rating* de um estilo (a tabela de estrelas), a descrição é
+uma tabela `característica | grupo | nota`, com a nota no formato
+`★★★☆☆ (3/5)`, mais as linhas de custo (*Overall cost*), *Partitioning type* e
+*Number of quanta*.
+
+Não desenhe Mermaid nesta passada. Se a ideia da figura for topologia ou fluxo
+(caixas e setas com direção), liste-a como candidata a Mermaid no resumo do
+capítulo.
+"""
+
+
+def falhar(msg):
+    print(f"livro-para-md: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def no(t, c=None):
+    return {"t": t} if c is None else {"t": t, "c": c}
+
+
+def achar(x, pred):
+    """Primeiro nó do AST, em profundidade, que satisfaz `pred`."""
+    if isinstance(x, dict) and "t" in x:
+        if pred(x):
+            return x
+        return achar(x.get("c"), pred)
+    if isinstance(x, list):
+        for y in x:
+            r = achar(y, pred)
+            if r:
+                return r
+    return None
+
+
+def data_type(attr):
+    return dict(attr[2]).get("data-type")
+
+
+def texto(x):
+    """Texto puro de um pedaço do AST (nota de rodapé e fórmula ficam de fora)."""
+    if isinstance(x, list):
+        return "".join(texto(y) for y in x)
+    if isinstance(x, dict):
+        t = x.get("t")
+        if t == "Str":
+            return x["c"]
+        if t in ("Space", "SoftBreak", "LineBreak"):
+            return " "
+        if t == "Code":
+            return x["c"][1]
+        if t in ("Note", "Math"):
+            return ""
+        return texto(x.get("c", []))
+    return ""
+
+
+def inlines(s):
+    out = []
+    for i, palavra in enumerate(s.split()):
+        if i:
+            out.append(no("Space"))
+        out.append(no("Str", palavra))
+    return out
+
+
+def sem_quebra(ins):
+    return [no("Space") if x["t"] in ("SoftBreak", "LineBreak") else x for x in ins]
+
+
+def aparar(ins):
+    while ins and ins[0]["t"] == "Space":
+        ins = ins[1:]
+    while ins and ins[-1]["t"] == "Space":
+        ins = ins[:-1]
+    return ins
+
+
+def separar_rotulo(ins):
+    """(texto do <span class="label">, o resto) de um título ou legenda."""
+    for i, x in enumerate(ins):
+        if x["t"] == "Span" and "label" in x["c"][0][1]:
+            return " ".join(texto(x).split()), aparar(ins[:i] + ins[i + 1 :])
+    return None, ins
+
+
+def legenda(rotulo, resto):
+    """`**Figura N-M.** resto`, a partir do rótulo do livro (`Figure N-M.`)."""
+    palavra, _, num = rotulo.partition(" ")
+    forte = [no("Strong", inlines(f"{ROTULOS.get(palavra, palavra)} {num}"))]
+    return no("Para", forte + ([no("Space")] + resto if resto else []))
+
+
+def slug(titulo):
+    s = unicodedata.normalize("NFKD", titulo).encode("ascii", "ignore").decode().lower()
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    return re.sub(r"[\s-]+", "-", s).strip("-")
+
+
+class Capitulo:
+    """Reescreve o AST de um documento do spine e guarda o que o índice usa."""
+
+    def __init__(self, caminho):
+        self.caminho = caminho  # dentro do zip, para resolver o src das imagens
+        self.titulo = None  # (rótulo, título) do primeiro <h1> com label
+        self.imagens = {}  # nome em img/ -> caminho dentro do zip
+        self.notas = {}  # id da chamada da nota -> inlines do texto da nota
+        self.avisos = []
+
+    def converter(self, blocos):
+        div = achar(blocos, lambda x: x["t"] == "Div" and data_type(x["c"][0]) == "footnotes")
+        for p in div["c"][1] if div else []:
+            volta = achar(p, lambda x: x["t"] == "Link")
+            if p["t"] == "Para" and volta:
+                # O texto da nota começa pelo <sup> com o link de volta à chamada.
+                self.notas[volta["c"][2][0].partition("#")[2]] = aparar(p["c"][1:])
+        return self.blocos(blocos)
+
+    def blocos(self, bs):
+        out = []
+        for b in bs:
+            out.extend(self.bloco(b))
+        return out
+
+    def bloco(self, b):
+        t, c = b["t"], b.get("c")
+        if t == "Figure":
+            return self.figura(b)
+        if t == "Div":
+            return self.div(*c)
+        if t == "Header":
+            nivel, _, ins = c
+            rotulo, resto = separar_rotulo(ins)
+            ins = aparar(sem_quebra(self.inl(ins)))
+            if nivel == 1 and rotulo and self.titulo is None:
+                self.titulo = (rotulo, " ".join(texto(resto).split()))
+                return [no("Header", [1, VAZIO, ins])]
+            return [no("Header", [min(nivel + 1, 6), VAZIO, ins])]
+        if t == "Table":
+            return self.tabela(*c)
+        if t == "CodeBlock":
+            attr, codigo = c
+            # Sem linguagem, o gfm escreve bloco indentado em vez de cercado.
+            lingua = dict(attr[2]).get("code-language") or "text"
+            return [no(t, [["", [lingua], []], codigo])]
+        if t in ("Para", "Plain"):
+            ins = aparar(self.inl(c))
+            return [no(t, ins)] if ins else []
+        if t == "BlockQuote":
+            return [no(t, self.blocos(c))]
+        if t == "BulletList":
+            return [no(t, [self.blocos(item) for item in c])]
+        if t == "OrderedList":
+            return [no(t, [c[0], [self.blocos(item) for item in c[1]]])]
+        if t == "DefinitionList":
+            # O gfm não tem lista de definição: vira item com o termo em negrito.
+            return [
+                no(
+                    "BulletList",
+                    [
+                        [no("Plain", [no("Strong", self.inl(termo))])] + [x for d in defs for x in self.blocos(d)]
+                        for termo, defs in c
+                    ],
+                )
+            ]
+        if t == "LineBlock":
+            return [no(t, [self.inl(linha) for linha in c])]
+        return [b]
+
+    def div(self, attr, filhos):
+        tipo = data_type(attr)
+        if tipo == "footnotes":
+            return []  # o texto das notas já entrou na chamada (converter)
+        if tipo in CALLOUTS or "sidebar" in attr[1]:
+            return [self.callout(CALLOUTS.get(tipo, "note"), filhos)]
+        if tipo in ("example", "equation") and filhos and filhos[0]["t"] == "Header":
+            rotulo, resto = separar_rotulo(filhos[0]["c"][2])
+            if rotulo:
+                return [legenda(rotulo, self.inl(resto))] + self.blocos(filhos[1:])
+        return self.blocos(filhos)
+
+    def callout(self, tipo, filhos):
+        titulo = []
+        if filhos and filhos[0]["t"] == "Header":
+            titulo = aparar(sem_quebra(self.inl(filhos[0]["c"][2])))
+            filhos = filhos[1:]
+            if texto(titulo).strip().lower() == tipo:
+                titulo = []
+        primeira = [no("RawInline", ["markdown", f"[!{tipo}]"])] + ([no("Space")] + titulo if titulo else [])
+        return no("BlockQuote", [no("Para", primeira)] + self.blocos(filhos))
+
+    def figura(self, b):
+        img = achar(b, lambda x: x["t"] == "Image")
+        cab = achar(b, lambda x: x["t"] == "Header")
+        rotulo, resto = separar_rotulo(cab["c"][2]) if cab else (None, [])
+        num = re.search(r"\d+-\d+", rotulo or "")
+        out = []
+        if img:
+            out.append(no("Para", [self.imagem(img, inlines(f"Figura {num.group()}") if num else [])]))
+        if rotulo:
+            out.append(legenda(rotulo, self.inl(resto)))
+        return out
+
+    def imagem(self, img, alt):
+        src = unquote(img["c"][2][0])
+        nome = posixpath.basename(src)
+        if not re.fullmatch(r"[\w.-]+", nome):
+            self.avisos.append(f"imagem com nome estranho, ignorada: {src}")
+            return no("Str", "")
+        self.imagens[nome] = posixpath.normpath(posixpath.join(posixpath.dirname(self.caminho), src))
+        return no("Image", [VAZIO, alt, [f"img/{nome}", ""]])
+
+    def tabela(self, attr, legenda_tab, colunas, cabeca, corpos, pe):
+        # Célula com um só Plain é o que o gfm escreve como tabela de pipe.
+        def linhas(rows):
+            return [
+                [ra, [[ca, al, rs, cs, [no("Plain", x["c"]) if x["t"] == "Para" else x for x in self.blocos(bl)]]
+                      for ca, al, rs, cs, bl in cells]]
+                for ra, cells in rows
+            ]
+
+        bloco_leg = achar(legenda_tab[1], lambda x: x["t"] in ("Plain", "Para"))
+        rotulo, resto = separar_rotulo(bloco_leg["c"]) if bloco_leg else (None, [])
+        tabela = no(
+            "Table",
+            [
+                VAZIO,
+                [None, []],
+                colunas,
+                [cabeca[0], linhas(cabeca[1])],
+                [[ba, rhc, linhas(hr), linhas(br)] for ba, rhc, hr, br in corpos],
+                [pe[0], linhas(pe[1])],
+            ],
+        )
+        return ([legenda(rotulo, self.inl(resto))] if rotulo else []) + [tabela]
+
+    def inl(self, ins):
+        out = []
+        for x in ins:
+            out.extend(self.inline(x))
+        return out
+
+    def inline(self, x):
+        t, c = x["t"], x.get("c")
+        if t == "Span":
+            return [] if data_type(c[0]) == "indexterm" else self.inl(c[1])
+        if t == "Link":
+            attr, filhos, (alvo, _) = c
+            if data_type(attr) == "noteref":
+                nota = self.notas.get(attr[0])
+                if nota is None:
+                    self.avisos.append(f"nota de rodapé sem texto: {attr[0]}")
+                    return []
+                return [no("Note", [no("Para", self.inl(nota))])]
+            filhos = self.inl(filhos)
+            if re.match(r"(https?|mailto):", alvo) and filhos:
+                return [no("Link", [VAZIO, filhos, [alvo, ""]])]
+            return filhos  # link interno (xref) e âncora vazia
+        if t == "Superscript":
+            filhos = self.inl(c)
+            # <sup> em volta da chamada de nota: a nota do gfm já é sobrescrita.
+            if len(filhos) == 1 and filhos[0]["t"] == "Note":
+                return filhos
+            return [no(t, filhos)] if filhos else []
+        if t == "Image":
+            return [self.imagem(x, self.inl(c[1]))]
+        if t in ("Emph", "Strong", "Underline", "Strikeout", "Subscript", "SmallCaps"):
+            filhos = self.inl(c)
+            return [no(t, filhos)] if aparar(filhos) else filhos
+        if t == "Quoted":
+            return [no(t, [c[0], self.inl(c[1])])]
+        if t == "Cite":
+            return self.inl(c[1])
+        return [x]
+
+
+def pandoc(args, entrada):
+    r = subprocess.run(["pandoc", *args], input=entrada, capture_output=True, check=False)
+    if r.returncode != 0:
+        falhar(f"pandoc {' '.join(args)}: {r.stderr.decode(errors='replace').strip()}")
+    return r.stdout.decode()
+
+
+def ler_spine(z):
+    """Título do livro e o spine: [(caminho no zip, tipo HTMLBook, html)]."""
+    rootfile = ElementTree.fromstring(z.read("META-INF/container.xml")).find(".//c:rootfile", NS)
+    opf_path = rootfile.get("full-path")
+    opf = ElementTree.fromstring(z.read(opf_path))
+    base = posixpath.dirname(opf_path)
+    manifest = {
+        item.get("id"): posixpath.normpath(posixpath.join(base, unquote(item.get("href"))))
+        for item in opf.find("opf:manifest", NS)
+    }
+    spine = []
+    for ref in opf.find("opf:spine", NS):
+        caminho = manifest[ref.get("idref")]
+        html = z.read(caminho)
+        m = DATA_TYPE_RE.search(html.decode("utf-8", errors="replace"))
+        spine.append((caminho, m.group(1) if m else None, html))
+    return " ".join(opf.findtext(".//dc:title", "", NS).split()), spine
+
+
+def gravar(destino, conteudo):
+    """Grava só se mudou. Devolve True se gravou."""
+    if destino.exists() and destino.read_bytes() == conteudo:
+        return False
+    destino.write_bytes(conteudo)
+    return True
+
+
+def frontmatter(livro, numero, titulo):
+    campos = [
+        ("book", json.dumps(livro, ensure_ascii=False)),
+        ("chapter", str(numero) if isinstance(numero, int) else json.dumps(numero)),
+        ("title", json.dumps(titulo, ensure_ascii=False)),
+        ("source", "epub"),
+    ]
+    return "---\n" + "".join(f"{k}: {v}\n" for k, v in campos if v) + "---\n\n"
+
+
+def indice(livro, grupos):
+    linhas = ["---", f"book: {json.dumps(livro, ensure_ascii=False)}", "source: epub", "---", "", f"# {livro}", ""]
+    for grupo, caps in grupos:
+        if grupo:
+            linhas += [f"## {grupo}", ""]
+        linhas += [f"- [{numero}. {titulo}]({nome})" for numero, titulo, nome in caps] + [""]
+    return "\n".join(linhas)
+
+
+def main():
+    p = argparse.ArgumentParser(
+        prog="livro-para-md", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    p.add_argument("epub", nargs="?", type=Path, help="o livro (.epub)")
+    p.add_argument("-o", "--saida", type=Path, help="pasta de destino (padrão: book/ ao lado do .epub)")
+    p.add_argument("--prompt-figuras", action="store_true", help="imprime o prompt da descrição das figuras")
+    a = p.parse_args()
+    if a.prompt_figuras:
+        print(PROMPT_FIGURAS, end="")
+        return 0
+    if a.epub is None:
+        p.error("falta o .epub")
+    if not a.epub.is_file():
+        falhar(f"não achei {a.epub}")
+    if shutil.which("pandoc") is None:
+        falhar("pandoc não encontrado no PATH")
+    saida = a.saida or a.epub.parent / "book"
+
+    try:
+        z = zipfile.ZipFile(a.epub)
+        livro, spine = ler_spine(z)
+    except (zipfile.BadZipFile, KeyError, AttributeError, ElementTree.ParseError) as e:
+        falhar(f"{a.epub} não parece um .epub legível: {e}")
+
+    (saida / "img").mkdir(parents=True, exist_ok=True)
+    grupos = []  # [(Part ou None, [(número, título, arquivo)])]
+    letras = iter("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    gravados, iguais, recusados, imagens = 0, 0, [], 0
+    origens = {}  # nome em img/ -> caminho dentro do zip, no livro todo
+    for caminho, tipo, html in spine:
+        if tipo not in ("chapter", "appendix", "part"):
+            continue
+        cap = Capitulo(caminho)
+        ast = json.loads(pandoc(["-f", "html", "-t", "json"], html))
+        ast["blocks"] = cap.converter(ast["blocks"])
+        for aviso in cap.avisos:
+            print(f"aviso: {caminho}: {aviso}", file=sys.stderr)
+        if cap.titulo is None:
+            falhar(f"{caminho}: sem <h1> com <span class=\"label\">, não sei o título")
+        rotulo, titulo = cap.titulo
+        if tipo == "part":
+            grupos.append((f"{rotulo} {titulo}", []))
+            continue
+        if tipo == "chapter":
+            m = re.search(r"\d+", rotulo)
+            if not m:
+                falhar(f"{caminho}: rótulo sem número: {rotulo!r}")
+            numero = int(m.group())
+            nome = f"{numero:02d}-{slug(titulo)}.md"
+            if not grupos:
+                grupos.append((None, []))  # capítulo antes da primeira Part
+        else:
+            m = re.search(r"\b([A-Z])\.", rotulo)
+            numero = m.group(1) if m else next(letras)
+            nome = f"{numero}-{slug(titulo)}.md"
+            if not grupos or grupos[-1][0] != "Appendix":
+                grupos.append(("Appendix", []))
+        grupos[-1][1].append((numero, titulo, nome))
+
+        destino = saida / nome
+        if destino.exists() and MARCA_FIGURA in destino.read_text(encoding="utf-8"):
+            recusados.append(nome)
+            continue
+        md = pandoc(["-f", "json", "-t", "gfm", "--wrap=none"], json.dumps(ast).encode())
+        if re.search(r"<(table|div|dl)\b", md):
+            print(f"aviso: {nome}: ficou HTML cru no Markdown", file=sys.stderr)
+        if gravar(destino, (frontmatter(livro, numero, titulo) + md).encode()):
+            gravados += 1
+        else:
+            iguais += 1
+        for img, origem in cap.imagens.items():
+            # img/ é uma pasta só: o mesmo nome vindo de duas pastas do .epub
+            # sobrescreveria uma figura com a outra.
+            if origens.setdefault(img, origem) != origem:
+                falhar(f"duas imagens com o nome {img}: {origens[img]} e {origem}")
+            try:
+                dados = z.read(origem)
+            except KeyError:
+                falhar(f"{caminho}: a imagem {origem} não está no .epub")
+            imagens += gravar(saida / "img" / img, dados)
+
+    gravar(saida / "00-index.md", indice(livro, grupos).encode())
+    print(f"{saida}: {gravados} capítulo(s) gravado(s), {iguais} igual(is), {imagens} imagem(ns) nova(s).")
+    if recusados:
+        print(f"Recusados (já têm {MARCA_FIGURA}): {', '.join(recusados)}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
