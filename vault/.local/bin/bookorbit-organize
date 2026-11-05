@@ -22,7 +22,7 @@ BOOKORBIT_DB_CONTAINER="${BOOKORBIT_DB_CONTAINER:-bookorbit-db}"
 GENRE_MAP='{"Filosofia":"Filosofia","Religião":"Religião","Literatura":"Literatura","Computação":"Computação","Artigos":"Artigos"}'
 
 # Por série: autor e gênero que valem quando o BookOrbit não tem coisa melhor.
-SERIES_OVERRIDES='{"Bleach":{"author":"Tite Kubo","genre":"Mangá"}}'
+SERIES_OVERRIDES='{"Bleach":{"author":"Tite Kubo","genre":"Mangá"},"Bleach (REMIX Edition)":{"author":"Tite Kubo","genre":"Mangá"}}'
 
 APPLY=false
 
