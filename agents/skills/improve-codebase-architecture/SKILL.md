@@ -30,6 +30,8 @@ This command is _informed_ by the project's domain model and built on a shared d
 
 Read the project's glossary and any ADRs in the area you're touching first, at the paths the repo's `docs/agents/domain.md` gives.
 
+Read the project's earlier reviews as well. The project is the one named in the arguments, or else the one `vault-vinculos repo .` links to this repo (ask when it links several). Its earlier reviews are the `tipo: registro` notes at the project's root whose `origem:` names this skill, and the tasks that cite each one, archived ones included, say what became of every candidate. Leave out a candidate whose task was archived `dropped` unless the code has since changed what its reason rests on. An earlier review's files and line numbers describe its `commit:`: measure again before you repeat a finding.
+
 Then spawn a sub-agent to walk the codebase. Don't follow rigid heuristics; explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
@@ -63,16 +65,25 @@ End the report with a **Top recommendation** section: which candidate you'd tack
 
 See [HTML-REPORT.md](HTML-REPORT.md) for the full HTML scaffold, diagram patterns, and styling guidance.
 
-Do NOT propose interfaces yet. After the file is written, ask the user: "Which of these would you like to explore?"
+**Record the review in the vault** once the HTML is written, without asking. Where notes and attachments go is the vault's rule (`~/ObsidianVault/AGENTS.md`); this skill adds the name and the content:
+
+- `projects/<project>/revisao-de-arquitetura-<YYYY-MM-DD>.md`, with `tipo: registro`, `data:`, `commit:` (the HEAD you reviewed), `origem:` (this skill and the scope) and `anexo:`. The body carries every candidate in markdown (files with line numbers, problem, solution, strength) and the top recommendation: a later chat reads this note, not the HTML.
+- `projects/<project>/anexos/revisao-de-arquitetura-<YYYY-MM-DD>/` holds the HTML, with the date in each file name, since attachments resolve by file name.
+
+The note is a photo of one commit and stays as written; what becomes of each candidate goes in its task (step 3). On a machine whose vault is another one (the guard in `~/dotfiles/AGENTS.md`, under `## Agent skills`), the review stays in the temp dir.
+
+Do NOT propose interfaces yet. After the note is written, ask the user: "Which of these would you like to explore?"
 
 ### 3. Grilling loop
 
-Once the user picks a candidate, call the Skill tool with "grilling" to walk the decision tree with them: constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
+Once the user picks a candidate, open its task before the grilling starts, one task per candidate picked: call the Skill tool with "freitask" in the review's project, with a body that cites the review note by wikilink, then move the task to Refinando (`freitask set <id> --status abstract`). The task carries the grilling across chats: write each decision into its body as it settles.
+
+Then call the Skill tool with "grilling" to walk the decision tree with them: constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
 
 Side effects happen inline as decisions crystallize; call the Skill tool with "domain-modeling" to keep the domain model current as you go:
 
 - **Naming a deepened module after a concept not in the glossary?** Add the term to the glossary.
 - **Sharpening a fuzzy term during the conversation?** Update the glossary right there.
-- **User rejects the candidate with a load-bearing reason?** Offer an ADR, framed as: _"Want me to record this as an ADR so future architecture reviews don't re-suggest it?"_ Only offer when the reason would actually be needed by a future explorer to avoid re-suggesting the same thing; skip ephemeral reasons ("not worth it right now") and self-evident ones.
+- **User rejects the candidate?** Write the reason into its task and archive it with `freitask archive <id> dropped`: that reason is what keeps the next review from re-suggesting it. Offer an ADR only when the reason also passes the three tests in the "domain-modeling" skill.
 - **Want to explore alternative interfaces for the deepened module?** Call the Skill tool with "codebase-design" and use its design-it-twice parallel sub-agent pattern.
-- **Design settled?** Record the work where the repo's `docs/agents/issue-tracker.md` says work lives.
+- **Design settled?** It is already in the task: move it to Refinada (`freitask set <id> --status tip`), and follow the repo's `docs/agents/issue-tracker.md` for whatever else the work needs.
