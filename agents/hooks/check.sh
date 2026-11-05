@@ -4,7 +4,8 @@
 # Code e Cursor CLI leem o mesmo ~/.claude/skills), referências entre skills,
 # espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
 # permissions/deny.json em cada agente presente, o settings/claude.json, as
-# travas de travas/ e as instruções de usuário de instructions/ no Claude Code.
+# travas de travas/, as instruções de usuário de instructions/ e os subagentes
+# de subagents/ no Claude Code.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -302,6 +303,30 @@ else
       echo "    -> Rodar: ./setup.sh"
     fi
   fi
+fi
+
+# 7. Subagentes ------------------------------------------------------------------
+# Cada subagents/<nome>.md vira ~/.claude/agents/<nome>.md. Mesma regra das
+# instruções: faltar é vermelho, arquivo real no lugar é aviso.
+echo ""
+log_info "--- Subagentes (agents/subagents/) ---"
+if ! command -v claude &>/dev/null; then
+  log_optional "Sem Claude Code: subagentes não verificados."
+else
+  mapfile -t SUBAGENTS < <(subagent_links)
+  for pair in "${SUBAGENTS[@]}"; do
+    IFS=$'\t' read -r src dest <<<"$pair"
+    if [[ -L "$dest" && "$(readlink -f "$dest")" == "$src" ]]; then
+      log_success "${dest/#$HOME/\~} -> ${src/#$HOME/\~}"
+    elif [[ -e "$dest" && ! -L "$dest" ]]; then
+      log_warn "${dest/#$HOME/\~} é arquivo real; ${src/#$HOME/\~} não chega ao agente"
+      echo "    -> Juntar o conteúdo ao arquivo do repo, apagar o real e rodar ./setup.sh"
+    else
+      log_missing "${dest/#$HOME/\~} não aponta para ${src/#$HOME/\~}"
+      echo "    -> Rodar: ./setup.sh"
+      fail_check
+    fi
+  done
 fi
 
 exit "$CHECK_FAILED"

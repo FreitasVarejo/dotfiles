@@ -3,6 +3,7 @@
 # Setup do pacote 'agents' (pacote só de hook: o setup.sh raiz não o stowa):
 #   - linka cada skill em cada diretório de skills dos agentes;
 #   - linka as instruções de usuário (instructions/) no Claude Code;
+#   - linka os subagentes (subagents/) no Claude Code;
 #   - registra os MCP servers de mcp/ no Claude Code e no Cursor;
 #   - mescla permissions/deny.json no deny do Claude Code e do Cursor;
 #   - mescla settings/claude.json e as travas de travas/ no settings.json do Claude Code.
@@ -90,19 +91,20 @@ link_skills() {
   log_success "Skills do pacote linkadas em: ${AGENT_SKILL_DIRS[*]/#$HOME/\~}"
 }
 
-# link_instruction <fonte> <destino> — um symlink por arquivo (ADR 0026). Destino
+# link_file <fonte> <destino> [dono] — um symlink por arquivo (ADR 0026). Destino
 # que já existe e não é link do repo (arquivo escrito à mão, link alheio) não se
-# toca: o aviso diz o que fazer.
-link_instruction() {
-  local want="$1" link="$2"
+# toca: o aviso diz o que fazer. [dono] é o predicado que reconhece um link do
+# repo; o padrão é o das instruções.
+link_file() {
+  local want="$1" link="$2" owns="${3:-points_into_instructions}"
   if [[ -L "$link" && "$(readlink -f "$link")" == "$want" ]]; then
     return 0
-  elif [[ -L "$link" ]] && ! points_into_instructions "$link"; then
+  elif [[ -L "$link" ]] && ! "$owns" "$link"; then
     log_warn "${link/#$HOME/\~} é symlink para fora do repo; não mexo"
   elif [[ -e "$link" && ! -L "$link" ]]; then
     log_warn "${link/#$HOME/\~} é arquivo real; não mexo (junte-o a ${want/#$HOME/\~} e apague)"
   elif mkdir -p "$(dirname "$link")" && ln -sfn "$want" "$link"; then
-    log_success "instrução linkada: ${link/#$HOME/\~}"
+    log_success "linkado: ${link/#$HOME/\~}"
   else
     log_warn "Falha ao linkar ${link/#$HOME/\~}"
   fi
@@ -116,7 +118,7 @@ link_instructions() {
 
   local src dest
   while IFS=$'\t' read -r src dest; do
-    [[ -n "$src" ]] && link_instruction "$src" "$dest"
+    [[ -n "$src" ]] && link_file "$src" "$dest"
   done < <(instruction_links)
 
   # Máquina sem arquivo próprio: o link de outra época (arquivo apagado ou
@@ -128,6 +130,27 @@ link_instructions() {
     log_info "Link removido: ${CLAUDE_MACHINE_MD/#$HOME/\~} (sem machines/$AGENTS_MACHINE.md)"
   fi
   log_success "Instruções de usuário processadas (host: $AGENTS_MACHINE)"
+}
+
+link_subagents() {
+  if ! command -v claude &>/dev/null; then
+    log_optional "claude não encontrado, pulando os subagentes"
+    return
+  fi
+
+  local src dest entry
+  while IFS=$'\t' read -r src dest; do
+    [[ -n "$src" ]] && link_file "$src" "$dest" points_into_subagents
+  done < <(subagent_links)
+
+  # Subagente apagado ou renomeado no repo: o link pendurado sai.
+  for entry in "$CLAUDE_AGENTS_DIR"/*.md; do
+    if [[ -L "$entry" && ! -e "$entry" ]] && points_into_subagents "$entry"; then
+      rm "$entry"
+      log_info "Link pendurado removido: ${entry/#$HOME/\~}"
+    fi
+  done
+  log_success "Subagentes processados"
 }
 
 register_claude_mcp_servers() {
@@ -241,6 +264,10 @@ link_skills
 echo ""
 log_info "Linkando as instruções de usuário..."
 link_instructions
+
+echo ""
+log_info "Linkando os subagentes..."
+link_subagents
 
 if ! command -v python3 &>/dev/null; then
   log_warn "python3 não encontrado; MCPs e permissões não foram aplicados."

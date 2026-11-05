@@ -31,6 +31,8 @@ Merges only add or update what the repo declares; whatever the machine added sta
 - `instructions/user.md` → `CLAUDE.md`, and `instructions/machines/<hostname>.md` →
   `rules/maquina.md`, both under `~/.claude/`, one symlink per file (ADR 0026). A line
   goes in `user.md` only when it holds in two repos and names no project noun.
+- `subagents/<nome>.md` → `~/.claude/agents/<nome>.md`, one symlink per file. Overriding
+  a built-in by `name`: the Claude Code docs, sub-agents page.
 - Skills policy (ADRs 0004, 0006, 0010, 0017, 0041): third-party skills are vendored
   copies with `metadata.upstream` / `upstream-commit` in the frontmatter — never `npx`,
   marketplace plugin or submodule. A skill is global only when it was really used in two

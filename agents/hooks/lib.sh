@@ -48,6 +48,11 @@ AGENTS_LEGACY_SKILLS_DIR="$(dirname "$AGENTS_PKG_DIR")/claude/.claude/skills"
 # outra máquina sem mexer nesta.
 AGENTS_INSTRUCTIONS_DIR="$AGENTS_PKG_DIR/instructions"
 CLAUDE_USER_MD="${CLAUDE_USER_MD:-$HOME/.claude/CLAUDE.md}"
+# Subagentes de nível usuário do Claude Code: cada subagents/<nome>.md vira
+# ~/.claude/agents/<nome>.md, um symlink por arquivo, como as instruções. Um
+# subagente com o `name` de um embutido o substitui (sub-agents, na doc).
+AGENTS_SUBAGENTS_DIR="$AGENTS_PKG_DIR/subagents"
+CLAUDE_AGENTS_DIR="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
 CLAUDE_MACHINE_MD="${CLAUDE_MACHINE_MD:-$HOME/.claude/rules/maquina.md}"
 AGENTS_MACHINE="${AGENTS_MACHINE:-${HOSTNAME%%.*}}"
 
@@ -115,6 +120,20 @@ link_target() {
 # alguém e não se mexe nele.
 points_into_instructions() {
   [[ "$(link_target "$1")" == "$AGENTS_INSTRUCTIONS_DIR"/* ]]
+}
+
+# points_into_subagents <symlink> — idem, para subagents/.
+points_into_subagents() {
+  [[ "$(link_target "$1")" == "$AGENTS_SUBAGENTS_DIR"/* ]]
+}
+
+# subagent_links — "<fonte>\t<destino>" para cada subagents/*.md.
+subagent_links() {
+  local f
+  for f in "$AGENTS_SUBAGENTS_DIR"/*.md; do
+    [[ -f "$f" ]] && printf '%s\t%s\n' "$f" "$CLAUDE_AGENTS_DIR/$(basename "$f")"
+  done
+  return 0
 }
 
 # instruction_links — "<fonte>\t<destino>" para cada instrução que existe no
