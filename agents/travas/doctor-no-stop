@@ -4,6 +4,9 @@
   doctor-no-stop marca   PostToolUse: marca a sessão que tocou o vault e anota o
                          que ela escreveu nele.
   doctor-no-stop         Stop: sessão marcada só encerra com o doctor limpo.
+  doctor-no-stop pendente <sessão>
+                         Só lê: `vault` se a sessão está marcada, nada se não.
+                         Quem lê é o mod `agents/mods/travas-pendentes`.
 
 Toca o vault: Edit/Write com caminho nele, ou Bash rodado nele ou que o cita.
 O marcador é por session_id, em $XDG_RUNTIME_DIR (some no logout). Bloqueia uma
@@ -184,7 +187,14 @@ def stop(data):
     json.dump({"decision": "block", "reason": reason}, sys.stdout, ensure_ascii=False)
 
 
+def pendente(session_id):
+    if os.path.exists(marker(session_id)) and shutil.which("freitask") is not None:
+        print("vault")
+
+
 def main():
+    if sys.argv[1:2] == ["pendente"] and len(sys.argv) == 3:
+        return pendente(sys.argv[2])
     try:
         data = json.load(sys.stdin)
     except ValueError:

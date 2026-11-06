@@ -10,6 +10,11 @@
                                      a impressão de cada arquivo sujo como verificada.
   verificacao-no-stop                Stop: caminho da lista ainda sujo e com impressão
                                      diferente da carimbada bloqueia o fim do turno.
+  verificacao-no-stop pendente <sessão>
+                                     Só lê: cada repo que o Stop cobraria, uma linha
+                                     `<arquivos sem carimbo>\t<raiz>`. A foto de um Bash
+                                     em segundo plano só entra no Stop. Quem lê é o mod
+                                     `agents/mods/travas-pendentes`.
 
 Só cobra repo que optou: o que tem docs/agents/verificacao.md. Em repo que não
 optou, Edit e Write deixam a lista só com a raiz, para a skill `fechar` saber onde
@@ -270,13 +275,12 @@ def carimba(root):
         fh.write("\n".join([STAMP_TAG] + lines) + "\n")
 
 
-def stop(data):
-    session_id = data["session_id"]
-    # Bash em segundo plano, interrompido ou negado antes de rodar deixa a foto para
-    # trás. Assentá-la aqui cobra desta sessão o que sujou até agora: erra para cobrar.
-    for path in session_files("prebash", session_id):
-        settle(session_id, path)
-    pending = []
+def unverified(session_id, tidy):
+    """{raiz: arquivos} que esta sessão mudou, ainda sujos e sem o carimbo da `verificar`.
+
+    Com `tidy` (o Stop), o que foi comitado ou desfeito sai da lista; sem, só lê.
+    """
+    pending = {}
     for path in session_files("verif", session_id):
         root, rels = read_list(path)
         if not rels or not opted_in(root):
@@ -285,14 +289,30 @@ def stop(data):
         if now is None:
             continue
         still = rels & now
-        if still != rels:
+        if tidy and still != rels:
             # Comitado ou desfeito: sai da lista, e quem sujar o arquivo depois não
             # cai na conta desta sessão.
             with session_lock(session_id):
                 write_list(path, root, still | (read_list(path)[1] - rels))
         stamp = read_stamp(root)
-        if any(stamp.get(rel) != fingerprint(root, rel) for rel in still):
-            pending.append(root)
+        left = sorted(rel for rel in still if stamp.get(rel) != fingerprint(root, rel))
+        if left:
+            pending[root] = left
+    return pending
+
+
+def pendente(session_id):
+    for root, rels in unverified(session_id, tidy=False).items():
+        print("%d\t%s" % (len(rels), root))
+
+
+def stop(data):
+    session_id = data["session_id"]
+    # Bash em segundo plano, interrompido ou negado antes de rodar deixa a foto para
+    # trás. Assentá-la aqui cobra desta sessão o que sujou até agora: erra para cobrar.
+    for path in session_files("prebash", session_id):
+        settle(session_id, path)
+    pending = unverified(session_id, tidy=True)
     if not pending or data.get("stop_hook_active"):
         return
     reason = (
@@ -306,6 +326,8 @@ def stop(data):
 def main():
     if sys.argv[1:2] == ["carimba"] and len(sys.argv) == 3:
         return carimba(sys.argv[2])
+    if sys.argv[1:2] == ["pendente"] and len(sys.argv) == 3:
+        return pendente(sys.argv[2])
     try:
         data = json.load(sys.stdin)
     except ValueError:

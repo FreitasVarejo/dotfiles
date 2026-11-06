@@ -75,5 +75,26 @@ class Marca(unittest.TestCase):
             self.assertEqual((base / "toques-vault-sessao-teste").read_text(), "task foo\n")
 
 
+class Pendente(unittest.TestCase):
+    def test_diz_vault_so_com_a_sessao_marcada(self):
+        with tempfile.TemporaryDirectory() as vault, tempfile.TemporaryDirectory() as runtime, \
+                tempfile.TemporaryDirectory() as bin_dir:
+            fake = Path(bin_dir) / "freitask"
+            fake.write_text("#!/bin/sh\n")
+            fake.chmod(0o755)
+            env = {**os.environ, "TRAVAS_VAULT": vault, "XDG_RUNTIME_DIR": runtime,
+                   "PATH": bin_dir + os.pathsep + os.environ["PATH"]}
+
+            def pendente():
+                return subprocess.run([sys.executable, "-I", str(SCRIPT), "pendente", "sessao-teste"],
+                                      capture_output=True, text=True, env=env, check=True).stdout
+
+            self.assertEqual(pendente(), "")
+            event = {"session_id": "sessao-teste", **bash("freitask move foo bar")}
+            subprocess.run([sys.executable, "-I", str(SCRIPT), "marca"], input=json.dumps(event),
+                           text=True, env=env, check=True)
+            self.assertEqual(pendente(), "vault\n")
+
+
 if __name__ == "__main__":
     unittest.main()

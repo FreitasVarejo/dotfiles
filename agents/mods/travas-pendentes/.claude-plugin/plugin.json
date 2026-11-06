@@ -1,0 +1,6 @@
+{
+  "name": "travas-pendentes",
+  "version": "0.1.0",
+  "description": "Faixa acima do prompt com o que as travas do Stop ainda cobram: /verificar por repo e freitask doctor.",
+  "types": "./types/index.d.ts"
+}

@@ -43,5 +43,8 @@
     "type": "command",
     "command": "'${HOME}/dotfiles/agents/statusline/claude-statusline'",
     "padding": 0
+  },
+  "env": {
+    "CLAUDE_CODE_PLUGIN_DIRS": "${HOME}/dotfiles/agents/mods/travas-pendentes"
   }
 }

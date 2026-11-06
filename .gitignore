@@ -9,5 +9,8 @@ mcp-ssh.lock
 # 'claude': o claude.ai sincroniza para dentro do repo até o setup desdobrar.
 claude/.claude/skills/synced/
 
+# Tipos que o Claude Code escreve ao lado de cada mod quando o carrega.
+agents/mods/*/.claude-plugin/types/
+
 # Cache de bytecode: os scripts Python (travas, skills) rodam direto do repo.
 __pycache__/

@@ -28,6 +28,10 @@ Merges only add or update what the repo declares; whatever the machine added sta
   never through the claude.ai account, so nothing touches the vault around the travas.
 - `statusline/claude-statusline`: the command `settings/claude.json` sets as `statusLine`.
   It reads the JSON Claude Code pipes on stdin; never let it exit non-zero or hang.
+- `mods/<mod>/`: a Claude Code mod, loaded from the repo by its path in the
+  `CLAUDE_CODE_PLUGIN_DIRS` that `settings/claude.json` sets (`:`-separated, one per
+  mod). A mod shows or asks; the rule it shows stays in its trava or skill, which the
+  mod calls instead of copying. Its gate: `~/dotfiles/docs/agents/verificacao.md`.
 - `instructions/user.md` → `CLAUDE.md`, and `instructions/machines/<hostname>.md` →
   `rules/maquina.md`, both under `~/.claude/`, one symlink per file (ADR 0026). A line
   goes in `user.md` only when it holds in two repos and names no project noun.
