@@ -39,6 +39,8 @@ coisas (fonte, idioma dos cards, restrições dos casos), siga as respostas nest
 sessão e sugira que ele as registre no `README.md`. Não escreva o adaptador por
 conta própria.
 
+Com a linha `- **Codebase:**` no `README.md`, a fonte é uma codebase: [Quando a fonte é uma codebase](#quando-a-fonte-é-uma-codebase).
+
 ### 1.2 Leia o capítulo na fonte
 
 A fonte é a pasta de Markdown que o adaptador aponta: um arquivo por
@@ -279,3 +281,19 @@ Uma linha por termo, em lista:
   reescreve sem ele (as armadilhas de `references/repeater-format.md`).
 - Placar novo nasce com a forma do frontmatter das notas de capítulo da pasta,
   `id: <nome-da-pasta-do-livro>-placar`, e o H1 `# Placar`.
+
+## Quando a fonte é uma codebase
+
+Vale quando o `README.md` do estudo tem a linha `- **Codebase:**`. O `mapa/` é só o
+roteiro, e quem decide é o código da codebase no HEAD. Nos pontos abaixo, esta seção
+vale no lugar do que o resto da skill diz sobre o livro.
+
+- **Abra a âncora antes de cobrar.** Antes de cobrar um termo, abra no HEAD a âncora
+  (`arquivo#Símbolo`) que o mapa dá para ele.
+- **Corrija contra o HEAD**, citando `arquivo#Símbolo` além da §. O que não se acha no
+  HEAD é "não verificável": não se corrige e não vira card.
+- **O caso é uma situação real da base** (um bug, um pedido de mudança), e não um caso
+  fictício.
+- **Card só de termo, invariante ou decisão confirmada.** O erro de implementação entra
+  no placar e, no fechar, vira "releia `arquivo#Símbolo`" no lugar do card.
+- **No claude.ai, sem o repo, diga isso e pare.**
