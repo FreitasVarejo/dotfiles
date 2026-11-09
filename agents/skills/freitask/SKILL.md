@@ -3,7 +3,7 @@ name: freitask
 description: Abre uma task do freitask no vault do Obsidian a partir do que o dono descrever, escolhendo o projeto pelo escopo de cada um (o MOC), com a pasta e o repo da sessão só como pista. Use quando o dono pedir para abrir, criar, anotar ou registrar uma task, uma frente de trabalho ou "uma coisa para fazer depois" — mesmo sem dizer "freitask". Hoje só abre task nova; mudar fase, arquivar, renomear ou mover de projeto continua sendo a CLI direto.
 argument-hint: "<o que a task é, em uma ou duas frases>"
 model: claude-sonnet-5-5
-effort: xhigh
+effort: high
 allowed-tools:
 - Bash(~/.claude/skills/freitask/scripts/contexto.sh)
 - Bash(~/.claude/skills/freitask/scripts/contexto.sh *)
