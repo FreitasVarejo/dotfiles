@@ -1,12 +1,13 @@
 ---
 name: fechar
-description: Fecha uma sessão de trabalho sem perder o que sobrou — junta o que espera o dono (PR aberto, merge que destrava a etapa seguinte, limpeza depois do merge, outra máquina atrás), atualiza as tasks do freitask que a sessão tocou, arquiva a task em homologação cuja PR foi mergeada, pergunta o destino de cada ponta solta e propõe um plano de comandos (push do que está à frente, fast-forward do clone principal, limpeza de worktree, branch e rede vazia do docker, pull nas outras máquinas) que ela roda depois do OK do dono. Use quando o dono disser que vai fechar ou encerrar o chat.
+description: Fecha uma sessão de trabalho sem perder o que sobrou — junta o que espera o dono (PR aberto, merge que destrava a etapa seguinte, limpeza depois do merge, outra máquina atrás), atualiza as tasks do freitask que a sessão tocou, fecha a task em homologação ou bloqueada cuja PR foi mergeada, pergunta o destino de cada ponta solta e propõe um plano de comandos (push do que está à frente, fast-forward do clone principal, limpeza de worktree, branch e rede vazia do docker, pull nas outras máquinas) que ela roda depois do OK do dono. Use quando o dono disser que vai fechar ou encerrar o chat.
 disable-model-invocation: true
 argument-hint: "[o que mais registrar antes de fechar]"
 allowed-tools:
   - Bash(~/.claude/skills/fechar/scripts/pendencias *)
   - Bash(freitask set *)
   - Bash(freitask archive *)
+  - Bash(*/scripts/integrar.sh *)
   - Bash(freitask list *)
   - Bash(freitask doctor *)
   - Read(~/ObsidianVault/**)
@@ -41,9 +42,9 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
    - **Sem perguntar:** nas tasks desta sessão (as do script, mais as que a
      conversa mostra e ele não pegou), marque o que foi feito,
      troque o estado (`freitask set <id> --desc`) e deixe uma seção
-     "Para retomar" com os passos em ordem. Arquive com
-     `freitask archive <id> done` cada task de `## arquivar sem perguntar`,
-     desta sessão ou de outra.
+     "Para retomar" com os passos em ordem. Feche cada task de
+     `## arquivar sem perguntar`, desta sessão ou de outra, como a tabela de
+     [reference.md](reference.md) manda.
    - **Só com OK:** arquivar qualquer outra task, abrir task (skill
      `freitask`) e, quando a sessão produziu decisão, gravá-la pela skill
      `domain-modeling`. Adiamento é task ou "Algum dia"
@@ -73,7 +74,8 @@ faz: [reference.md](reference.md). Pedido extra do dono: $ARGUMENTS
 
 - **Feito no freitask**: o que você escreveu, task a task. A arquivada sem
   perguntar sai como "arquivei; `freitask unarchive <id>` e
-  `freitask set <id> --status question` desfazem".
+  `freitask set <id> --status question` desfazem"; a que o script de
+  integração cuidou, com a fase em que ele a deixou.
 - **Plano**: os itens do `## plano` do script, como ele os imprimiu
   (`P1`, `P2`…), para resposta como `P: ok`, `P: 1, 3` ou `P: nenhum`.
   Sem item, diga que não há o que rodar.

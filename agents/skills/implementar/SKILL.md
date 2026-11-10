@@ -1,6 +1,6 @@
 ---
 name: implementar
-description: Implementa tasks do freitask que estão em Refinada ou Em implementação até Em homologação — uma, várias ou todas as disponíveis, em lote. Tria o que dá para fazer agora, executa uma task por vez num subagente pelo contrato do repo e propõe no fim o push, a PR e a label para o OK do dono. Use quando o dono pedir para implementar ou pegar uma task pelo id ou pelo nome, um lote delas, ou as que estão refinadas.
+description: Implementa tasks do freitask que estão em Refinada ou Em implementação até Em homologação — uma, várias ou todas as disponíveis, em lote. Tria o que dá para fazer agora, executa uma task por vez num subagente pelo contrato do repo e propõe no fim o push, a PR, a label e o merge (quando o contrato tem o script dele) para o OK do dono. Use quando o dono pedir para implementar ou pegar uma task pelo id ou pelo nome, um lote delas, ou as que estão refinadas.
 argument-hint: "[<id>...] (vazio: todas em Refinada e Em implementação)"
 allowed-tools:
   - Bash(~/.claude/skills/implementar/scripts/lote)
@@ -53,7 +53,8 @@ A fase decide antes de tudo:
 
 A ordem das **já**: primeiro o que o texto das tasks impõe ("a primeira PR do
 lote", "depois de"), depois a de prioridade alta. Depender do *merge* de outra
-do mesmo lote é **espera**, porque o merge é do dono.
+do mesmo lote é **espera**: o merge vem depois do CI, pelo caminho que o contrato
+do repo dá.
 
 Mostre a tabela (task, classe, motivo) e a ordem das **já**, e espere o OK. O
 dono pode mudar uma task de classe ou tirá-la do lote. A triagem termina quando
@@ -75,20 +76,25 @@ subagente por vez, em qualquer máquina.
    está.
 3. **Despache** o subagente com o briefing de [briefing.md](briefing.md).
    Subagente novo, nunca fork: o contexto limpo é o motivo de ser um por task.
-4. **Escreva o que voltou.** Só você escreve no vault: ele sincroniza com o
+4. **Aceite.** Contrato do repo que nomeia um verificador de aceite: despache-o
+   como o contrato manda, com só o que ele aceita receber. O resultado entra no
+   vault no passo seguinte, como o resto; critério que diverge vai para "Para
+   retomar" e para o relatório, e a task não entra no plano da PR.
+5. **Escreva o que voltou.** Só você escreve no vault: ele sincroniza com o
    celular, e dois escritores no mesmo arquivo dão `*.sync-conflict-*`.
    - Marque `- [x]` no item que tem commit na branch e `verificar` com PASSA.
    - `freitask set <id> --desc "DD/MM: …"`: o que foi feito e o que falta.
    - `## Para homologar`: o roteiro de testar à mão que voltou. O que abrir, o
      que fazer, o que deve acontecer, com o caminho infeliz.
-   - `## Para retomar`, quando sobrou item, pergunta ou falha: os passos em
-     ordem, cada um com o comando ou o arquivo. A próxima sessão não terá esta
-     conversa.
-5. **Fase.** Em homologação é quando o contrato do repo diz; se ele a liga a um
+   - `## Para retomar`, quando sobrou item, pergunta, falha ou critério
+     divergente: os passos em ordem, cada um com o comando ou o arquivo. A
+     próxima sessão não terá esta conversa.
+6. **Fase.** Em homologação é quando o contrato do repo diz; se ele a liga a um
    passo para fora (PR, label), a task espera o plano, abaixo. Contrato
    calado: Em homologação (`freitask set <id> --status question`) quando todo
    item tem commit e PASSA, e o push fica para a `/fechar`. Parcial ou falhou
-   sem PR a abrir: fica em Em implementação, e o lote segue para a próxima.
+   sem PR a abrir, e com critério divergente em qualquer caso: fica em Em
+   implementação, e o lote segue para a próxima.
 
 O achado fora do checklist vai para o relatório final, com o destino que o
 contrato do repo dá. Contrato calado: task nova pela skill `freitask`, com OK
@@ -106,14 +112,18 @@ entram as tasks cujo contrato manda abrir PR, e o plano só tem:
 - o push da branch `<id>`: `git -C <clone> push -u origin <id>`;
 - a PR, pelo template do repo, citando a task e com o roteiro de homologação no
   corpo;
-- a label ou o passo que o contrato pede para Em homologação.
+- a label ou o passo que o contrato pede para Em homologação;
+- o merge, pelo script que o contrato do repo nomeia, rodado em background do
+  clone principal na branch padrão atualizada, com o número da PR. A fase da
+  task depois dele é do script.
 
-O push na branch padrão é da `/fechar`, e o merge é do dono.
+O push na branch padrão é da `/fechar`. Sem script de merge no contrato, o merge
+é do dono.
 
 A resposta vale pela intenção: "ok" ou "todas" aprovam tudo, números aprovam
 esses, "nenhum" não aprova nada. Rode um item por chamada do Bash, na ordem; o
-item que depende de outro só roda se aquele rodou sem erro. Feito o passo que o
-contrato pede, `freitask set <id> --status question --desc "DD/MM: …"`.
+item que depende de outro só roda se aquele rodou sem erro. Feito o passo de PR
+ou label que o contrato pede, `freitask set <id> --status question --desc "DD/MM: …"`.
 
 ## 5. Fim
 
@@ -124,7 +134,8 @@ Relatório:
 
 - **Lote**: task, classe, resultado (entregue, parcial, falhou, não começou) e
   a fase agora.
-- **Plano**: o que rodou, o que falhou, o que ficou.
+- **Plano**: o que rodou, o que falhou, o que ficou; o item em background
+  segue em andamento até o aviso de que saiu.
 - **Espera você**: homologar (o roteiro está na task), as perguntas do "Para
   retomar" e os achados, cada um com o destino proposto.
 - O push do repo sem esteira e a limpeza de worktree saem na `/fechar`.

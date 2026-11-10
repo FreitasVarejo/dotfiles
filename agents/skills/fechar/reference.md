@@ -12,7 +12,7 @@ O porquê: ADRs 0031, 0039 e 0040 em
 | pesquisa respondida | nota em `research/`, pela skill `research` | o dono |
 | regra para agentes | proposta de mudança no contrato | o dono |
 | ponta solta sem task | task nova, pela skill `freitask` | o dono |
-| task em `## arquivar sem perguntar` do script | `freitask archive <id> done` | você |
+| task em `## arquivar sem perguntar` do script | `freitask archive <id> done`; no repo cujo contrato nomeia script de integração, esse script com o número da PR já mergeada, em background e depois do fast-forward do clone principal (ele confere o deploy antes de arquivar) | você |
 | outra task terminada | `freitask archive <id> done`, depois do portão | o dono |
 
 ## O que não se escreve
@@ -25,9 +25,9 @@ O porquê: ADRs 0031, 0039 e 0040 em
 
 ## O que nunca se faz aqui
 
-Commit (é do dono, antes do `/fechar`), merge de PR ou merge que não seja
-fast-forward, `--force`, `branch -D`, `git push --delete`, `mv` ou `rm` em
-task. Push, fast-forward, limpeza e pull só pelo plano, abaixo.
+Commit (é do dono, antes do `/fechar`), merge de PR (o script de integração só
+roda na já mergeada) ou merge que não seja fast-forward, `--force`,
+`branch -D`, `git push --delete`, `mv` ou `rm` em task. Push, fast-forward, limpeza e pull só pelo plano, abaixo.
 
 ## O plano
 

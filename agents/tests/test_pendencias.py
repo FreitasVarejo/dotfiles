@@ -531,7 +531,19 @@ class Arquivar(unittest.TestCase):
     def test_pr_mergeada_sem_item_aberto_entra_mesmo_de_outra_sessao(self):
         self.task("p", "pronta")
         self.prs[("o/p", "pronta")] = [(7, "MERGED")]
-        self.assertEqual(self.arquivar(), ["p `pronta`: PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`"])
+        self.assertEqual(self.arquivar(), ["p `pronta` (Em homologação): PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`"])
+
+    def test_bloqueada_com_pr_mergeada_entra_com_a_fase(self):
+        self.task("p", "parou", callout="warning")
+        self.prs[("o/p", "parou")] = [(7, "MERGED")]
+        self.assertEqual(self.arquivar(), ["p `parou` (Bloqueada): PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`"])
+
+    def test_bloqueada_com_pr_aberta_ou_item_aberto_fica(self):
+        self.task("p", "pr-aberta", callout="warning")
+        self.task("p", "com-item", callout="warning", aberto=True)
+        self.prs[("o/p", "pr-aberta")] = [(7, "MERGED"), (9, "OPEN")]
+        self.prs[("o/p", "com-item")] = [(8, "MERGED")]
+        self.assertEqual(self.arquivar(), ["nada"])
 
     def test_item_aberto_fica(self):
         self.task("p", "falta", aberto=True)
@@ -551,7 +563,7 @@ class Arquivar(unittest.TestCase):
         with mock.patch.object(P, "vinculos", dois):
             self.assertEqual(self.arquivar(), ["nada"])
             del self.prs[("o/b", "dois-repos")]
-            self.assertEqual(self.arquivar(), ["p `dois-repos`: PR #7 em o/a mergeada, nenhuma aberta, nenhum `- [ ]`"])
+            self.assertEqual(self.arquivar(), ["p `dois-repos` (Em homologação): PR #7 em o/a mergeada, nenhuma aberta, nenhum `- [ ]`"])
 
     def test_so_pr_fechada_ou_nenhuma_fica(self):
         self.task("p", "fechada")
