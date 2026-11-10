@@ -304,8 +304,8 @@ tasks_json() {
   done < <(
     printf '%s' "$bruto" | jq -r --arg p "$PROJETO" '
       .[] | select(.project == $p) | [.id, .path] | @tsv'
-  ) | jq -R -s --argjson lista "$bruto" --arg p "$PROJETO" '
-      ($lista | map(select(.project == $p)) | INDEX(.id)) as $porid
+  ) | jq -R -s --slurpfile lista <(printf '%s' "$bruto") --arg p "$PROJETO" '
+      ($lista[0] | map(select(.project == $p)) | INDEX(.id)) as $porid
       | split("\n") | map(select(length > 0)) | map(split("\t")) | map(
           $porid[.[0]] as $t | {
             id: .[0], arquivada: ($t.archived // ""), fase: $t.status,
@@ -603,16 +603,25 @@ MOC="-"
 ADRS=$({ find "$PDIR/decisoes" -maxdepth 1 -name '*.md' -type f 2>/dev/null || true; } | wc -l)
 fonte vault ok "$PDIR"
 
+# Os blocos JSON entram por arquivo (--slurpfile), não por argv: o Linux limita
+# um argumento a 128 KiB (MAX_ARG_STRLEN), e o backlog de um projeto grande
+# passa disso. O slurp embrulha em array, daí o [0].
 DOC=$(jq -n \
   --arg projeto "$PROJETO" --arg pedido "$PEDIDO" \
   --arg gerado "$(date '+%Y-%m-%d %H:%M')" --arg desde "$DESDE" \
   --argjson janela "$JANELA" --arg moc "$MOC" --argjson adrs "$ADRS" \
-  --argjson fontes "$(jq -R -s 'split("\n")|map(select(length>0))|map(split("\t"))|map({fonte:.[0],estado:.[1],detalhe:.[2]})' <"$FONTES_FILE")" \
-  --argjson tasks "$TASKS" --argjson vault "$VAULTLOG" --argjson repos "$REPOS" \
-  --argjson planos "$PLANOS" --argjson gh "$GH" --argjson notas "$NOTAS" \
-  --argjson pendencias "$PENDENCIAS" --argjson host "$HOST" --argjson avisos "$AVISOS" \
-  --argjson registro "$REGISTRO_JSON" --arg janela_origem "$JANELA_ORIGEM" \
-  '{projeto:$projeto, pedido:$pedido, gerado_em:$gerado, janela_dias:$janela,
+  --slurpfile fontes <(jq -R -s 'split("\n")|map(select(length>0))|map(split("\t"))|map({fonte:.[0],estado:.[1],detalhe:.[2]})' <"$FONTES_FILE") \
+  --slurpfile tasks <(printf '%s' "$TASKS") --slurpfile vault <(printf '%s' "$VAULTLOG") \
+  --slurpfile repos <(printf '%s' "$REPOS") --slurpfile planos <(printf '%s' "$PLANOS") \
+  --slurpfile gh <(printf '%s' "$GH") --slurpfile notas <(printf '%s' "$NOTAS") \
+  --slurpfile pendencias <(printf '%s' "$PENDENCIAS") --slurpfile host <(printf '%s' "$HOST") \
+  --slurpfile avisos <(printf '%s' "$AVISOS") --slurpfile registro <(printf '%s' "$REGISTRO_JSON") \
+  --arg janela_origem "$JANELA_ORIGEM" \
+  '$fontes[0] as $fontes | $tasks[0] as $tasks | $vault[0] as $vault
+  | $repos[0] as $repos | $planos[0] as $planos | $gh[0] as $gh
+  | $notas[0] as $notas | $pendencias[0] as $pendencias | $host[0] as $host
+  | $avisos[0] as $avisos | $registro[0] as $registro
+  | {projeto:$projeto, pedido:$pedido, gerado_em:$gerado, janela_dias:$janela,
     desde:$desde, moc:$moc, adrs:$adrs, fontes:$fontes, tasks:$tasks,
     mudancas_vault:$vault, repos:$repos, planos:$planos,
     esperando: ($gh + {notas_avulsas:$notas, pendencias:$pendencias}),
