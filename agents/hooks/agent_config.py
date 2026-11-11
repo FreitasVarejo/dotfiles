@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compara e mescla a config dos agentes (Claude Code, Cursor) com o repo.
+"""Compara e mescla a config dos agentes (Claude Code, Cursor, OpenCode) com o repo.
 
 Chamado pelos hooks do pacote 'agents' (lib.sh). Regras que valem para tudo:
 
@@ -14,8 +14,9 @@ Chamado pelos hooks do pacote 'agents' (lib.sh). Regras que valem para tudo:
   só errou uma vírgula — e faria o plan dizer "em dia" sobre o que nem leu.
 
 Saída 2 = arquivo do REPO inválido (mcp/*.json, deny.json, settings/*.json,
-travas/travas.json);
-saída 3 = arquivo do AGENTE ilegível. A mensagem vai para stderr.
+travas/travas.json, opencode/config.json, subagents/*.md, skills/*/SKILL.md);
+saída 3 = arquivo do AGENTE ilegível (opencode.json, modelos.json, arquivo gerado).
+A mensagem vai para stderr.
 
 Uso:
   agent_config.py mcp-servers <mcp-dir>                    (nome\\tjson-compacto)
@@ -28,11 +29,18 @@ Uso:
   agent_config.py settings-apply claude <arquivo> <fragmento.json>
   agent_config.py hooks-plan  claude <arquivo> <travas.json>   (evento\\tadd|update|remove)
   agent_config.py hooks-apply claude <arquivo> <travas.json>
+  agent_config.py opencode-plan  <dir-de-config> <pacote-agents> <maquina>   (chave\\tadd|update|remove|skip|blocked)
+  agent_config.py opencode-apply <dir-de-config> <pacote-agents> <maquina>
+
+O alvo `opencode` (ADR 0046) mescla share, instructions, permissions e policies no
+opencode.json do diretório de config e GERA agents/*.md (de subagents/) e commands/*.md
+(das skills) nele. Só age onde há OpenCode 2.x: quem decide é o lib.sh, não este script.
 """
 
 import glob
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -447,12 +455,471 @@ def hooks_apply(agent, path, travas_path):
         print("%s\t%s" % (event, v))
 
 
+# --- OpenCode ------------------------------------------------------------------
+# Terceiro alvo do pacote, só onde há OpenCode 2.x (ADR 0046; a detecção é do
+# lib.sh). Nada do que o Claude Code ou o Cursor leem muda por causa dele: o alvo
+# mescla chaves do opencode.json e GERA arquivos no diretório de config.
+#
+# O deny.json vira `policies`, e não `permissions`: no OpenCode vale a última regra
+# de permissão que casa, e a do subagente entra depois da global, então um
+# subagente com leitura liberada reabriria o que o deny fecha. A policy vence
+# qualquer regra, e não expande "~". Entrada de caminho vira "*" + o caminho sem o
+# "~/", com "**" virando "*" ("*" atravessa "/"): casa o absoluto e o relativo a
+# partir de "~". Furo aceito: o recurso de um arquivo DENTRO do diretório da
+# sessão é relativo a ele, então uma sessão aberta dentro da própria pasta negada
+# (ex. ~/ObsidianVault/daily) vê só "2026-01-01.md" e o padrão não casa. Entrada
+# de shell segue a semântica do deny.json: "a:*" é prefixo, o resto é exato.
+
+OPENCODE_FRAGMENT_KEYS = {"share", "permissions", "policies"}
+OPENCODE_MARK_PREFIX = "<!-- gerado por agents/hooks/agent_config.py a partir de "
+OPENCODE_MARK_SUFFIX = "; não edite -->"
+OPENCODE_MARK_RE = re.compile(r"^<!-- gerado por agents/hooks/agent_config\.py a partir de .+; não edite -->$", re.M)
+
+# Ferramenta do Claude Code -> ação de permissão do OpenCode.
+CLAUDE_TOOL_ACTIONS = {
+    "Read": "read",
+    "Grep": "grep",
+    "Glob": "glob",
+    "Bash": "shell",
+    "Edit": "edit",
+    "Write": "edit",
+    "NotebookEdit": "edit",
+    "WebFetch": "webfetch",
+    "WebSearch": "websearch",
+    "Agent": "subagent",
+    "Skill": "skill",
+    "TodoWrite": "todowrite",
+}
+
+# O OpenCode só aceita #RRGGBB; as cores nomeadas do Claude Code vêm daqui.
+CLAUDE_COLORS = {
+    "red": "#EF4444",
+    "blue": "#3B82F6",
+    "green": "#22C55E",
+    "yellow": "#EAB308",
+    "purple": "#A855F7",
+    "orange": "#F97316",
+    "pink": "#EC4899",
+    "cyan": "#06B6D4",
+}
+
+MODEL_ALIASES = ("opus", "sonnet", "haiku")
+MODEL_REF = re.compile(r"^[^/#\s]+/[^#\s]+$")
+DENY_ALL = {"action": "*", "resource": "*", "effect": "deny"}
+
+
+def parse_scalar(raw, path, key):
+    raw = raw.strip()
+    if raw.startswith('"'):
+        try:
+            return json.loads(raw)
+        except ValueError as exc:
+            raise repo_error("%s: '%s' entre aspas inválido (%s)" % (path, key, exc))
+    if raw.startswith("'") and raw.endswith("'") and len(raw) > 1:
+        return raw[1:-1].replace("''", "'")
+    return re.split(r"\s#", raw, maxsplit=1)[0].strip()
+
+
+def read_markdown(path):
+    """(frontmatter, corpo) de um .md do repo. Frontmatter: só chaves de topo.
+
+    Valor escalar vira str; lista em bloco (`- item`) vira list; bloco `>`/`|` e
+    mapa aninhado ficam como None (quem precisa da chave reclama). Não é um
+    parser de YAML: é o que os subagentes e as skills do pacote usam.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        raise repo_error("%s ilegível (%s)" % (path, exc))
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        raise repo_error("%s: sem frontmatter" % path)
+    try:
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    except StopIteration:
+        raise repo_error("%s: frontmatter sem o --- final" % path)
+    data, key = {}, None
+    for line in lines[1:end]:
+        top = re.match(r"^([A-Za-z][A-Za-z0-9_-]*):[ \t]*(.*)$", line)
+        if top:
+            key, value = top.group(1), top.group(2).strip()
+            data[key] = parse_scalar(value, path, key) if value and value not in (">", "|", ">-", "|-") else None
+        elif key is not None and re.match(r"^\s*-\s+\S", line) and data[key] in (None, []):
+            item = parse_scalar(re.sub(r"^\s*-\s+", "", line), path, key)
+            data[key] = (data[key] or []) + [item]
+    return data, "\n".join(lines[end + 1 :]).strip("\n")
+
+
+def required_text(data, key, path):
+    value = data.get(key)
+    if not isinstance(value, str) or not value:
+        raise repo_error("%s: '%s' ausente ou fora do formato de uma linha" % (path, key))
+    return value
+
+
+def tool_names(data, key, path):
+    """Lista de nomes de `tools`/`disallowedTools` (vírgulas ou lista em bloco), ou None."""
+    if key not in data:
+        return None
+    value = data[key]
+    if isinstance(value, str):
+        names = [n.strip() for n in value.split(",")]
+    elif isinstance(value, list):
+        names = [n.strip() for n in value]
+    else:
+        raise repo_error("%s: '%s' fora do formato (vírgulas ou lista)" % (path, key))
+    if not names or not all(names):
+        raise repo_error("%s: '%s' vazio ou com item vazio" % (path, key))
+    return names
+
+
+def tool_actions(names, key, path):
+    actions = []
+    for name in names:
+        action = CLAUDE_TOOL_ACTIONS.get(name)
+        if action is None:
+            raise repo_error(
+                "%s: '%s' lista %r, sem tradução para o OpenCode; acrescente-o em CLAUDE_TOOL_ACTIONS de agent_config.py"
+                % (path, key, name)
+            )
+        if action not in actions:
+            actions.append(action)
+    return actions
+
+
+def rule(action, resource, effect):
+    return {"action": action, "resource": resource, "effect": effect}
+
+
+def subagent_permissions(tools, disallowed, default):
+    """Os `permissions` do agente: `tools` vira "nega tudo, devolve o que a lista nomeia".
+
+    A devolução reaproveita as regras do ruleset padrão daquela ação, na ordem,
+    para que o auditor com Bash continue perguntando em shell como a sessão. Ação
+    sem regra no padrão: ferramenta liberada, `external_directory` perguntando.
+    """
+    rules = []
+    if tools is not None:
+        rules.append(dict(DENY_ALL))
+        for action in tools + ["external_directory"]:
+            own = [dict(r) for r in default if r["action"] == action]
+            rules += own or [rule(action, "*", "ask" if action == "external_directory" else "allow")]
+    rules += [rule(action, "*", "deny") for action in disallowed or []]
+    return rules
+
+
+def repo_opencode(fragment_path):
+    """O fragmento do opencode.json do repo: {share, permissions, policies}."""
+    try:
+        with open(fragment_path, encoding="utf-8") as fh:
+            spec = json.loads(fh.read().replace("${HOME}", os.environ["HOME"]))
+    except (OSError, ValueError) as exc:
+        raise repo_error("%s inválido (%s)" % (fragment_path, exc))
+    if not isinstance(spec, dict) or not spec or set(spec) - OPENCODE_FRAGMENT_KEYS:
+        raise repo_error("%s: esperado um objeto só com %s" % (fragment_path, sorted(OPENCODE_FRAGMENT_KEYS)))
+    if not isinstance(spec.get("share", ""), str):
+        raise repo_error("%s: 'share' não é texto" % fragment_path)
+    for key in ("permissions", "policies"):
+        items = spec.get(key, [])
+        if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+            raise repo_error("%s: '%s' não é lista de regras" % (fragment_path, key))
+    spec["permissions"] = [normal_rule(r, fragment_path) for r in spec.get("permissions", [])]
+    spec["policies"] = [normal_rule(r, fragment_path) for r in spec.get("policies", [])]
+    return spec
+
+
+def normal_rule(item, path):
+    if set(item) != {"action", "resource", "effect"} or not all(isinstance(v, str) for v in item.values()):
+        raise repo_error('%s: regra fora de {"action","resource","effect"}: %r' % (path, item))
+    return rule(item["action"], item["resource"], item["effect"])
+
+
+def path_patterns(entry):
+    """Padrões do OpenCode para uma entrada de caminho do deny.json."""
+    base = entry[2:] if entry.startswith("~/") else entry
+    # `a/**/b` casa `a/b` no deny.json; com "**" virando "*" sobraria um "/" a
+    # mais, então a forma sem o trecho também entra.
+    forms = [base] + ([base.replace("/**/", "/")] if "/**/" in base else [])
+    return [re.sub(r"\*+", "*", "*" + f.replace("**", "*")) for f in forms]
+
+
+def deny_policies(deny_path):
+    """As `policies` do deny.json (tool.use, deny), na ordem do arquivo."""
+    try:
+        with open(deny_path, encoding="utf-8") as fh:
+            spec = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise repo_error("%s inválido (%s)" % (deny_path, exc))
+    if not isinstance(spec, dict) or not all(isinstance(spec.get(k, []), list) for k in ("read", "shell", "edit")):
+        raise repo_error('%s: esperado {"read": [...], "shell": [...], "edit": [...]}' % deny_path)
+    resources = []
+    for entry in spec.get("read", []):
+        resources += ["read:" + p for p in path_patterns(entry)]
+    for entry in spec.get("shell", []):
+        # "a:*" é prefixo no deny.json; " *" no fim casa com e sem argumento.
+        resources.append("shell:" + entry.replace(":", " ", 1))
+    for entry in spec.get("edit", []):
+        resources += ["edit:" + p for p in path_patterns(entry)]
+    if not resources:
+        raise repo_error("%s não nega nada" % deny_path)
+    return [{"action": "tool.use", "resource": r, "effect": "deny"} for r in resources]
+
+
+def repo_block(pkg_dir, machine):
+    """O que o repo declara para o opencode.json: {share, instructions, permissions, policies}."""
+    fragment = repo_opencode(os.path.join(pkg_dir, "opencode", "config.json"))
+    user = os.path.join(pkg_dir, "instructions", "user.md")
+    if not os.path.isfile(user):
+        raise repo_error("%s não existe" % user)
+    instructions = [user]
+    host = os.path.join(pkg_dir, "instructions", "machines", machine + ".md")
+    if os.path.isfile(host):
+        instructions.append(host)
+    policies = deny_policies(os.path.join(pkg_dir, "permissions", "deny.json")) + fragment["policies"]
+    want = {"instructions": instructions, "permissions": fragment["permissions"], "policies": policies}
+    if "share" in fragment:
+        want["share"] = fragment["share"]
+    return want
+
+
+def block_state(block, have):
+    """ok | add | update para uma lista em que a ordem importa (vale a última que casa)."""
+    if not block or have[len(have) - len(block) :] == block:
+        return "ok"
+    return "update" if any(item in block for item in have) else "add"
+
+
+def block_merge(block, have):
+    """Os itens do repo saem de onde estão e o bloco entra, contíguo, no fim."""
+    return [item for item in have if item not in block] + block
+
+
+def opencode_json_diffs(want, data, path):
+    diffs = []
+    if "share" in want and data.get("share") != want["share"]:
+        diffs.append(("share", "add" if "share" not in data else "update"))
+    have = child(data, "instructions", list, path) if "instructions" in data else []
+    missing = [p for p in want["instructions"] if p not in have]
+    if missing:
+        diffs.append(("instructions", "update" if have else "add"))
+    for key in ("permissions", "policies"):
+        have = child(data, key, list, path) if key in data else []
+        state = block_state(want[key], have)
+        if state != "ok":
+            diffs.append((key, state))
+    return diffs
+
+
+def opencode_json_merge(want, data, path):
+    if "share" in want:
+        data["share"] = want["share"]
+    have = child(data, "instructions", list, path)
+    have.extend(p for p in want["instructions"] if p not in have)
+    for key in ("permissions", "policies"):
+        data[key] = block_merge(want[key], child(data, key, list, path))
+
+
+def load_models(config_dir):
+    """O mapa opus/sonnet/haiku -> provedor/modelo da máquina; ausente = {}."""
+    path = os.path.join(config_dir, "modelos.json")
+    data = load_agent(path)
+    for alias in MODEL_ALIASES:
+        if alias in data and not (isinstance(data[alias], str) and MODEL_REF.match(data[alias])):
+            raise agent_error("%s: '%s' não é provedor/modelo; nada foi gravado" % (path, alias))
+    return data
+
+
+def mark(source):
+    return OPENCODE_MARK_PREFIX + source + OPENCODE_MARK_SUFFIX
+
+
+def render(front, source, body):
+    """O arquivo gerado: frontmatter (linhas já prontas), o marcador e o corpo."""
+    parts = ["---"] + front + ["---", mark(source)]
+    return "\n".join(parts) + "\n" + ("\n" + body + "\n" if body else "")
+
+
+def jline(value):
+    return json.dumps(value, ensure_ascii=False)
+
+
+def generated_agents(pkg_dir, config_dir, default, models):
+    """{caminho: conteúdo} do agents/<id>.md de cada subagents/<nome>.md."""
+    files = {}
+    for src in sorted(glob.glob(os.path.join(pkg_dir, "subagents", "*.md"))):
+        data, body = read_markdown(src)
+        rel = os.path.relpath(src, os.path.dirname(pkg_dir))
+        agent_id = os.path.splitext(os.path.basename(src))[0].lower()
+        target = os.path.join(config_dir, "agents", agent_id + ".md")
+        if target in files:
+            raise repo_error("%s: o id '%s' já vem de outro subagente" % (src, agent_id))
+        tools = tool_names(data, "tools", src)
+        disallowed = tool_names(data, "disallowedTools", src)
+        front = ["description: " + jline(required_text(data, "description", src)), "mode: subagent"]
+        model = data.get("model")
+        if model is not None and not isinstance(model, str):
+            raise repo_error("%s: 'model' fora do formato de uma linha" % src)
+        if model and model != "inherit":
+            if model not in MODEL_ALIASES:
+                raise repo_error("%s: model %r sem tradução (inherit, %s)" % (src, model, ", ".join(MODEL_ALIASES)))
+            if model in models:
+                front.append("model: " + jline(models[model]))
+        color = data.get("color")
+        if color:
+            if color not in CLAUDE_COLORS:
+                raise repo_error("%s: color %r fora do mapa (%s)" % (src, color, ", ".join(CLAUDE_COLORS)))
+            front.append("color: " + jline(CLAUDE_COLORS[color]))
+        perms = subagent_permissions(
+            tool_actions(tools, "tools", src) if tools else None,
+            tool_actions(disallowed, "disallowedTools", src) if disallowed else None,
+            default,
+        )
+        if perms:
+            front.append("permissions:")
+            front += ["  - " + json.dumps(r, ensure_ascii=False) for r in perms]
+        files[target] = render(front, rel, body)
+    return files
+
+
+def command_skills(pkg_dir):
+    """Skills do pacote que ganham comando: fork, só-manual ou com $ARGUMENTS; fora, as com ${CLAUDE_SESSION_ID}."""
+    found = []
+    for skill_dir in sorted(glob.glob(os.path.join(pkg_dir, "skills", "*"))):
+        skill_md = os.path.join(skill_dir, "SKILL.md")
+        if not os.path.isfile(skill_md):
+            continue
+        data, _ = read_markdown(skill_md)
+        with open(skill_md, encoding="utf-8") as fh:
+            text = fh.read()
+        wanted = data.get("context") == "fork" or data.get("disable-model-invocation") == "true" or "$ARGUMENTS" in text
+        if not wanted or skill_uses_session_id(skill_dir):
+            continue
+        found.append((os.path.basename(skill_dir), skill_md, data))
+    return found
+
+
+def skill_uses_session_id(skill_dir):
+    for root, _, names in os.walk(skill_dir):
+        for name in names:
+            try:
+                with open(os.path.join(root, name), "rb") as fh:
+                    if b"CLAUDE_SESSION_ID" in fh.read():
+                        return True
+            except OSError:
+                continue
+    return False
+
+
+def generated_commands(pkg_dir, config_dir):
+    """{caminho: conteúdo} do commands/<skill>.md de cada skill que o pede."""
+    hand = {os.path.basename(p) for p in glob.glob(os.path.join(pkg_dir, "opencode", "commands", "*.md"))}
+    files = {}
+    for name, skill_md, data in command_skills(pkg_dir):
+        if name + ".md" in hand:
+            raise repo_error("%s: já existe opencode/commands/%s.md à mão" % (skill_md, name))
+        front = ["description: " + jline(required_text(data, "description", skill_md))]
+        if data.get("context") == "fork":
+            front.append("subagent: true")
+        body = (
+            "Carregue a skill `%s` com a ferramenta skill e siga as instruções dela do começo ao fim.\n\n"
+            "Pedido do dono (vazio quando ele não disse nada): $ARGUMENTS" % name
+        )
+        files[os.path.join(config_dir, "commands", name + ".md")] = render(
+            front, os.path.relpath(skill_md, os.path.dirname(pkg_dir)), body
+        )
+    return files
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+    except (OSError, ValueError) as exc:
+        raise agent_error("%s ilegível (%s); nada foi gravado" % (path, exc))
+
+
+def is_generated(path):
+    return os.path.isfile(path) and not os.path.islink(path) and bool(OPENCODE_MARK_RE.search(read_text(path)))
+
+
+def generated_diffs(config_dir, wanted):
+    """[(caminho, add|update|remove|skip)]. Só arquivo com o marcador é do setup."""
+    diffs = []
+    for path, content in wanted.items():
+        if not os.path.lexists(path):
+            diffs.append((path, "add"))
+        elif not is_generated(path):
+            diffs.append((path, "skip"))
+        elif read_text(path) != content:
+            diffs.append((path, "update"))
+    for kind in ("agents", "commands"):
+        for path in sorted(glob.glob(os.path.join(config_dir, kind, "*.md"))):
+            if path not in wanted and is_generated(path):
+                diffs.append((path, "remove"))
+    return diffs
+
+
+def write_generated(path, content):
+    directory = os.path.dirname(path)
+    os.makedirs(directory, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".agent_config.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+def opencode_state(config_dir, pkg_dir, machine):
+    """Tudo o que plan e apply precisam, lido e validado antes de qualquer escrita."""
+    want = repo_block(pkg_dir, machine)
+    json_path = os.path.join(config_dir, "opencode.json")
+    blocked = os.path.lexists(os.path.join(config_dir, "opencode.jsonc")) and not os.path.lexists(json_path)
+    data = load_agent(json_path)
+    diffs = [] if blocked else opencode_json_diffs(want, data, json_path)
+    wanted = generated_agents(pkg_dir, config_dir, want["permissions"], load_models(config_dir))
+    wanted.update(generated_commands(pkg_dir, config_dir))
+    files = generated_diffs(config_dir, wanted)
+    return want, json_path, data, blocked, diffs, wanted, files
+
+
+def opencode_lines(config_dir, blocked, diffs, files):
+    lines = [("opencode.jsonc", "blocked")] if blocked else list(diffs)
+    return lines + [(os.path.relpath(p, config_dir), v) for p, v in files]
+
+
+def opencode_plan(config_dir, pkg_dir, machine):
+    _, _, _, blocked, diffs, _, files = opencode_state(config_dir, pkg_dir, machine)
+    for key, v in opencode_lines(config_dir, blocked, diffs, files):
+        print("%s\t%s" % (key, v))
+
+
+def opencode_apply(config_dir, pkg_dir, machine):
+    want, json_path, data, blocked, diffs, wanted, files = opencode_state(config_dir, pkg_dir, machine)
+    if diffs:
+        opencode_json_merge(want, data, json_path)
+        save(json_path, data)
+    for path, verdict in files:
+        if verdict == "remove":
+            os.unlink(path)
+        elif verdict in ("add", "update"):
+            write_generated(path, wanted[path])
+    for key, v in opencode_lines(config_dir, blocked, diffs, files):
+        print("%s\t%s" % (key, v))
+
+
 def main(argv):
     cmd, args = (argv[0], argv[1:]) if argv else ("", [])
     if cmd == "mcp-servers" and len(args) == 1:
         return mcp_servers(*args)
     if cmd == "mcp-registered" and len(args) == 1:
         return mcp_registered(*args)
+    if len(args) == 3 and cmd in ("opencode-plan", "opencode-apply"):
+        return {"opencode-plan": opencode_plan, "opencode-apply": opencode_apply}[cmd](*args)
     if len(args) == 3 and args[0] in ("claude", "cursor"):
         handler = {
             "mcp-plan": mcp_plan,

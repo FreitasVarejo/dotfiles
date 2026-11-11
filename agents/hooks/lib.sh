@@ -56,6 +56,18 @@ CLAUDE_AGENTS_DIR="${CLAUDE_AGENTS_DIR:-$HOME/.claude/agents}"
 CLAUDE_MACHINE_MD="${CLAUDE_MACHINE_MD:-$HOME/.claude/rules/maquina.md}"
 AGENTS_MACHINE="${AGENTS_MACHINE:-${HOSTNAME%%.*}}"
 
+# OpenCode (ADR 0046): só o 2.x, só onde está instalado. Nada aqui espelha o
+# $HOME; o setup mescla chaves no opencode.json e GERA agents/ e commands/ no
+# diretório de config (o OPENCODE_CONFIG_DIR do próprio OpenCode, ou o do XDG).
+# agents/opencode/ guarda o que só ele lê: o fragmento config.json e os comandos
+# escritos à mão, linkados um a um. O mapa de modelos é por máquina e fica fora do
+# repo, no diretório de config.
+AGENTS_OPENCODE_DIR="$AGENTS_PKG_DIR/opencode"
+AGENTS_OPENCODE_COMMANDS_DIR="$AGENTS_OPENCODE_DIR/commands"
+OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
+# shellcheck disable=SC2034  # consumido pelos hooks via source
+OPENCODE_MODELS_FILE="$OPENCODE_CONFIG_DIR/modelos.json"
+
 # Config de MCP de escopo user de cada agente. A do Claude Code é lida direto,
 # e não pela saída de `claude mcp list`, por dois motivos: o `list` imprime nome
 # e status, nunca a CONFIGURAÇÃO (respondia "existe?" mas não "está em dia?"), e
@@ -144,5 +156,32 @@ instruction_links() {
   local machine="$AGENTS_INSTRUCTIONS_DIR/machines/$AGENTS_MACHINE.md"
   [[ -f "$user" ]] && printf '%s\t%s\n' "$user" "$CLAUDE_USER_MD"
   [[ -f "$machine" ]] && printf '%s\t%s\n' "$machine" "$CLAUDE_MACHINE_MD"
+  return 0
+}
+
+# opencode_version — a primeira linha de `opencode --version`; vazio sem OpenCode.
+opencode_version() {
+  command -v opencode &>/dev/null || return 0
+  opencode --version 2>/dev/null | head -n1
+}
+
+# opencode_active — há OpenCode 2.x? A linha 1.x tem outro schema de config e
+# não é alvo: fora do 2.x o alvo se omite e nada é lido nem gravado.
+opencode_active() {
+  [[ "$(opencode_version)" == 2.* ]]
+}
+
+# points_into_opencode_commands <symlink> — idem points_into_instructions, para
+# opencode/commands/.
+points_into_opencode_commands() {
+  [[ "$(link_target "$1")" == "$AGENTS_OPENCODE_COMMANDS_DIR"/* ]]
+}
+
+# opencode_command_links — "<fonte>\t<destino>" para cada opencode/commands/*.md.
+opencode_command_links() {
+  local f
+  for f in "$AGENTS_OPENCODE_COMMANDS_DIR"/*.md; do
+    [[ -f "$f" ]] && printf '%s\t%s\n' "$f" "$OPENCODE_CONFIG_DIR/commands/$(basename "$f")"
+  done
   return 0
 }

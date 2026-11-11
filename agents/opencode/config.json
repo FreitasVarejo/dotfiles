@@ -1,0 +1,23 @@
+{
+  "share": "disabled",
+  "permissions": [
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "skill", "resource": "*", "effect": "allow" },
+    { "action": "subagent", "resource": "*", "effect": "allow" },
+    { "action": "todowrite", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "edit", "resource": "*", "effect": "ask" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" },
+    { "action": "shell", "resource": "ls *", "effect": "allow" },
+    { "action": "shell", "resource": "rg *", "effect": "allow" },
+    { "action": "shell", "resource": "~/.claude/skills/*/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "${HOME}/.claude/skills/*/scripts/*", "effect": "allow" }
+  ],
+  "policies": [
+    { "action": "tool.use", "resource": "read:*canario-do-deny-opencode", "effect": "deny" }
+  ]
+}
