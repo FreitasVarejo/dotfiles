@@ -11,11 +11,39 @@
 # ctx: tokens de entrada no contexto agora (cache incluído) / janela do modelo.
 # out: tokens de saída da última resposta. 5h/7d: só para quem assina o claude.ai.
 # Sem jq, imprime só um aviso: a linha nunca derruba a sessão.
+#
+# Também acrescenta a $log_uso uma linha por mudança no uso do plano (5h ou 7d),
+# para medir o consumo ao longo dos dias; as colunas estão no cabeçalho do arquivo.
+# O registro falha calado: nunca afeta a linha impressa.
 
 if ! command -v jq &>/dev/null; then
   echo "statusline: falta jq"
   exit 0
 fi
+
+entrada=$(cat)
+log_uso="${XDG_STATE_HOME:-$HOME/.local/state}/claude-statusline/uso.tsv"
+
+registrar_uso() {
+  local linha ultima
+  linha=$(jq -r '
+    .rate_limits as $r
+    | select($r.five_hour.used_percentage != null or $r.seven_day.used_percentage != null)
+    | [ $r.five_hour.used_percentage, $r.five_hour.resets_at,
+        $r.seven_day.used_percentage, $r.seven_day.resets_at,
+        .model.id, .session_id, .cost.total_cost_usd ]
+    | map(. // "" | tostring) | @tsv
+  ' <<<"$entrada") || return 0
+  [[ -n $linha ]] || return 0
+  mkdir -p "${log_uso%/*}" || return 0
+  [[ -s $log_uso ]] ||
+    printf 'quando\t5h_pct\t5h_reset\t7d_pct\t7d_reset\tmodelo\tsessao\tcusto_sessao_usd\n' >"$log_uso"
+  # Só grava quando 5h% ou 7d% mudou desde a última linha (de qualquer sessão).
+  ultima=$(tail -n 1 "$log_uso" | cut -f2,4)
+  [[ $(cut -f1,3 <<<"$linha") == "$ultima" ]] && return 0
+  printf '%s\t%s\n' "$(date -Iseconds)" "$linha" >>"$log_uso"
+}
+registrar_uso 2>/dev/null || true
 
 jq -r '
   def k: if . == null then "?"
@@ -41,4 +69,4 @@ jq -r '
       ( $r.seven_day.used_percentage // empty | "7d \(cor)\(pct)\(reset)" )
     ]
   | join(" · ")
-' 2>/dev/null || echo "statusline: JSON inesperado"
+' <<<"$entrada" 2>/dev/null || echo "statusline: JSON inesperado"
