@@ -159,10 +159,11 @@ instruction_links() {
   return 0
 }
 
-# opencode_version — a primeira linha de `opencode --version`; vazio sem OpenCode.
+# opencode_version — o X.Y.Z de `opencode --version` (o 1.x imprime "1.19.5"; o 2.x,
+# "opencode v2.2.7"); vazio sem OpenCode ou sem X.Y.Z na saída.
 opencode_version() {
   command -v opencode &>/dev/null || return 0
-  opencode --version 2>/dev/null | head -n1
+  opencode --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1
 }
 
 # opencode_active — há OpenCode 2.x? A linha 1.x tem outro schema de config e

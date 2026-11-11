@@ -5,7 +5,7 @@ paths:
 
 # The `agents/` package
 
-Serves Claude Code (personal machines), and Cursor CLI and OpenCode (work WSL); Claude Code
+Serves Claude Code (personal machines), Cursor CLI (work WSL) and OpenCode (work WSL, notebook); Claude Code
 comes first (ADRs 0027 and 0046 in `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0024
 in its `supersedidas/`). OpenCode is served only by files the setup generates or merges from
 the same sources, and no file Claude Code or Cursor read changes for it. Not stowed: every

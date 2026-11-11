@@ -56,6 +56,8 @@ class Bash(unittest.TestCase):
     def test_so_o_2x_e_alvo(self):
         self.fake_opencode("2.2.7")
         self.assertTrue(self.active())
+        self.fake_opencode("opencode v2.2.7")  # o formato real do 2.x
+        self.assertTrue(self.active())
         self.fake_opencode("1.19.5")
         self.assertFalse(self.active())
         self.fake_opencode("12.0.0")
