@@ -7,8 +7,9 @@ esse agente, pelo nome dele: troque "Implemente a task" pelo papel que o
 contrato dá e mantenha o resto.
 
 A exceção é a task que é investigação antes de ser código (um bug sem causa
-conhecida, uma falha que só aparece no CI): essa vai num `general-purpose` sem
-`model`, no modelo desta sessão.
+conhecida, uma falha que só aparece no CI): essa vai no `implementador`,
+passando no `model` da chamada o modelo desta sessão (o parâmetro da chamada
+vale acima do `model:` do arquivo do agente).
 
 ```text
 Implemente a task <id> no repo <clone>.

@@ -17,9 +17,10 @@ the repo declares; whatever the machine added stays.
   (it holds state) nor the whole skills dir (Claude Code writes `synced/` there).
 - `mcp/<name>.json`: one file per server, the why in `mcp/README.md`. An MCP registered by
   hand and absent from this directory is a local experiment (ADR 0011).
-- `permissions/deny.json`: what no agent may read or run, merged into each present
-  agent's `permissions.deny`; for OpenCode it is translated into `policies`, never into
-  `permissions` (ADR 0046).
+- `permissions/deny.json`: what no agent may read or run, and which subagents Claude
+  Code may not spawn, merged into each present agent's `permissions.deny`; for OpenCode
+  it is translated into `policies`, never into `permissions` (ADR 0046). Which category
+  reaches which agent: the docstring of `~/dotfiles/agents/hooks/agent_config.py`.
 - `travas/`: one script per trava plus `travas.json` in Claude Code's `hooks` format
   (ADR 0028). A trava is for a rule whose breach is irreparable and cheap to detect;
   the rule's text stays where it lives (the vault's `AGENTS.md` is the floor for

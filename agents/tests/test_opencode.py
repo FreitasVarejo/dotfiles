@@ -38,6 +38,7 @@ DENY = {
     "read": ["~/.segredo", "~/dev/gmail/dados/**"],
     "shell": ["env", "printenv:*", "gh auth token"],
     "edit": ["~/Vault/daily/**", "~/Vault/**/*.conflict-*"],
+    "agent": ["general-purpose"],
 }
 AUDITOR = '''---
 name: auditor
@@ -285,6 +286,12 @@ class DenyEmPolicies(Fixture):
         self.assertTrue(hit("edit", "/home/x/Vault/p/n.conflict-1.md"))
         self.assertFalse(hit("read", "/home/x/outra-coisa"))
         self.assertFalse(hit("edit", "/home/x/Vault/nota.md"))
+
+    def test_categoria_agent_e_pulada_sem_erro(self):
+        self.apply()
+        pols = self.config()["policies"]
+        self.assertFalse([p for p in pols if "general-purpose" in p["resource"] or "Agent" in p["resource"]])
+        self.assertEqual(self.run_cfg("opencode-plan").returncode, 0)
 
     def test_deny_json_invalido_e_erro_2(self):
         write(self.pkg / "permissions" / "deny.json", json.dumps({"read": [], "shell": [], "edit": []}))

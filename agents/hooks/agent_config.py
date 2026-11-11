@@ -32,6 +32,9 @@ Uso:
   agent_config.py opencode-plan  <dir-de-config> <pacote-agents> <maquina>   (chave\\tadd|update|remove|skip|blocked)
   agent_config.py opencode-apply <dir-de-config> <pacote-agents> <maquina>
 
+O deny.json tem as categorias read, shell, edit e agent. `agent` (nomes de subagente)
+só existe no Claude Code, onde vira `Agent(<nome>)`; no Cursor e no OpenCode é pulada.
+
 O alvo `opencode` (ADR 0046) mescla share, instructions, permissions e policies no
 opencode.json do diretório de config e GERA agents/*.md (de subagents/) e commands/*.md
 (das skills) nele. Só age onde há OpenCode 2.x: quem decide é o lib.sh, não este script.
@@ -244,12 +247,17 @@ def deny_rules(agent, deny_path):
     except (OSError, ValueError) as exc:
         raise repo_error("%s inválido (%s)" % (deny_path, exc))
     if not isinstance(spec, dict) or not all(
-        isinstance(spec.get(k, []), list) for k in ("read", "shell", "edit")
+        isinstance(spec.get(k, []), list) for k in ("read", "shell", "edit", "agent")
     ):
-        raise repo_error('%s: esperado {"read": [...], "shell": [...], "edit": [...]}' % deny_path)
+        raise repo_error('%s: esperado {"read": [...], "shell": [...], "edit": [...], "agent": [...]}' % deny_path)
     rules = [read_rule(agent, p) for p in spec.get("read", [])]
     rules += [shell_rule(agent, c) for c in spec.get("shell", [])]
     rules += [edit_rule(agent, p) for p in spec.get("edit", [])]
+    # Bloquear subagente por nome é pedido do Claude Code (`Agent(<nome>)` em
+    # permissions.deny); não verificamos equivalente no Cursor, então lá a
+    # categoria é pulada de propósito.
+    if agent == "claude":
+        rules += ["Agent(%s)" % n for n in spec.get("agent", [])]
     if not rules:
         raise repo_error("%s não nega nada" % deny_path)
     return rules
@@ -651,8 +659,12 @@ def deny_policies(deny_path):
             spec = json.load(fh)
     except (OSError, ValueError) as exc:
         raise repo_error("%s inválido (%s)" % (deny_path, exc))
-    if not isinstance(spec, dict) or not all(isinstance(spec.get(k, []), list) for k in ("read", "shell", "edit")):
-        raise repo_error('%s: esperado {"read": [...], "shell": [...], "edit": [...]}' % deny_path)
+    if not isinstance(spec, dict) or not all(
+        isinstance(spec.get(k, []), list) for k in ("read", "shell", "edit", "agent")
+    ):
+        raise repo_error('%s: esperado {"read": [...], "shell": [...], "edit": [...], "agent": [...]}' % deny_path)
+    # A categoria "agent" fica de fora de propósito: bloquear subagente por nome é
+    # pedido do Claude Code; não verificamos equivalente no OpenCode.
     resources = []
     for entry in spec.get("read", []):
         resources += ["read:" + p for p in path_patterns(entry)]
