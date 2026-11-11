@@ -23,6 +23,8 @@ Onde trabalhar: <a worktree e a branch que o contrato manda | o clone
 principal, na branch em que ele está>.
 Itens: <todos os `- [ ]` da task | os itens N e M>.
 <Só na homologação reprovada: o que falhou, nas palavras do dono.>
+<Só com obstáculo relatado por task anterior do lote: o que o ambiente recusou
+ou exigiu e o comando que funcionou.>
 
 Como trabalhar:
 - O vault (~/ObsidianVault) é só leitura para você. Quem escreve na task é a
@@ -43,5 +45,7 @@ Relatório, nesta forma:
 - Git: a branch, a worktree, os commits à frente do origin e o que está sujo.
 - Testar à mão: o roteiro que o verificar escreveu, ou "nada visível".
 - Perguntas: cada decisão que travou um item.
+- Obstáculos: o que o ambiente recusou ou exigiu e o comando que funcionou, uma
+  linha cada.
 - Achados: o que você notou fora dos itens, uma linha cada.
 ```

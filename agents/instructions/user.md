@@ -22,6 +22,10 @@
 
 - Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (teste de aceite, auditor, reavaliador) ficam no modelo da sessão. Agente de área que o contrato do repo nomeia vale acima dos dois.
 
+## Worktree
+
+- Em sessão ou subagente isolado em worktree, comando do Bash que toca o git é simples e vai separado: sem `git -C`, sem variável de shell nem `$()`, sem laço nem `xargs`.
+
 ## Escrever contrato (`AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, `docs/agents/`)
 
 - Só ponteiro e regra. Sem contagem, sem cópia de estado, sem afirmar o que uma ferramenta faz ou fará (aponte para `--help`).

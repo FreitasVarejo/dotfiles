@@ -76,6 +76,8 @@ subagente por vez, em qualquer máquina.
    está.
 3. **Despache** o subagente com o briefing de [briefing.md](briefing.md).
    Subagente novo, nunca fork: o contexto limpo é o motivo de ser um por task.
+   Obstáculo que o relatório de uma task anterior do lote trouxe vai no campo
+   dele do briefing.
 4. **Aceite.** Contrato do repo que nomeia um verificador de aceite: despache-o
    como o contrato manda, com só o que ele aceita receber. O resultado entra no
    vault no passo seguinte, como o resto; critério que diverge vai para "Para
