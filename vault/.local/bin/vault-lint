@@ -202,16 +202,21 @@ extract_links() {
   ' "$@"
 }
 
-# Os .md que o lint LÊ. Três exclusões, cada uma por um motivo diferente:
+# Os .md que o lint LÊ. As exclusões, cada uma por um motivo diferente:
 # conflito do Syncthing é cópia transitória de um arquivo já checado (e quem
 # reporta a existência dele é o `freitask doctor`); e `daily/` é registro
 # congelado — o contrato proíbe reescrevê-lo, então todo achado ali seria um
 # aviso que ninguém tem permissão de corrigir, que é a definição de ruído. Os
 # `daily/` de agosto sozinhos respondiam por 300 dos 376 primeiros achados,
-# todos links para o layout de task anterior a 22/09.
+# todos links para o layout de task anterior a 22/09. O `research/*/bruto-*.md`
+# sai pelo mesmo motivo do `daily/`: é o relatório como veio e nunca se edita
+# (skill `research`), e o `[[...]]` que ele cita de uma fonte não é ponteiro do
+# vault. Só sai do que o lint LÊ: o índice de notas (NOTE_PATHS) segue achando o
+# bruto, então o link do `index.md` para ele continua resolvendo.
 vault_notes() {
   find "$VAULT" \( -name .git -o -name .obsidian -o -name .trash -o -name daily \) -prune -o \
-    -name '*.md' -type f -print 2>/dev/null | grep -v '\.sync-conflict-' | sort || true
+    -name '*.md' -type f -print 2>/dev/null | grep -v '\.sync-conflict-' |
+    grep -Ev '/research/[^/]+/bruto-[^/]*\.md$' | sort || true
 }
 
 # --- Check 2: nota supersedida inteira que continua vigente ----------------
