@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Linha de cada subagente no painel de agentes do Claude Code: tipo, tarefa,
+# modelo, tokens, tempo e worktree.
+#
+# O Claude Code passa no stdin um JSON com `tasks[]` (uma entrada por subagente
+# visível) a cada atualização, e espera no stdout uma linha JSON por subagente,
+# `{"id": ..., "content": ...}`; o `content` aceita ANSI. O formato é o que a
+# documentação dele dá em "Subagent status lines"
+# (https://code.claude.com/docs/en/statusline). Registrado em
+# agents/settings/claude.json como `subagentStatusLine`.
+#
+#   <ícone> implementador · Corrige o setup · sonnet-5-5 · 48.2k · 6m · wt:fix-setup
+#
+# A cor do ícone e do tipo vem do `color:` do frontmatter de <tipo>.md, procurado
+# em .claude/agents/ da raiz do repo do cwd do subagente, na do projeto da sessão
+# e em ~/.claude/agents/ (o primeiro arquivo achado decide). O resto da linha sai
+# esmaecido; status diferente de `running` vai como palavra no fim. Task sem `id`
+# ou sem `agentType` fica de fora, e o Claude Code desenha a linha padrão dela.
+# Sem jq, ou com stdin que não é JSON, não imprime nada e sai 0: a linha nunca
+# derruba a sessão.
+
+command -v jq &>/dev/null || exit 0
+
+input=$(cat)
+
+# Nome de cor do frontmatter -> parâmetro SGR do ANSI. Nome desconhecido: nada.
+color_code() {
+  case "$1" in
+    red) echo 31 ;;
+    green) echo 32 ;;
+    yellow) echo 33 ;;
+    blue) echo 34 ;;
+    purple) echo 35 ;;
+    cyan) echo 36 ;;
+    orange) echo '38;5;208' ;;
+    pink) echo '38;5;213' ;;
+  esac
+}
+
+# frontmatter_color <arquivo> — o valor de `color:` no frontmatter, em minúsculas.
+frontmatter_color() {
+  awk 'NR == 1 { if ($0 !~ /^---[ \t\r]*$/) exit; next }
+       /^---[ \t\r]*$/ { exit }
+       /^color:/ { sub(/^color:/, ""); gsub(/[[:space:]"]/, ""); gsub(/\047/, ""); print tolower($0); exit }' "$1" 2>/dev/null
+}
+
+declare -A toplevel_of
+
+# agent_color <tipo> <cwd> <projeto> — o parâmetro SGR da cor do agente, ou nada.
+agent_color() {
+  local type="$1" cwd="$2" project="$3" top dir file
+  local -a dirs=()
+  [[ -n "$type" && "$type" != */* && "$type" != .* ]] || return 0
+  if [[ -n "$cwd" && -d "$cwd" ]]; then
+    if [[ -z "${toplevel_of[$cwd]+x}" ]]; then
+      toplevel_of[$cwd]=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
+    fi
+    top="${toplevel_of[$cwd]}"
+    [[ -n "$top" ]] && dirs+=("$top/.claude/agents")
+  fi
+  [[ -n "$project" ]] && dirs+=("$project/.claude/agents")
+  dirs+=("$HOME/.claude/agents")
+  for dir in "${dirs[@]}"; do
+    file="$dir/$type.md"
+    [[ -f "$file" ]] || continue
+    color_code "$(frontmatter_color "$file")"
+    return 0
+  done
+}
+
+# id, tipo e cwd de cada subagente; stdin que não é JSON cai fora aqui.
+rows=$(jq -r '
+  (.workspace.project_dir // .cwd // "") as $p
+  | (.tasks // []) | if type == "array" then .[] else empty end
+  | select(type == "object" and (.id | type) == "string")
+  | [.id, (.agentType // ""), (.cwd // ""), $p] | map(gsub("[\u001f\n]"; "")) | join("\u001f")
+' <<<"$input" 2>/dev/null) || exit 0
+[[ -n "$rows" ]] || exit 0
+
+lines=""
+# O separador é o US (0x1f), que não é espaço para o IFS: com tab, um campo vazio
+# no meio (task sem cwd) some e os seguintes andam uma casa.
+while IFS=$'\x1f' read -r id type cwd project; do
+  lines+="$id"$'\x1f'"$(agent_color "$type" "$cwd" "$project")"$'\n'
+done <<<"$rows"
+colors=$(jq -Rn '[inputs | select(. != "") | split("\u001f") | {key: .[0], value: (.[1] // "")}] | from_entries' <<<"$lines" 2>/dev/null) || colors='{}'
+
+jq -rc --argjson colors "$colors" '
+  def k: if . >= 1000000 then "\(. / 100000 | floor / 10)M"
+         elif . >= 1000 then "\(. / 100 | floor / 10)k"
+         else "\(floor)" end;
+  def pad2: tostring | if length < 2 then "0" + . else . end;
+  def elapsed:
+    (now - . / 1000 | floor | if . < 0 then 0 else . end) as $s
+    | if $s < 60 then "\($s)s"
+      elif $s < 3600 then "\($s / 60 | floor)m"
+      else "\($s / 3600 | floor)h\($s % 3600 / 60 | floor | pad2)" end;
+  def icon:
+    if . == "Explore" then "\uf002"
+    elif . == "coletor-web" then "\uf0ac"
+    elif . == "implementador" or endswith("-implementer") then "\uf040"
+    elif endswith("-reviewer") then "\uf06e"
+    elif . == "auditor" then "\uf24e"
+    elif startswith("verificador-") then "\uf058"
+    else "\uf111" end;
+  def esc: "\u001b[";
+
+  (.tasks // []) | if type == "array" then .[] else empty end
+  | select(type == "object" and (.id | type) == "string" and ((.agentType // "") != ""))
+  | .agentType as $t
+  | ($colors[.id] // "") as $c
+  | (if $c == "" then "" else "\(esc)\($c)m" end) as $on
+  | (if $c == "" then "" else "\(esc)0m" end) as $off
+  | "\($on)\($t | icon) \($t)\($off)" as $head
+  | ( [ (.description // "" | gsub("\\s+"; " ") | select(. != "")),
+        (.model // "" | select(. != "") | sub("^claude-"; "")),
+        (.tokenCount | select(type == "number") | k),
+        (.startTime | select(type == "number") | elapsed),
+        ((.cwd // "") | capture("\\.claude/worktrees/(?<n>[^/]+)") | "wt:\(.n)"),
+        (.status // "" | select(. != "" and . != "running"))
+      ] ) as $rest
+  | {id, content: (if ($rest | length) == 0 then $head
+                   else "\($head)\(esc)2m · \($rest | join(" · "))\(esc)0m" end)}
+' <<<"$input" 2>/dev/null || exit 0
+exit 0

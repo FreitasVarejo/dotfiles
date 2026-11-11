@@ -28,6 +28,10 @@ Merges only add or update what the repo declares; whatever the machine added sta
   never through the claude.ai account, so nothing touches the vault around the travas.
 - `statusline/claude-statusline`: the command `settings/claude.json` sets as `statusLine`.
   It reads the JSON Claude Code pipes on stdin; never let it exit non-zero or hang.
+- `statusline/claude-subagent-statusline`: the command `settings/claude.json` sets as
+  `subagentStatusLine`. It reads the JSON Claude Code pipes on stdin; never let it exit
+  non-zero or hang. The color of each agent comes from the `color:` in its own
+  `subagents/<nome>.md`, never from a map in the script.
 - `mods/<mod>/`: a Claude Code mod, loaded from the repo by its path in the
   `CLAUDE_CODE_PLUGIN_DIRS` that `settings/claude.json` sets (`:`-separated, one per
   mod). A mod shows or asks; the rule it shows stays in its trava or skill, which the
