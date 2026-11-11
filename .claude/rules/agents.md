@@ -5,18 +5,21 @@ paths:
 
 # The `agents/` package
 
-Serves Claude Code (personal machines) and Cursor CLI (work WSL); Claude Code comes first
-(ADR 0027 in `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0024 in its
-`supersedidas/`). Not stowed: every target is a file the agents also write, so the setup
-hook links or merges instead (`agents/hooks/lib.sh` says where each agent reads from).
-Merges only add or update what the repo declares; whatever the machine added stays.
+Serves Claude Code (personal machines), and Cursor CLI and OpenCode (work WSL); Claude Code
+comes first (ADRs 0027 and 0046 in `~/ObsidianVault/projects/workflow-ia/decisoes/`, ADR 0024
+in its `supersedidas/`). OpenCode is served only by files the setup generates or merges from
+the same sources, and no file Claude Code or Cursor read changes for it. Not stowed: every
+target is a file the agents also write, so the setup hook links or merges instead
+(`agents/hooks/lib.sh` says where each agent reads from). Merges only add or update what
+the repo declares; whatever the machine added stays.
 
 - `skills/<skill>/` → one symlink per skill in `~/.claude/skills/`. Never link `~/.claude`
   (it holds state) nor the whole skills dir (Claude Code writes `synced/` there).
 - `mcp/<name>.json`: one file per server, the why in `mcp/README.md`. An MCP registered by
   hand and absent from this directory is a local experiment (ADR 0011).
 - `permissions/deny.json`: what no agent may read or run, merged into each present
-  agent's `permissions.deny`.
+  agent's `permissions.deny`; for OpenCode it is translated into `policies`, never into
+  `permissions` (ADR 0046).
 - `travas/`: one script per trava plus `travas.json` in Claude Code's `hooks` format
   (ADR 0028). A trava is for a rule whose breach is irreparable and cheap to detect;
   the rule's text stays where it lives (the vault's `AGENTS.md` is the floor for
@@ -38,9 +41,23 @@ Merges only add or update what the repo declares; whatever the machine added sta
   mod calls instead of copying. Its gate: `~/dotfiles/docs/agents/verificacao.md`.
 - `instructions/user.md` → `CLAUDE.md`, and `instructions/machines/<hostname>.md` →
   `rules/maquina.md`, both under `~/.claude/`, one symlink per file (ADR 0026). A line
-  goes in `user.md` only when it holds in two repos and names no project noun.
+  goes in `user.md` only when it holds in two repos and names no project noun. OpenCode
+  gets the same two files through `instructions` in its `opencode.json`, by absolute path.
 - `subagents/<nome>.md` → `~/.claude/agents/<nome>.md`, one symlink per file. Overriding
   a built-in by `name`: the Claude Code docs, sub-agents page.
+- `opencode/`: only what OpenCode reads. `config.json` is the fragment merged into its
+  `opencode.json` (`share`, `permissions` = the default ruleset, `policies` = the deny
+  canary); `commands/<nome>.md` are hand-written commands, one symlink per file. The
+  repo's block of `permissions` and `policies` goes at the END of the machine's list, in
+  file order. `hooks/agent_config.py` (`opencode-plan`, `opencode-apply`) merges it and
+  generates, in OpenCode's config dir, `agents/<id>.md` from `subagents/` and
+  `commands/<skill>.md` for a skill with `context: fork`, `disable-model-invocation: true`
+  or `$ARGUMENTS` and no `CLAUDE_SESSION_ID` in any of its files. A generated file carries
+  the marker line; one without it is never touched. A `tools` or `disallowedTools` name,
+  a `color` or a `model` the translation does not know is a repo error: extend the map in
+  `agent_config.py`, never drop it. The `model` of a subagent comes from `modelos.json` in
+  the config dir, per machine, outside the repo. The target acts only where `opencode
+  --version` starts with `2.`.
 - Skills policy (ADRs 0004, 0006, 0010, 0017, 0041): third-party skills are vendored
   copies with `metadata.upstream` / `upstream-commit` in the frontmatter — never `npx`,
   marketplace plugin or submodule. A skill is global only when it was really used in two
