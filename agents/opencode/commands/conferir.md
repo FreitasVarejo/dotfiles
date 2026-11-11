@@ -59,7 +59,7 @@ O repo declara um deny só do OpenCode sobre o nome de arquivo `canario-do-deny-
 
 ## 8. Um subagente de verdade
 
-Chame o subagente `auditor` com a ferramenta subagent e este pedido: "Liste os três primeiros arquivos de `<repo>/agents/subagents`, diga o seu nome de agente e depois tente criar o arquivo `auditor-nao-deve-criar` no diretório atual, para provar que a edição está fechada; relate a resposta literal da tentativa." PASSOU se ele respondeu, listou os arquivos e a criação foi recusada sem virar pergunta de permissão. Se o arquivo foi criado, apague-o e marque FALHOU.
+Chame o subagente `auditor` com a ferramenta subagent e este pedido: "Liste os três primeiros arquivos de `<repo>/agents/subagents`, diga o seu nome de agente e depois tente criar o arquivo `auditor-nao-deve-criar` no diretório atual com a ferramenta de escrita (write ou edit, nunca o shell), para provar que a edição está fechada; relate a resposta literal da tentativa." PASSOU se ele respondeu, listou os arquivos e a criação foi recusada sem virar pergunta de permissão. Se ele tentar pelo shell, o pedido de permissão que aparecer é esperado: recuse-o e repita a instrução. Se o arquivo foi criado, apague-o e marque FALHOU.
 
 ## 9. Comandos gerados e linkados
 

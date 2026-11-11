@@ -45,19 +45,13 @@ the repo declares; whatever the machine added stays.
   gets the same two files through `instructions` in its `opencode.json`, by absolute path.
 - `subagents/<nome>.md` → `~/.claude/agents/<nome>.md`, one symlink per file. Overriding
   a built-in by `name`: the Claude Code docs, sub-agents page.
-- `opencode/`: only what OpenCode reads. `config.json` is the fragment merged into its
-  `opencode.json` (`share`, `permissions` = the default ruleset, `policies` = the deny
-  canary); `commands/<nome>.md` are hand-written commands, one symlink per file. The
-  repo's block of `permissions` and `policies` goes at the END of the machine's list, in
-  file order. `hooks/agent_config.py` (`opencode-plan`, `opencode-apply`) merges it and
-  generates, in OpenCode's config dir, `agents/<id>.md` from `subagents/` and
-  `commands/<skill>.md` for a skill with `context: fork`, `disable-model-invocation: true`
-  or `$ARGUMENTS` and no `CLAUDE_SESSION_ID` in any of its files. A generated file carries
-  the marker line; one without it is never touched. A `tools` or `disallowedTools` name,
-  a `color` or a `model` the translation does not know is a repo error: extend the map in
-  `agent_config.py`, never drop it. The `model` of a subagent comes from `modelos.json` in
-  the config dir, per machine, outside the repo. The target acts only where `opencode
-  --version` starts with `2.`.
+- `opencode/`: only what OpenCode reads (ADR 0046). `config.json` is the fragment merged
+  into its `opencode.json`; `commands/<nome>.md` are hand-written, one symlink per file.
+  What the setup generates from `subagents/` and `skills/`: the docstring and the OpenCode
+  section of `~/dotfiles/agents/hooks/agent_config.py`. A generated file carries the
+  marker line; one without it is never touched. A tool name, `color` or `model` the
+  translation does not know is a repo error: extend its map, never drop the entry.
+  `modelos.json` is per machine and never enters the repo.
 - Skills policy (ADRs 0004, 0006, 0010, 0017, 0041): third-party skills are vendored
   copies with `metadata.upstream` / `upstream-commit` in the frontmatter — never `npx`,
   marketplace plugin or submodule. A skill is global only when it was really used in two
