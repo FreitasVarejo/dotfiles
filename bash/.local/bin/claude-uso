@@ -1,0 +1,726 @@
+#!/usr/bin/env python3
+"""claude-uso: quanto do Claude Code você usa e o que isso rende.
+
+Lê os transcripts em ~/.claude/projects/**/*.jsonl, os commits dos repos que
+`vault-vinculos repos` lista e os PRs mergeados (`gh`), e cruza tudo por
+semana ISO ou por dia. Só biblioteca padrão; nada é escrito em disco.
+"""
+
+import argparse
+import concurrent.futures
+import json
+import os
+import shutil
+import subprocess
+import sys
+from collections import Counter, defaultdict
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+
+# Preços por milhão de tokens: (entrada, saída, leitura de cache). A escrita de
+# cache custa 2x a entrada, porque o Claude Code usa o cache de 1h.
+# Fonte: tabela da skill claude-api, cacheada em 2026-11-03. O primeiro
+# fragmento que aparecer no id do modelo decide o preço.
+DATA_PRECOS = "2026-11-03"
+PRECOS = {
+    "opus": (4.0, 20.0, 0.20),
+    "sonnet": (2.0, 10.0, 0.10),
+    "haiku": (0.10, 0.50, 0.01),
+    "fable-5-2": (8.0, 40.0, 0.20),
+    "fable-5-1": (10.0, 50.0, 1.00),
+}
+FERRAMENTAS_DE_EDICAO = ("Edit", "Write")
+LIMITE_PRS = 1000
+SEM_PRECO = "sem-preco"
+
+AJUDA = """\
+claude-uso: o uso do Claude Code em números, por semana ISO ou por dia.
+
+Custo é equivalente de API pela tabela de preços ({PRECOS}), não a fatura do
+plano. Escrita de cache conta 2x a entrada (cache de 1h). Modelo fora da
+tabela tem os tokens contados, mas fica sem custo; a saída diz quantas
+requisições ficaram sem preço.
+
+Subcomandos (todos aceitam --desde AAAA-MM-DD; sem ele, tudo que houver):
+  semanas      uma linha por semana ISO (é o padrão sem argumento)
+  dias         as mesmas colunas, uma linha por dia
+  subagentes   custo por tipo de agente e o modelo em que rodou de fato
+  modelos      sessões principais que usaram Fable (ou --modelo SUBSTR)
+  plano        % do plano (janelas de 5h e de 7d) por dia, do statusline
+
+Colunas de `semanas` e `dias`:
+  dias        dias da semana com algum uso (só em `semanas`)
+  custo       custo equivalente total, sessão principal + subagentes
+  %sub        parte do custo que veio dos subagentes
+  fable       custo só dos modelos Fable
+  prompts     prompts do dono: mensagens digitadas e comandos de barra; não
+              contam resultado de ferramenta, saída de comando local nem
+              notificação de tarefa; os prompts dos subagentes ficam de fora
+  tools       chamadas de ferramenta (sessão principal e subagentes)
+  edits       dessas, as de Edit e Write
+  commits     commits sem merge de todas as branches, de qualquer autor, nos
+              repos que `vault-vinculos repos` lista e que existem no disco;
+              a data é a do autor, no fuso desta máquina
+  lin+ lin-   linhas adicionadas e removidas nesses commits (binários não contam)
+  PRs         PRs mergeados (`gh pr list`) nos repos com remote GitHub; `-` se o
+              gh faltar ou falhar
+  ctx_k       contexto médio por requisição da sessão principal, em milhares de
+              tokens: (cache lido + cache escrito + entrada) / requisições
+  $/commit    custo / commits
+  $/PR        custo / PRs
+  prompts/PR  prompts / PRs
+Os dias seguem o fuso desta máquina. Commits e PRs só entram a partir da
+primeira data com uso (ou de --desde). A mesma requisição aparece em várias
+linhas do transcript e é contada uma vez, pelo requestId.
+
+Colunas de `subagentes`: tipo (agentType do .meta.json), custo, % do custo dos
+subagentes, requisições e o modelo de cada requisição, com contagem.
+
+Colunas de `modelos`: custo e requisições do modelo buscado naquela sessão,
+primeira data de uso dele, título (ai-title) e o caminho do transcript.
+
+`plano` lê ${XDG_STATE_HOME:-~/.local/state}/claude-statusline/uso.tsv, que o
+statusline grava, e mostra o máximo de 5h% e de 7d% de cada dia.
+
+Opções comuns:
+  --desde AAAA-MM-DD   ignora o que for anterior
+  --projetos DIR       onde estão os transcripts (padrão ~/.claude/projects)
+"""
+
+
+# --------------------------------------------------------------------------
+# Datas e preços
+
+
+@lru_cache(maxsize=None)
+def _data_do_minuto(minuto):
+    dt = datetime.fromisoformat(minuto + ":00+00:00")
+    return dt.astimezone().date().isoformat()
+
+
+def data_local(ts):
+    """Data (no fuso da máquina) de um timestamp ISO; '' se não der."""
+    if not ts:
+        return ""
+    try:
+        if ts.endswith("Z") and len(ts) >= 16:
+            return _data_do_minuto(ts[:16])
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().date().isoformat()
+    except ValueError:
+        return ""
+
+
+def preco(modelo):
+    for fragmento, p in PRECOS.items():
+        if fragmento in (modelo or ""):
+            return p
+    return None
+
+
+def custo_de(p, entrada, escrita, leitura, saida):
+    return (entrada * p[0] + escrita * p[0] * 2 + leitura * p[2] + saida * p[1]) / 1e6
+
+
+def semana_iso(dia):
+    ano, sem, _ = date.fromisoformat(dia).isocalendar()
+    return f"{ano}-W{sem:02d}"
+
+
+# --------------------------------------------------------------------------
+# Leitura dos transcripts
+
+
+def e_subagente(caminho):
+    return os.sep + "subagents" + os.sep in caminho and os.path.basename(caminho).startswith("agent-")
+
+
+def tipo_do_agente(caminho):
+    meta = caminho[: -len(".jsonl")] + ".meta.json"
+    try:
+        with open(meta, encoding="utf-8") as f:
+            return json.load(f).get("agentType") or "desconhecido"
+    except (OSError, ValueError, AttributeError):
+        return "desconhecido"
+
+
+def texto_do_prompt(msg):
+    c = msg.get("content")
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        if any(isinstance(b, dict) and b.get("type") == "tool_result" for b in c):
+            return None
+        return " ".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+    return None
+
+
+def e_prompt_do_dono(d):
+    if d.get("isMeta") or d.get("isSidechain") or not d.get("promptId"):
+        return False
+    txt = texto_do_prompt(d.get("message") or {})
+    if txt is None:
+        return False
+    txt = txt.lstrip()
+    if not txt or txt.startswith("<local-command") or txt.startswith("<task-notification"):
+        return False
+    return True
+
+
+def le_arquivo(caminho):
+    """Resumo de um transcript: requisições, ferramentas, prompts e título.
+
+    Filtra por substring antes do json.loads: são GBs de linhas e a maioria
+    não interessa.
+    """
+    sub = e_subagente(caminho)
+    res = {
+        "caminho": caminho,
+        "sub": sub,
+        "tipo": tipo_do_agente(caminho) if sub else None,
+        "reqs": [],  # (id, data, modelo, entrada, escrita, leitura, saida)
+        "tools": [],  # (id, data, nome)
+        "prompts": [],  # (promptId, data)
+        "titulo": None,
+    }
+    anon = 0
+    try:
+        f = open(caminho, encoding="utf-8", errors="replace")
+    except OSError:
+        return res
+    with f:
+        for linha in f:
+            if '"assistant"' in linha:
+                pass
+            elif not (
+                (not sub and '"user"' in linha and '"promptId"' in linha and '"tool_result"' not in linha)
+                or '"ai-title"' in linha
+            ):
+                continue
+            try:
+                d = json.loads(linha)
+            except ValueError:
+                continue
+            if not isinstance(d, dict):
+                continue
+            t = d.get("type")
+            if t == "ai-title":
+                res["titulo"] = d.get("aiTitle") or res["titulo"]
+                continue
+            dia = data_local(d.get("timestamp"))
+            if not dia:
+                continue
+            if t == "user":
+                if not sub and e_prompt_do_dono(d):
+                    res["prompts"].append((d["promptId"], dia))
+                continue
+            if t != "assistant":
+                continue
+            msg = d.get("message") or {}
+            if not isinstance(msg, dict):
+                continue
+            for b in msg.get("content") or []:
+                if isinstance(b, dict) and b.get("type") == "tool_use":
+                    res["tools"].append((b.get("id"), dia, b.get("name") or "?"))
+            rid = d.get("requestId") or msg.get("id")
+            if not rid:
+                anon += 1
+                rid = f"anon:{caminho}:{anon}"
+            u = msg.get("usage") or {}
+            res["reqs"].append(
+                (
+                    rid,
+                    dia,
+                    msg.get("model") or "?",
+                    u.get("input_tokens") or 0,
+                    u.get("cache_creation_input_tokens") or 0,
+                    u.get("cache_read_input_tokens") or 0,
+                    u.get("output_tokens") or 0,
+                )
+            )
+    return res
+
+
+def lista_transcripts(raiz):
+    achados = []
+    for pasta, _, arquivos in os.walk(raiz):
+        for a in arquivos:
+            if a.endswith(".jsonl"):
+                achados.append(os.path.join(pasta, a))
+    return sorted(achados)
+
+
+def le_todos(arquivos):
+    if len(arquivos) <= 4:
+        yield from (le_arquivo(a) for a in arquivos)
+        return
+    with concurrent.futures.ProcessPoolExecutor(max_workers=min(os.cpu_count() or 2, 16)) as ex:
+        yield from ex.map(le_arquivo, arquivos, chunksize=4)
+
+
+class Dados:
+    """O que os transcripts dizem, já sem repetição."""
+
+    def __init__(self, arquivos, desde, modelo_busca):
+        self.por_dia = defaultdict(Counter)
+        self.por_agente = defaultdict(lambda: {"custo": 0.0, "req": 0, "modelos": Counter()})
+        self.sessoes = {}  # caminho -> dict, só da sessão principal e do modelo buscado
+        self.sem_preco = Counter()
+        self.arquivos = len(arquivos)
+        vistos_req, vistos_tool, vistos_prompt = set(), set(), set()
+        for r in le_todos(arquivos):
+            for rid, dia, modelo, i, cw, cr, o in r["reqs"]:
+                if dia < desde or rid in vistos_req:
+                    continue
+                vistos_req.add(rid)
+                if i + cw + cr + o == 0:
+                    continue
+                self._requisicao(r, dia, modelo, i, cw, cr, o, modelo_busca)
+            for tid, dia, nome in r["tools"]:
+                if dia < desde or (tid and tid in vistos_tool):
+                    continue
+                if tid:
+                    vistos_tool.add(tid)
+                c = self.por_dia[dia]
+                c["tools"] += 1
+                if nome in FERRAMENTAS_DE_EDICAO:
+                    c["edits"] += 1
+            for pid, dia in r["prompts"]:
+                if dia < desde or pid in vistos_prompt:
+                    continue
+                vistos_prompt.add(pid)
+                self.por_dia[dia]["prompts"] += 1
+            if r["sub"]:
+                continue
+            s = self.sessoes.get(r["caminho"])
+            if s is not None:
+                s["titulo"] = r["titulo"]
+
+    def _requisicao(self, r, dia, modelo, i, cw, cr, o, modelo_busca):
+        p = preco(modelo)
+        custo = custo_de(p, i, cw, cr, o) if p else 0.0
+        c = self.por_dia[dia]
+        lado = "sub" if r["sub"] else "main"
+        c["req_" + lado] += 1
+        if p:
+            c["custo"] += custo
+            c["custo_" + lado] += custo
+            if "fable" in modelo:
+                c["custo_fable"] += custo
+        else:
+            self.sem_preco[modelo] += 1
+        if not r["sub"]:
+            c["ctx_soma"] += cr + cw + i
+        else:
+            a = self.por_agente[r["tipo"]]
+            a["custo"] += custo
+            a["req"] += 1
+            a["modelos"][modelo] += 1
+        if not r["sub"] and modelo_busca in modelo:
+            s = self.sessoes.setdefault(
+                r["caminho"], {"custo": 0.0, "req": 0, "primeira": dia, "titulo": None}
+            )
+            s["custo"] += custo
+            s["req"] += 1
+            s["primeira"] = min(s["primeira"], dia)
+
+
+# --------------------------------------------------------------------------
+# Commits e PRs
+
+
+def roda(cmd, cwd=None, timeout=120):
+    return subprocess.run(
+        cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, errors="replace"
+    )
+
+
+def repos_do_disco(notas):
+    if not shutil.which("vault-vinculos"):
+        notas.append("vault-vinculos não está no PATH: commits e PRs ficaram de fora.")
+        return None
+    try:
+        r = roda(["vault-vinculos", "repos"], timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        notas.append(f"vault-vinculos falhou ({e}): commits e PRs ficaram de fora.")
+        return None
+    if r.returncode != 0:
+        notas.append("vault-vinculos repos saiu com erro: commits e PRs ficaram de fora.")
+        return None
+    clones = []
+    for linha in r.stdout.splitlines():
+        campos = linha.split("\t")
+        clone = campos[1] if len(campos) > 1 else ""
+        if clone and os.path.isdir(clone) and clone not in clones:
+            clones.append(clone)
+    return clones
+
+
+def commits_do_repo(repo, desde):
+    margem = (date.fromisoformat(desde) - timedelta(days=2)).isoformat()
+    r = roda(
+        [
+            "git", "log", "--all", "--no-merges", f"--since={margem}", "--numstat",
+            "--date=format-local:%Y-%m-%d", "--pretty=format:%x01%H%x09%ad",
+        ],
+        cwd=repo,
+    )
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr.strip().splitlines() or ["git log falhou"])[0])
+    commits = []  # (hash, data, mais, menos)
+    atual = None
+    for linha in r.stdout.splitlines():
+        if linha.startswith("\x01"):
+            h, _, dia = linha[1:].partition("\t")
+            atual = [h, dia, 0, 0]
+            commits.append(atual)
+        elif atual and linha.count("\t") >= 2:
+            a, b, _ = linha.split("\t", 2)
+            atual[2] += int(a) if a.isdigit() else 0
+            atual[3] += int(b) if b.isdigit() else 0
+    return commits
+
+
+def prs_do_repo(repo, desde):
+    r = roda(["git", "remote", "-v"], cwd=repo, timeout=30)
+    if "github.com" not in r.stdout:
+        return None
+    margem = (date.fromisoformat(desde) - timedelta(days=2)).isoformat()
+    r = roda(
+        [
+            "gh", "pr", "list", "--state", "merged", "--json", "mergedAt",
+            "--limit", str(LIMITE_PRS), "--search", f"merged:>={margem}",
+        ],
+        cwd=repo,
+    )
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr.strip().splitlines() or ["gh pr list falhou"])[0])
+    itens = json.loads(r.stdout or "[]")
+    if len(itens) >= LIMITE_PRS:
+        raise RuntimeError(f"mais de {LIMITE_PRS} PRs: lista truncada")
+    return [data_local(i.get("mergedAt")) for i in itens if i.get("mergedAt")]
+
+
+def coleta_git(desde, notas):
+    """({data: [commits, mais, menos]} ou None, {data: PRs} ou None)."""
+    repos = repos_do_disco(notas)
+    if repos is None:
+        return None, None
+    commits = defaultdict(lambda: [0, 0, 0])
+    prs = defaultdict(int)
+    vistos = set()
+    falhas_git, falhas_gh = [], []
+    tem_gh = bool(shutil.which("gh"))
+    if not tem_gh:
+        notas.append("gh não está no PATH: a coluna PRs sai `-`.")
+
+    def trabalho(repo):
+        out = {"repo": repo, "commits": [], "prs": None, "erro_git": None, "erro_gh": None}
+        try:
+            out["commits"] = commits_do_repo(repo, desde)
+        except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+            out["erro_git"] = str(e)
+        if tem_gh:
+            try:
+                out["prs"] = prs_do_repo(repo, desde)
+            except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as e:
+                out["erro_gh"] = str(e)
+        return out
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        resultados = list(ex.map(trabalho, repos))
+    com_gh = 0
+    for o in resultados:
+        nome = os.path.basename(o["repo"])
+        if o["erro_git"]:
+            falhas_git.append(f"{nome}: {o['erro_git']}")
+        for h, dia, mais, menos in o["commits"]:
+            if dia < desde or h in vistos:
+                continue
+            vistos.add(h)
+            c = commits[dia]
+            c[0] += 1
+            c[1] += mais
+            c[2] += menos
+        if o["erro_gh"]:
+            falhas_gh.append(f"{nome}: {o['erro_gh']}")
+        elif o["prs"] is not None:
+            com_gh += 1
+            for dia in o["prs"]:
+                if dia and dia >= desde:
+                    prs[dia] += 1
+    if falhas_git:
+        notas.append("git log falhou em " + "; ".join(falhas_git))
+    if falhas_gh:
+        notas.append("gh falhou em " + "; ".join(falhas_gh) + ".")
+    return commits, (prs if com_gh else None)
+
+
+# --------------------------------------------------------------------------
+# Saída
+
+
+def tabela(cabecalho, linhas, alinhamentos):
+    """Texto alinhado; alinhamentos: 'l' ou 'r' por coluna."""
+    todas = [cabecalho] + linhas
+    larg = [max(len(str(l[i])) for l in todas) for i in range(len(cabecalho))]
+    out = []
+    for l in todas:
+        cels = []
+        for i, v in enumerate(l):
+            v = str(v)
+            cels.append(v.ljust(larg[i]) if alinhamentos[i] == "l" else v.rjust(larg[i]))
+        out.append("  ".join(cels).rstrip())
+    return "\n".join(out)
+
+
+def dinheiro(v):
+    return f"${v:,.2f}"
+
+
+def razao(num, den, fmt):
+    return fmt(num / den) if den else "-"
+
+
+def linha_de_periodo(rotulo, c, com_dias, dias_com_uso, commits, prs):
+    custo = c["custo"]
+    n_commits = commits[0] if commits is not None else None
+    req_main = c["req_main"]
+    pr = prs if prs is not None else None
+    linha = [rotulo]
+    if com_dias:
+        linha.append(dias_com_uso)
+    linha += [
+        dinheiro(custo),
+        razao(c["custo_sub"] * 100, custo, lambda x: f"{x:.0f}%"),
+        dinheiro(c["custo_fable"]),
+        c["prompts"],
+        c["tools"],
+        c["edits"],
+        n_commits if n_commits is not None else "-",
+        commits[1] if commits is not None else "-",
+        commits[2] if commits is not None else "-",
+        pr if pr is not None else "-",
+        razao(c["ctx_soma"] / 1000, req_main, lambda x: f"{x:.0f}"),
+        razao(custo, n_commits, dinheiro) if n_commits is not None else "-",
+        razao(custo, pr, dinheiro) if pr is not None else "-",
+        razao(c["prompts"], pr, lambda x: f"{x:.1f}") if pr is not None else "-",
+    ]
+    return linha
+
+
+def cmd_periodos(args, por_semana):
+    desde = args.desde
+    notas = []
+    dados = Dados(lista_transcripts(args.projetos), desde or "0000-00-00", args.modelo)
+    datas_uso = sorted(dados.por_dia)
+    if not datas_uso:
+        print("Nenhum uso encontrado em " + args.projetos + ".")
+        return notas, dados
+    inicio = desde or datas_uso[0]
+    commits, prs = coleta_git(inicio, notas)
+
+    chave = semana_iso if por_semana else (lambda d: d)
+    soma = defaultdict(Counter)
+    dias_uso = defaultdict(set)
+    g_commits = defaultdict(lambda: [0, 0, 0])
+    g_prs = defaultdict(int)
+    for dia, c in dados.por_dia.items():
+        soma[chave(dia)].update(c)
+        if c["req_main"] or c["req_sub"] or c["prompts"] or c["tools"]:
+            dias_uso[chave(dia)].add(dia)
+    if commits is not None:
+        for dia, v in commits.items():
+            g_commits[chave(dia)] = [a + b for a, b in zip(g_commits[chave(dia)], v)]
+            soma[chave(dia)].update({})  # garante a linha do período
+    if prs is not None:
+        for dia, n in prs.items():
+            g_prs[chave(dia)] += n
+            soma[chave(dia)].update({})
+
+    cab = ["semana" if por_semana else "dia"]
+    if por_semana:
+        cab.append("dias")
+    cab += [
+        "custo", "%sub", "fable", "prompts", "tools", "edits", "commits", "lin+", "lin-",
+        "PRs", "ctx_k", "$/commit", "$/PR", "prompts/PR",
+    ]
+    linhas = []
+    total = Counter()
+    t_commits, t_prs, t_dias = [0, 0, 0], 0, 0
+    for per in sorted(soma):
+        if per < chave(inicio):
+            continue
+        c = soma[per]
+        total.update(c)
+        cm = g_commits[per] if commits is not None else None
+        pr = g_prs[per] if prs is not None else None
+        if cm:
+            t_commits = [a + b for a, b in zip(t_commits, cm)]
+        t_prs += pr or 0
+        t_dias += len(dias_uso[per])
+        linhas.append(linha_de_periodo(per, c, por_semana, len(dias_uso[per]), cm, pr))
+    linhas.append(
+        linha_de_periodo(
+            "total", total, por_semana, t_dias,
+            t_commits if commits is not None else None, t_prs if prs is not None else None,
+        )
+    )
+    alinh = ["l"] + ["r"] * (len(cab) - 1)
+    print(tabela(cab, linhas, alinh))
+    return notas, dados
+
+
+def cmd_subagentes(args):
+    dados = Dados(lista_transcripts(args.projetos), args.desde or "0000-00-00", args.modelo)
+    if not dados.por_agente:
+        print("Nenhum uso de subagente encontrado.")
+        return [], dados
+    total = sum(a["custo"] for a in dados.por_agente.values())
+    linhas = []
+    for tipo, a in sorted(dados.por_agente.items(), key=lambda kv: -kv[1]["custo"]):
+        modelos = ", ".join(f"{m.removeprefix('claude-')} {n}" for m, n in a["modelos"].most_common())
+        linhas.append(
+            [tipo, dinheiro(a["custo"]), razao(a["custo"] * 100, total, lambda x: f"{x:.0f}%"), a["req"], modelos]
+        )
+    linhas.append(
+        ["total", dinheiro(total), "100%" if total else "-", sum(a["req"] for a in dados.por_agente.values()), ""]
+    )
+    print(tabela(["tipo", "custo", "%", "req", "modelos (requisições)"], linhas, ["l", "r", "r", "r", "l"]))
+    return [], dados
+
+
+def cmd_modelos(args):
+    dados = Dados(lista_transcripts(args.projetos), args.desde or "0000-00-00", args.modelo)
+    if not dados.sessoes:
+        print(f"Nenhuma sessão principal usou modelo com '{args.modelo}' no id.")
+        return [], dados
+    linhas = []
+    for caminho, s in sorted(dados.sessoes.items(), key=lambda kv: (kv[1]["primeira"], kv[0])):
+        titulo = s["titulo"] or "(sem título)"
+        if len(titulo) > 48:
+            titulo = titulo[:47] + "…"
+        linhas.append([dinheiro(s["custo"]), s["req"], s["primeira"], titulo, caminho])
+    linhas.append([dinheiro(sum(s["custo"] for s in dados.sessoes.values())),
+                   sum(s["req"] for s in dados.sessoes.values()), "", "total", ""])
+    print(tabela(["custo", "req", "primeira", "título", "transcript"], linhas, ["r", "r", "l", "l", "l"]))
+    return [], dados
+
+
+def cmd_plano(args):
+    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
+    caminho = os.path.join(base, "claude-statusline", "uso.tsv")
+    if not os.path.isfile(caminho):
+        print(
+            f"Sem dados do plano: {caminho} não existe.\n"
+            "Quem grava é o statusline (claude-statusline), uma linha cada vez que o 5h% "
+            "ou o 7d% muda; ele só escreve com a sessão logada no plano com limites de uso."
+        )
+        return [], None
+    por_dia = {}
+    with open(caminho, encoding="utf-8", errors="replace") as f:
+        cab = f.readline().rstrip("\n").split("\t")
+        try:
+            i_q, i_5, i_7 = cab.index("quando"), cab.index("5h_pct"), cab.index("7d_pct")
+        except ValueError:
+            print(f"{caminho} não tem o cabeçalho esperado (quando, 5h_pct, 7d_pct).")
+            return [], None
+        for linha in f:
+            campos = linha.rstrip("\n").split("\t")
+            if len(campos) <= max(i_q, i_5, i_7):
+                continue
+            dia = campos[i_q][:10]
+            if args.desde and dia < args.desde:
+                continue
+            d = por_dia.setdefault(dia, [None, None])
+            for k, i in ((0, i_5), (1, i_7)):
+                try:
+                    v = float(campos[i])
+                except ValueError:
+                    continue
+                d[k] = v if d[k] is None else max(d[k], v)
+    if not por_dia:
+        print(f"Nenhuma linha de {caminho} no período.")
+        return [], None
+    fmt = lambda v: "-" if v is None else f"{v:.0f}%"
+    linhas = [[dia, fmt(v[0]), fmt(v[1])] for dia, v in sorted(por_dia.items())]
+    print(tabela(["dia", "5h máx", "7d máx"], linhas, ["l", "r", "r"]))
+    return [], None
+
+
+def rodape(notas, dados):
+    avisos = list(notas)
+    if dados is not None and dados.sem_preco:
+        modelos = ", ".join(f"{m} ({n})" for m, n in dados.sem_preco.most_common())
+        avisos.insert(
+            0,
+            f"{sum(dados.sem_preco.values())} requisições sem preço na tabela ficaram fora do custo: {modelos}.",
+        )
+    if avisos:
+        print()
+        for a in avisos:
+            print(a)
+
+
+def main(argv):
+    comuns = argparse.ArgumentParser(add_help=False)
+    comuns.add_argument("--desde", metavar="AAAA-MM-DD")
+    comuns.add_argument(
+        "--projetos", metavar="DIR", default=os.path.expanduser("~/.claude/projects")
+    )
+    p = argparse.ArgumentParser(
+        prog="claude-uso",
+        description=AJUDA.replace("{PRECOS}", f"cacheada em {DATA_PRECOS}"),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[comuns],
+    )
+    sp = p.add_subparsers(dest="cmd", metavar="subcomando")
+    for nome, ajuda in (
+        ("semanas", "uma linha por semana ISO (padrão)"),
+        ("dias", "as mesmas colunas por dia"),
+        ("subagentes", "custo por tipo de agente e modelo em que rodou"),
+        ("modelos", "sessões principais que usaram Fable (ou --modelo)"),
+        ("plano", "%% do plano por dia, do uso.tsv do statusline"),
+    ):
+        s = sp.add_parser(nome, help=ajuda, description=ajuda, parents=[comuns])
+        if nome == "modelos":
+            s.add_argument("--modelo", metavar="SUBSTR", default="fable",
+                           help="trecho do id do modelo (padrão: fable)")
+    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+        argv = ["semanas"] + argv
+    args = p.parse_args(argv)
+    if not hasattr(args, "modelo"):
+        args.modelo = "fable"
+    if args.desde:
+        try:
+            date.fromisoformat(args.desde)
+        except ValueError:
+            p.error(f"--desde precisa ser AAAA-MM-DD, veio '{args.desde}'")
+    args.projetos = os.path.expanduser(args.projetos)
+
+    print(
+        f"Custo é equivalente de API pela tabela de preços ({DATA_PRECOS}), não a fatura do plano.\n"
+    )
+    if args.cmd == "plano":
+        notas, dados = cmd_plano(args)
+    else:
+        if not os.path.isdir(args.projetos):
+            print(f"Sem transcripts: {args.projetos} não existe.")
+            return 0
+        if args.cmd in ("semanas", "dias"):
+            notas, dados = cmd_periodos(args, args.cmd == "semanas")
+        elif args.cmd == "subagentes":
+            notas, dados = cmd_subagentes(args)
+        else:
+            notas, dados = cmd_modelos(args)
+    rodape(notas, dados)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except BrokenPipeError:
+        sys.exit(0)

@@ -17,6 +17,8 @@ check_cmd "gcc" "$PM_INSTALL gcc (ou build-essential/@development-tools)"
 echo ""
 log_info "--- Ferramentas CLI ---"
 check_cmd "rg" "$PM_INSTALL ripgrep"
+check_cmd "python3" "$PM_INSTALL python3 (>= 3.9; o claude-uso usa só a biblioteca padrão)" "optional"
+check_cmd "gh" "$PM_INSTALL gh (o claude-uso conta os PRs mergeados com ele)" "optional"
 
 # fd com checagem de versão (Snacks picker exige >= 8.4 para novas sintaxes).
 if command -v fd &>/dev/null; then

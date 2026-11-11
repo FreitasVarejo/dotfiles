@@ -21,6 +21,11 @@
 ## Subagentes
 
 - Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (teste de aceite, auditor, reavaliador) ficam no modelo da sessão. Agente de área que o contrato do repo nomeia vale acima dos dois.
+- Toda chamada de subagente leva `subagent_type`. Revisão ou auditoria só de leitura vai no `auditor`; teste de aceite, no `aceite`.
+
+## Consumo
+
+- Custo, modelos, subagentes e uso do plano do Claude Code: `claude-uso --help`.
 
 ## Worktree
 
