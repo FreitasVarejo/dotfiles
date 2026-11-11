@@ -8,7 +8,7 @@ script da skill: globs do que mudou, dois espaços, o comando na raiz do repo.
 *                                                       ./precommit.sh
 agents/**|*/hooks/**|lib/**|setup.sh|healthcheck.sh     ./healthcheck.sh
 agents/**                                               python3 -I -m unittest discover -s agents/tests
-agents/mods/**                                          for m in agents/mods/*/; do claude plugin validate "$m" && claude plugin test "$m" || exit 1; done
+agents/mods/**                                          for m in agents/mods/*/; do claude plugin validate "$m" && { [[ -f "${m}UPSTREAM" ]] || claude plugin test "$m"; } || exit 1; done
 vault/**|agents/skills/fechar/scripts/pendencias        ./vault/tests/vault-vinculos.sh
 ```
 

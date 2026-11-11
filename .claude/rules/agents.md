@@ -39,6 +39,11 @@ the repo declares; whatever the machine added stays.
   `CLAUDE_CODE_PLUGIN_DIRS` that `settings/claude.json` sets (`:`-separated, one per
   mod). A mod shows or asks; the rule it shows stays in its trava or skill, which the
   mod calls instead of copying. Its gate: `~/dotfiles/docs/agents/verificacao.md`.
+- A third-party mod is a vendored copy of only what runs (`.claude-plugin/plugin.json`,
+  `hooks/`, `LICENSE`) plus an `UPSTREAM` file naming the source URL and commit: never a
+  marketplace install, never a path into a clone. Read its code before vendoring it, and
+  don't rewrite it in the vendoring commit. Its tests stay upstream: the gate only
+  validates a mod that has an `UPSTREAM`.
 - `instructions/user.md` → `CLAUDE.md`, and `instructions/machines/<hostname>.md` →
   `rules/maquina.md`, both under `~/.claude/`, one symlink per file (ADR 0026). A line
   goes in `user.md` only when it holds in two repos and names no project noun. OpenCode

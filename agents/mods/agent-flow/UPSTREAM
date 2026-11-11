@@ -1,0 +1,5 @@
+url: https://github.com/Charlie0113-T/claude-agent-flow
+commit: 76ef8fb2db36136f08ecaf142f920bf4d3843537
+date: 2026-10-08
+license: Apache-2.0
+copied: .claude-plugin/plugin.json, hooks/, LICENSE
