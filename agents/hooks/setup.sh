@@ -6,7 +6,9 @@
 #   - linka os subagentes (subagents/) no Claude Code;
 #   - registra os MCP servers de mcp/ no Claude Code e no Cursor;
 #   - mescla permissions/deny.json no deny do Claude Code e do Cursor;
-#   - mescla settings/claude.json e as travas de travas/ no settings.json do Claude Code.
+#   - mescla settings/claude.json e as travas de travas/ no settings.json do Claude Code;
+#   - onde há OpenCode 2.x: mescla o opencode.json, gera agents/ e commands/ no diretório
+#     de config dele e linka os comandos de opencode/commands/.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -258,6 +260,53 @@ apply_travas() {
   fi
 }
 
+# apply_opencode — o alvo opencode (ADR 0046), só onde há OpenCode 2.x.
+apply_opencode() {
+  local version src dest entry out key verdict
+  version=$(opencode_version)
+  if [[ -z "$version" ]]; then
+    log_optional "OpenCode não encontrado, pulando o alvo opencode"
+    return
+  elif ! opencode_active; then
+    log_optional "OpenCode $version não é 2.x (outro schema de config), pulando o alvo opencode"
+    return
+  fi
+
+  # Os comandos escritos à mão: um symlink por arquivo, como os subagentes.
+  while IFS=$'\t' read -r src dest; do
+    [[ -n "$src" ]] && link_file "$src" "$dest" points_into_opencode_commands
+  done < <(opencode_command_links)
+  for entry in "$OPENCODE_CONFIG_DIR"/commands/*.md; do
+    if [[ -L "$entry" && ! -e "$entry" ]] && points_into_opencode_commands "$entry"; then
+      rm "$entry"
+      log_info "Link pendurado removido: ${entry/#$HOME/\~}"
+    fi
+  done
+
+  # O resto o helper faz: mescla o opencode.json e gera (ou remove, quando a
+  # fonte sumiu) os arquivos marcados como gerados.
+  if ! out=$(agent_config opencode-apply "$OPENCODE_CONFIG_DIR" "$AGENTS_PKG_DIR" "$AGENTS_MACHINE"); then
+    log_warn "OpenCode $version: nada aplicado em ${OPENCODE_CONFIG_DIR/#$HOME/\~} (erro acima)"
+    return
+  fi
+  if [[ -z "$out" ]]; then
+    log_success "OpenCode $version: config e arquivos gerados em dia (${OPENCODE_CONFIG_DIR/#$HOME/\~})"
+  else
+    while IFS=$'\t' read -r key verdict; do
+      case "$verdict" in
+        blocked) log_warn "OpenCode: só há opencode.jsonc em ${OPENCODE_CONFIG_DIR/#$HOME/\~}; nada gravado no opencode.json (converta o .jsonc em opencode.json e rode ./setup.sh)" ;;
+        skip) log_warn "OpenCode: ${OPENCODE_CONFIG_DIR/#$HOME/\~}/$key é arquivo seu, sem o marcador de gerado; não mexo" ;;
+        remove) log_success "OpenCode: $key removido (a fonte saiu do repo)" ;;
+        *) log_success "OpenCode: $key ($verdict)" ;;
+      esac
+    done <<<"$out"
+  fi
+  if [[ ! -e "$OPENCODE_MODELS_FILE" ]]; then
+    log_warn "OpenCode: sem ${OPENCODE_MODELS_FILE/#$HOME/\~}; os subagentes saem sem model e herdam o da sessão"
+    echo "    -> {\"opus\": \"github-copilot/<id>\", \"sonnet\": \"...\", \"haiku\": \"...\"}; ids em: opencode models"
+  fi
+}
+
 log_info "Linkando as skills..."
 link_skills
 
@@ -300,3 +349,7 @@ if command -v claude &>/dev/null; then
 else
   log_optional "claude não encontrado, pulando o settings e as travas do Claude Code"
 fi
+
+echo ""
+log_info "Aplicando o alvo opencode..."
+apply_opencode

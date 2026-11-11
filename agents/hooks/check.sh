@@ -5,7 +5,8 @@
 # espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
 # permissions/deny.json em cada agente presente, o settings/claude.json, as
 # travas de travas/, as instruções de usuário de instructions/ e os subagentes
-# de subagents/ no Claude Code.
+# de subagents/ no Claude Code, e o alvo opencode (opencode.json, arquivos gerados e
+# comandos linkados) onde há OpenCode 2.x.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -24,6 +25,14 @@ if [[ -d "$CURSOR_HOME" ]]; then
   log_success "Cursor encontrado (${CURSOR_HOME/#$HOME/\~})"
 else
   log_optional "Cursor não encontrado (${CURSOR_HOME/#$HOME/\~} não existe)."
+fi
+OC_VER=$(opencode_version)
+if opencode_active; then
+  log_success "OpenCode 2.x encontrado: $OC_VER ($(command -v opencode))"
+elif [[ -n "$OC_VER" ]]; then
+  log_optional "OpenCode $OC_VER não é 2.x: o alvo opencode se omite (outro schema de config)."
+else
+  log_optional "OpenCode não encontrado: o alvo opencode se omite."
 fi
 
 # 1. Skills linkadas ----------------------------------------------------------
@@ -327,6 +336,67 @@ else
       fail_check
     fi
   done
+fi
+
+# 8. OpenCode ---------------------------------------------------------------------
+# Só onde há OpenCode 2.x (ADR 0046). O declarado que falta ou está atrás é
+# vermelho, como as travas: o OpenCode não tem o fluxo sem eles. Arquivo seu no
+# lugar de um gerado é aviso, e o conserto é o setup.sh.
+echo ""
+log_info "--- OpenCode (agents/opencode/, deny, instruções, subagentes, skills) ---"
+if ! opencode_active; then
+  log_optional "Sem OpenCode 2.x: alvo opencode não verificado."
+elif ! command -v python3 &>/dev/null; then
+  log_optional "Sem python3: alvo opencode não comparado com o repo."
+else
+  OC_DIR_SHOWN="${OPENCODE_CONFIG_DIR/#$HOME/\~}"
+  # `$?` lido logo após a substituição: depois de um `if !` ele seria 0.
+  diff=$(agent_config opencode-plan "$OPENCODE_CONFIG_DIR" "$AGENTS_PKG_DIR" "$AGENTS_MACHINE")
+  plan_status=$?
+  if ((plan_status != 0)); then
+    config_failed "$plan_status" "opencode"
+  elif [[ -z "$diff" ]]; then
+    log_success "opencode: opencode.json e arquivos gerados em dia ($OC_DIR_SHOWN)"
+  else
+    while IFS=$'\t' read -r key verdict; do
+      case "$verdict" in
+        blocked)
+          log_missing "opencode: só há opencode.jsonc em $OC_DIR_SHOWN; nada vai para o opencode.json"
+          echo "    -> Converter o .jsonc em opencode.json e rodar ./setup.sh"
+          fail_check
+          ;;
+        skip)
+          log_warn "opencode: $OC_DIR_SHOWN/$key é arquivo seu, sem o marcador de gerado; o do repo não chega ao agente"
+          echo "    -> Apagar ou mover o arquivo e rodar ./setup.sh"
+          ;;
+        *)
+          log_missing "opencode: $key fora do repo ($verdict)"
+          echo "    -> Aplicar: ./setup.sh"
+          fail_check
+          ;;
+      esac
+    done <<<"$diff"
+  fi
+  mapfile -t OC_COMMANDS < <(opencode_command_links)
+  for pair in "${OC_COMMANDS[@]}"; do
+    IFS=$'\t' read -r src dest <<<"$pair"
+    if [[ -L "$dest" && "$(readlink -f "$dest")" == "$src" ]]; then
+      log_success "${dest/#$HOME/\~} -> ${src/#$HOME/\~}"
+    elif [[ -e "$dest" && ! -L "$dest" ]]; then
+      log_warn "${dest/#$HOME/\~} é arquivo real; ${src/#$HOME/\~} não chega ao agente"
+      echo "    -> Juntar o conteúdo ao arquivo do repo, apagar o real e rodar ./setup.sh"
+    else
+      log_missing "${dest/#$HOME/\~} não aponta para ${src/#$HOME/\~}"
+      echo "    -> Rodar: ./setup.sh"
+      fail_check
+    fi
+  done
+  if [[ -e "$OPENCODE_MODELS_FILE" ]]; then
+    log_success "opencode: mapa de modelos presente (${OPENCODE_MODELS_FILE/#$HOME/\~})"
+  else
+    log_warn "opencode: sem ${OPENCODE_MODELS_FILE/#$HOME/\~}; os subagentes herdam o modelo da sessão"
+    echo "    -> {\"opus\": \"github-copilot/<id>\", \"sonnet\": \"...\", \"haiku\": \"...\"}; ids em: opencode models"
+  fi
 fi
 
 exit "$CHECK_FAILED"
