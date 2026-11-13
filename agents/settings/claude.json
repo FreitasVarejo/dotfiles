@@ -57,6 +57,19 @@
     "type": "command",
     "command": "'${HOME}/dotfiles/agents/statusline/claude-subagent-statusline'"
   },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'${HOME}/.config/tmux/scripts/revive' claude",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
   "env": {
     "CLAUDE_CODE_PLUGIN_DIRS": "${HOME}/dotfiles/agents/mods/travas-pendentes:${HOME}/dotfiles/agents/mods/agent-flow"
   }
