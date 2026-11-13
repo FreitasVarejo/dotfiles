@@ -140,6 +140,10 @@ set -o vi
 # Show vi mode in prompt (optional: shows [vi] when entering normal mode)
 # shellcheck disable=SC2128,SC2178  # bash >=5.1 aceita PROMPT_COMMAND array; aqui é sempre string
 export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}echo -ne '\033]0;${USER}@${HOSTNAME}\007'"
+# Histórico em disco a cada prompt, não só ao fechar o shell: uma queda do
+# tmux mata os shells e perderia o histórico da sessão.
+# shellcheck disable=SC2128,SC2178  # mesmo caso da linha acima: PROMPT_COMMAND aqui é string
+export PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND$'\n'}history -a"
 
 # Luacheck portável: respeita PATH se já existe, senão cai para ~/.luarocks/bin.
 if command -v luacheck &>/dev/null; then
