@@ -1,0 +1,44 @@
+#!/bin/bash
+# shellcheck shell=bash
+#
+# Lado escritor do contrato @revive (ver scripts/snapshot): grava, no pane em
+# que roda, o comando que o reabre. Fora do tmux não faz nada.
+#
+#   revive set <comando...>   grava o comando
+#   revive clear              apaga
+#   revive claude             hook SessionStart do Claude Code (JSON no stdin)
+
+[[ -n "${TMUX_PANE:-}" ]] || exit 0
+
+case "${1:-}" in
+  set)
+    shift
+    tmux set -p -t "$TMUX_PANE" @revive "$*" 2>/dev/null
+    ;;
+  clear)
+    tmux set -p -u -t "$TMUX_PANE" @revive 2>/dev/null
+    ;;
+  claude)
+    payload=$(cat)
+    sid=$(grep -oE '"session_id" *: *"[0-9a-f-]+"' <<<"$payload" | head -n1 | grep -oE '[0-9a-f-]{36}')
+    [[ -n "$sid" && -n "${CLAUDE_PID:-}" ]] || exit 0
+    # Só o claude interativo do pane: um `claude -p` lançado por uma ferramenta
+    # de outro claude herdaria o TMUX_PANE e roubaria o @revive. O claude do
+    # pane não tem claude entre ele e o shell do pane.
+    pane_pid=$(tmux display -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null) || exit 0
+    pid=$(ps -o ppid= -p "$CLAUDE_PID" | tr -d ' ')
+    for _ in 1 2 3 4 5 6 7 8; do
+      [[ -n "$pid" && "$pid" != 1 ]] || exit 0
+      [[ "$pid" == "$pane_pid" ]] && break
+      [[ "$(ps -o comm= -p "$pid")" == claude ]] && exit 0
+      pid=$(ps -o ppid= -p "$pid" | tr -d ' ')
+    done
+    [[ "$pid" == "$pane_pid" ]] || exit 0
+    tmux set -p -t "$TMUX_PANE" @revive "claude --resume $sid" 2>/dev/null
+    ;;
+  *)
+    echo "uso: revive set <comando...>|clear|claude" >&2
+    exit 2
+    ;;
+esac
+exit 0

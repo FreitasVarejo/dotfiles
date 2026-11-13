@@ -1,0 +1,13 @@
+[Unit]
+Description=Servidor tmux restaurado do snapshot no boot
+
+[Service]
+# Só onde há linger (o pi01): o tmux sobe sem login. O servidor nasce dentro
+# desta unidade e sobrevive a ela enquanto ela estiver ativa; se ele morrer, o
+# próximo `t` restaura. `restart` mata o servidor e restaura de novo.
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=%h/.config/tmux/scripts/snapshot restore
+
+[Install]
+WantedBy=default.target

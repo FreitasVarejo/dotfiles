@@ -7,7 +7,7 @@
 #   t a session-name     - attach to session
 #   t n [session-name]   - create new session (default: name of the current directory)
 #   t k session-name     - kill session
-#   t kall               - kill all sessions
+#   t kall               - kill all sessions (and the next t restores nothing)
 #   t ssh session host [path] - new session, ssh into host (from ~/.ssh/config), optional cd
 #   t rename old new     - rename session
 #   t send cmd           - send command to active pane
@@ -18,9 +18,23 @@
 #   t p                  - switch to previous session
 #   t j                  - switch to next session
 
+# Servidor tmux ausente: o primeiro `t` restaura o snapshot (a menos que o
+# último fechamento tenha sido deliberado: `t kall`). Ver tmux/scripts/snapshot.
+_t_restore_if_down() {
+  local snap="$HOME/.config/tmux/scripts/snapshot"
+  [[ -x "$snap" ]] || return 0
+  tmux -u list-sessions &>/dev/null && return 0
+  "$snap" restore
+}
+
 t() {
   local cmd="${1:-}"
-  
+
+  case "$cmd" in
+    kall|kill-all|h|help|--help|-h|k|kill|c|detach) ;;
+    *) _t_restore_if_down ;;
+  esac
+
   # No arguments: list sessions
   if [[ -z "$cmd" ]]; then
     tmux -u list-sessions 2>/dev/null || echo "No tmux sessions running"
@@ -85,6 +99,7 @@ t() {
 
     # Kill all sessions
     kall|kill-all)
+      [[ -x "$HOME/.config/tmux/scripts/snapshot" ]] && "$HOME/.config/tmux/scripts/snapshot" mark-closed
       tmux -u kill-server
       echo "All tmux sessions killed"
       ;;

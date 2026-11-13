@@ -1,0 +1,141 @@
+#!/bin/bash
+# shellcheck shell=bash
+#
+# Snapshot do tmux e restauração, sobre o tmux-resurrect.
+#
+#   save            grava o snapshot (nada se não há servidor ou sessão)
+#   closed          hook session-closed: sem sessão sobrando é fechamento
+#                   deliberado (marcador); senão grava o snapshot
+#   mark-closed     grava o marcador de fechamento deliberado (t kall)
+#   restore         restaura se o servidor não existe/está sem sessões e não há
+#                   marcador (o primeiro `t` e o serviço de boot chamam isto)
+#   layout-hook F   @resurrect-hook-post-save-layout: leva o @revive de cada
+#                   pane para o arquivo F do snapshot
+#   revive-hook     @resurrect-hook-post-restore-all: digita os @revive
+#
+# Contrato @revive: o programa grava no próprio pane o comando que o reabre
+# (scripts/revive). O save só o copia se o pane_current_command ainda for aquele
+# programa. Linha do snapshot: revive<TAB>sessão<TAB>janela<TAB>pane<TAB>run|type<TAB>comando.
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/tmux/resurrect"
+MARK="$DATA/closed-on-purpose"
+RESTORED_AT="$DATA/restored-at"
+# Logo depois de restaurar, os programas ainda não se registraram de novo (o
+# claude grava o @revive no SessionStart, segundos depois de aberto): um save
+# nessa janela trocaria o snapshot bom por um sem @revive.
+GRACE=45
+LOCK="$DATA/lock"
+TAB=$'\t'
+
+has_sessions() { tmux list-sessions &>/dev/null; }
+
+# lock: save e restore não se atropelam (um timer no meio de uma restauração
+# gravaria o estado pela metade).
+take_lock() {
+  mkdir -p "$DATA"
+  exec 9>"$LOCK"
+  flock -w 120 9
+}
+
+# save: o fd 9 fecha em quem o tmux inicia, para o servidor não
+# herdar o lock.
+save() {
+  has_sessions || return 0
+  local script
+  script=$(tmux show -gqv @resurrect-save-script-path)
+  [[ -x "$script" ]] || return 0
+  take_lock
+  if [[ -f "$RESTORED_AT" ]] && (($(date +%s) - $(<"$RESTORED_AT") < GRACE)); then
+    return 0
+  fi
+  bash "$script" quiet 9>&- && rm -f "$MARK"
+}
+
+mark_closed() {
+  mkdir -p "$DATA"
+  : >"$MARK"
+}
+
+closed() {
+  if has_sessions; then
+    save
+  else
+    mark_closed
+  fi
+}
+
+restore() {
+  [[ -f "$DATA/last" ]] || return 0
+  take_lock
+  if [[ -e "$MARK" ]]; then
+    rm -f "$MARK"
+    return 0
+  fi
+  if has_sessions; then
+    return 0
+  fi
+  # Resurrect restaura "do zero" quando só há um pane no servidor e mata a
+  # sessão 0 depois; por isso o servidor sobe com uma sessão 0.
+  tmux -u new-session -d -s 0 9>&- || return 1
+  local script
+  script=$(tmux show -gqv @resurrect-restore-script-path)
+  [[ -x "$script" ]] || return 0
+  tmux run-shell "$script"
+  date +%s >"$RESTORED_AT"
+}
+
+layout_hook() {
+  local file="$1" tmp panes plugin list opt
+  [[ -f "$file" ]] || return 0
+  plugin=$(dirname "$(tmux show -gqv @resurrect-save-script-path)")
+  # shellcheck disable=SC1091,SC2154
+  list=$(. "$plugin/variables.sh" && echo "$default_proc_list")
+  opt=$(tmux show -gqv @resurrect-processes)
+  tmp=$(mktemp "$file.XXXXXX") || return 0
+  panes=$(mktemp) || return 0
+  tmux list-panes -a -F "#{session_name}${TAB}#{window_index}${TAB}#{pane_index}${TAB}#{pane_current_command}${TAB}#{@revive}" >"$panes"
+  awk -F'\t' -v OFS='\t' -v reopen=" $list $opt " '
+    NR == FNR { k = $1 FS $2 FS $3; cur[k] = $4; rev[k] = $5; next }
+    $1 == "pane" {
+      k = $2 FS $3 FS $6
+      full = substr($11, 2)
+      split(rev[k], w, " "); prog = w[1]; sub(/.*\//, "", prog)
+      if (rev[k] != "" && prog == cur[k]) {
+        $11 = ":"
+        out[++n] = "revive" OFS $2 OFS $3 OFS $6 OFS "run" OFS rev[k]
+      } else if (full != "") {
+        split(full, f, " "); p = f[1]; sub(/.*\//, "", p)
+        if (index(reopen, " " p " ") == 0 && p !~ /^-?(bash|zsh|sh|dash|fish)$/)
+          out[++n] = "revive" OFS $2 OFS $3 OFS $6 OFS "type" OFS full
+      }
+    }
+    { print }
+    END { for (i = 1; i <= n; i++) print out[i] }
+  ' "$panes" "$file" >"$tmp" && mv "$tmp" "$file"
+  rm -f "$tmp" "$panes"
+}
+
+revive_hook() {
+  local file="$DATA/last" kind sess win pane mode cmd target
+  [[ -f "$file" ]] || return 0
+  while IFS=$'\t' read -r kind sess win pane mode cmd; do
+    [[ "$kind" == "revive" && -n "$cmd" ]] || continue
+    target="$sess:$win.$pane"
+    tmux list-panes -t "$sess:$win" -F '#{pane_index}' 2>/dev/null | grep -qx "$pane" || continue
+    tmux send-keys -t "$target" -l -- "$cmd"
+    [[ "$mode" == "run" ]] && tmux send-keys -t "$target" Enter
+  done <"$file"
+}
+
+case "${1:-}" in
+  save) save ;;
+  closed) closed ;;
+  mark-closed) mark_closed ;;
+  restore) restore ;;
+  layout-hook) layout_hook "${2:-}" ;;
+  revive-hook) revive_hook ;;
+  *)
+    echo "uso: snapshot save|closed|mark-closed|restore|layout-hook <arquivo>|revive-hook" >&2
+    exit 2
+    ;;
+esac

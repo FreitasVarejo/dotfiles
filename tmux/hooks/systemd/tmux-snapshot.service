@@ -1,0 +1,7 @@
+[Unit]
+Description=Snapshot das sessões tmux (tmux-resurrect)
+
+[Service]
+Type=oneshot
+# Sem servidor tmux ou sem sessão, o script não faz nada (nunca sobe um servidor).
+ExecStart=%h/.config/tmux/scripts/snapshot save
