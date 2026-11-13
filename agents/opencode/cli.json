@@ -1,0 +1,19 @@
+{
+  "plugins": [
+    {
+      "package": "@leohenon/opencode-vim-plugin@0.2.0-beta.3",
+      "options": {
+        "enabled": true,
+        "indicator": true,
+        "vim_enter_submit": true,
+        "vim_insert_after_submit": true
+      }
+    }
+  ],
+  "keybinds": {
+    "input.newline": "shift+return,ctrl+return,alt+return,ctrl+j,alt+o",
+    "session.verbosity.cycle": "ctrl+o",
+    "open.menu": "<leader>o",
+    "session.interrupt": "ctrl+c"
+  }
+}

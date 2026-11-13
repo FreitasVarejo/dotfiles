@@ -14,8 +14,9 @@ Chamado pelos hooks do pacote 'agents' (lib.sh). Regras que valem para tudo:
   só errou uma vírgula — e faria o plan dizer "em dia" sobre o que nem leu.
 
 Saída 2 = arquivo do REPO inválido (mcp/*.json, deny.json, settings/*.json,
-travas/travas.json, opencode/config.json, subagents/*.md, skills/*/SKILL.md);
-saída 3 = arquivo do AGENTE ilegível (opencode.json, modelos.json, arquivo gerado).
+travas/travas.json, opencode/config.json, opencode/cli.json, subagents/*.md,
+skills/*/SKILL.md);
+saída 3 = arquivo do AGENTE ilegível (opencode.json, cli.json, modelos.json, arquivo gerado).
 A mensagem vai para stderr.
 
 Uso:
@@ -36,10 +37,12 @@ O deny.json tem as categorias read, shell, edit e agent. `agent` (nomes de subag
 só existe no Claude Code, onde vira `Agent(<nome>)`; no Cursor e no OpenCode é pulada.
 
 O alvo `opencode` (ADR 0046) mescla share, instructions, permissions e policies no
-opencode.json do diretório de config e GERA agents/*.md (de subagents/) e commands/*.md
+opencode.json do diretório de config, mescla plugins e keybinds (de opencode/cli.json,
+quando existe) no cli.json do TUI dele e GERA agents/*.md (de subagents/) e commands/*.md
 (das skills) nele. Só age onde há OpenCode 2.x: quem decide é o lib.sh, não este script.
 """
 
+import copy
 import glob
 import json
 import os
@@ -479,6 +482,8 @@ def hooks_apply(agent, path, travas_path):
 # de shell segue a semântica do deny.json: "a:*" é prefixo, o resto é exato.
 
 OPENCODE_FRAGMENT_KEYS = {"share", "permissions", "policies"}
+OPENCODE_CLI_KEYS = {"plugins", "keybinds"}
+OPENCODE_CLI_SCHEMA = "https://opencode.ai/v2/cli.json"
 OPENCODE_MARK_PREFIX = "<!-- gerado por agents/hooks/agent_config.py a partir de "
 OPENCODE_MARK_SUFFIX = "; não edite -->"
 OPENCODE_MARK_RE = re.compile(r"^<!-- gerado por agents/hooks/agent_config\.py a partir de .+; não edite -->$", re.M)
@@ -732,6 +737,96 @@ def opencode_json_merge(want, data, path):
         data[key] = block_merge(want[key], child(data, key, list, path))
 
 
+# cli.json do TUI (OpenCode 2.x): o próprio OpenCode o reescreve (`plugin add`
+# regrava o arquivo, o atalho de verbosidade grava session.verbosity, trocar de tema
+# grava theme), então o repo só declara `plugins` e `keybinds`, e o resto é dele.
+# Fragmento ausente = nada a fazer no cli.json.
+
+
+def repo_cli(pkg_dir):
+    """O fragmento opencode/cli.json do repo ({plugins, keybinds}), ou None se não existe."""
+    path = os.path.join(pkg_dir, "opencode", "cli.json")
+    if not os.path.lexists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            spec = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise repo_error("%s inválido (%s)" % (path, exc))
+    if not isinstance(spec, dict) or not spec or set(spec) - OPENCODE_CLI_KEYS:
+        raise repo_error("%s: esperado um objeto só com %s" % (path, sorted(OPENCODE_CLI_KEYS)))
+    plugins = spec.get("plugins", [])
+    if not isinstance(plugins, list) or not all(plugin_name(p) for p in plugins):
+        raise repo_error('%s: "plugins" não é lista de "pacote@versao" ou {"package": ...}' % path)
+    for plugin in plugins:
+        if isinstance(plugin, dict) and not isinstance(plugin.get("options", {}), dict):
+            raise repo_error("%s: 'options' de %r não é objeto" % (path, plugin["package"]))
+    keybinds = spec.get("keybinds", {})
+    if not isinstance(keybinds, dict) or not all(isinstance(v, str) for v in keybinds.values()):
+        raise repo_error('%s: "keybinds" não é objeto de id -> atalho (texto)' % path)
+    return spec
+
+
+def plugin_name(item):
+    """O nome do pacote sem a versão, ou None se o item não é string nem {"package": texto}.
+
+    O `@` do escopo (`@escopo/nome`) não separa versão: só um `@` depois do primeiro
+    caractere separa.
+    """
+    if isinstance(item, dict):
+        item = item.get("package")
+    if not isinstance(item, str) or not item:
+        return None
+    at = item.rfind("@")
+    return item[:at] if at > 0 else item
+
+
+def plugin_slot(have, item):
+    """Posição, em `have`, do plugin que é o mesmo pacote de `item`; None se não há."""
+    name = plugin_name(item)
+    return next((i for i, other in enumerate(have) if plugin_name(other) == name), None)
+
+
+def opencode_cli_diffs(want, data, path):
+    """[(cli.json:<chave>, add|update)]. `add` quando nada do que o repo declara está lá."""
+    diffs = []
+    if "keybinds" in want:
+        have = child(data, "keybinds", dict, path)
+        if any(have.get(k) != v for k, v in want["keybinds"].items()):
+            diffs.append(("cli.json:keybinds", "update" if any(k in have for k in want["keybinds"]) else "add"))
+    if "plugins" in want:
+        have = child(data, "plugins", list, path)
+        slots = [plugin_slot(have, item) for item in want["plugins"]]
+        if any(i is None or have[i] != item for i, item in zip(slots, want["plugins"])):
+            diffs.append(("cli.json:plugins", "update" if any(i is not None for i in slots) else "add"))
+    return diffs
+
+
+def opencode_cli_merge(want, data, path):
+    if "keybinds" in want:
+        child(data, "keybinds", dict, path).update(want["keybinds"])
+    if "plugins" in want:
+        have = child(data, "plugins", list, path)
+        for item in want["plugins"]:
+            slot = plugin_slot(have, item)
+            if slot is None:
+                have.append(copy.deepcopy(item))
+            else:
+                have[slot] = copy.deepcopy(item)
+
+
+def opencode_cli_state(config_dir, pkg_dir):
+    """(fragmento, caminho, dados, diffs) do cli.json, ou None sem fragmento no repo."""
+    want = repo_cli(pkg_dir)
+    if want is None:
+        return None
+    path = os.path.join(config_dir, "cli.json")
+    data = load_agent(path)
+    if not os.path.lexists(path):
+        data = {"$schema": OPENCODE_CLI_SCHEMA}
+    return want, path, data, opencode_cli_diffs(want, data, path)
+
+
 def load_models(config_dir):
     """O mapa opus/sonnet/haiku -> provedor/modelo da máquina; ausente = {}."""
     path = os.path.join(config_dir, "modelos.json")
@@ -896,31 +991,37 @@ def opencode_state(config_dir, pkg_dir, machine):
     wanted = generated_agents(pkg_dir, config_dir, want["permissions"], load_models(config_dir))
     wanted.update(generated_commands(pkg_dir, config_dir))
     files = generated_diffs(config_dir, wanted)
-    return want, json_path, data, blocked, diffs, wanted, files
+    cli = opencode_cli_state(config_dir, pkg_dir)
+    return want, json_path, data, blocked, diffs, wanted, files, cli
 
 
-def opencode_lines(config_dir, blocked, diffs, files):
+def opencode_lines(config_dir, blocked, diffs, files, cli):
     lines = [("opencode.jsonc", "blocked")] if blocked else list(diffs)
+    lines += cli[3] if cli else []
     return lines + [(os.path.relpath(p, config_dir), v) for p, v in files]
 
 
 def opencode_plan(config_dir, pkg_dir, machine):
-    _, _, _, blocked, diffs, _, files = opencode_state(config_dir, pkg_dir, machine)
-    for key, v in opencode_lines(config_dir, blocked, diffs, files):
+    _, _, _, blocked, diffs, _, files, cli = opencode_state(config_dir, pkg_dir, machine)
+    for key, v in opencode_lines(config_dir, blocked, diffs, files, cli):
         print("%s\t%s" % (key, v))
 
 
 def opencode_apply(config_dir, pkg_dir, machine):
-    want, json_path, data, blocked, diffs, wanted, files = opencode_state(config_dir, pkg_dir, machine)
+    want, json_path, data, blocked, diffs, wanted, files, cli = opencode_state(config_dir, pkg_dir, machine)
     if diffs:
         opencode_json_merge(want, data, json_path)
         save(json_path, data)
+    if cli and cli[3]:
+        cli_want, cli_path, cli_data, _ = cli
+        opencode_cli_merge(cli_want, cli_data, cli_path)
+        save(cli_path, cli_data)
     for path, verdict in files:
         if verdict == "remove":
             os.unlink(path)
         elif verdict in ("add", "update"):
             write_generated(path, wanted[path])
-    for key, v in opencode_lines(config_dir, blocked, diffs, files):
+    for key, v in opencode_lines(config_dir, blocked, diffs, files, cli):
         print("%s\t%s" % (key, v))
 
 

@@ -34,6 +34,11 @@ FRAGMENT = {
     ],
     "policies": [{"action": "tool.use", "resource": "read:*canario", "effect": "deny"}],
 }
+CLI = {
+    "plugins": [{"package": "@leo/vim@0.2.0", "options": {"enabled": True, "indicator": True}}],
+    "keybinds": {"input.newline": "shift+return,alt+o", "session.interrupt": "ctrl+c"},
+}
+CLI_LINES = {"cli.json:keybinds": "add", "cli.json:plugins": "add"}
 DENY = {
     "read": ["~/.segredo", "~/dev/gmail/dados/**"],
     "shell": ["env", "printenv:*", "gh auth token"],
@@ -83,6 +88,7 @@ class Fixture(unittest.TestCase):
         write(self.pkg / "instructions" / "user.md", "# usuário\n")
         write(self.pkg / "permissions" / "deny.json", json.dumps(DENY))
         write(self.pkg / "opencode" / "config.json", json.dumps(FRAGMENT))
+        write(self.pkg / "opencode" / "cli.json", json.dumps(CLI))
         write(self.pkg / "subagents" / "auditor.md", AUDITOR)
         write(self.pkg / "subagents" / "Implementador.md", IMPLEMENTADOR)
         write(self.pkg / "skills" / "plain" / "SKILL.md", skill_md("plain"))
@@ -116,6 +122,12 @@ class Fixture(unittest.TestCase):
     def put_config(self, data):
         write(self.cfg / "opencode.json", json.dumps(data))
 
+    def cli(self):
+        return json.loads((self.cfg / "cli.json").read_text(encoding="utf-8"))
+
+    def put_cli(self, data):
+        write(self.cfg / "cli.json", json.dumps(data))
+
     def snapshot(self):
         return {str(p): (p.stat().st_mtime_ns, p.stat().st_ino) for p in self.cfg.rglob("*") if p.is_file()}
 
@@ -124,7 +136,7 @@ class PlanEApply(Fixture):
     def test_o_plano_acusa_o_que_falta_e_nao_grava(self):
         plan = self.plan()
         self.assertEqual({k: v for k, v in plan.items() if "/" not in k},
-                         {"share": "add", "instructions": "add", "permissions": "add", "policies": "add"})
+                         {"share": "add", "instructions": "add", "permissions": "add", "policies": "add"} | CLI_LINES)
         self.assertEqual(plan["agents/auditor.md"], "add")
         self.assertEqual(plan["commands/forked.md"], "add")
         self.assertEqual(list(self.cfg.iterdir()), [])
@@ -238,6 +250,131 @@ class PlanEApply(Fixture):
         for bad in ("{ nao", json.dumps({"mcp": {}}), json.dumps({"share": "disabled", "permissions": [{"action": "x"}]})):
             write(self.pkg / "opencode" / "config.json", bad)
             self.assertEqual(self.run_cfg("opencode-plan").returncode, 2, bad)
+
+
+class CliJson(Fixture):
+    """O cli.json do TUI: só `plugins` e `keybinds` são do repo; o resto é do OpenCode."""
+
+    def test_o_plano_acusa_e_nao_grava(self):
+        self.put_cli({"theme": "x"})
+        before = (self.cfg / "cli.json").read_text()
+        plan = self.plan()
+        self.assertEqual({k: v for k, v in plan.items() if k.startswith("cli.json")}, CLI_LINES)
+        self.assertEqual((self.cfg / "cli.json").read_text(), before)
+
+    def test_a_aplicacao_grava_e_a_segunda_nao_reescreve_nada(self):
+        self.put_cli({"theme": "x"})
+        planned = self.plan()
+        self.assertEqual(self.apply(), planned)
+        self.assertEqual(self.cli()["keybinds"], CLI["keybinds"])
+        self.assertEqual(self.cli()["plugins"], CLI["plugins"])
+        self.assertEqual(self.plan(), {})
+        before = self.snapshot()
+        out = self.apply()
+        self.assertFalse([k for k in out if k.startswith("cli.json")])
+        self.assertEqual(self.snapshot(), before)
+
+    def test_cli_json_ausente_e_criado_com_o_schema(self):
+        self.assertFalse((self.cfg / "cli.json").exists())
+        self.assertEqual({k: v for k, v in self.apply().items() if k.startswith("cli.json")}, CLI_LINES)
+        self.assertEqual(self.cli(), {"$schema": "https://opencode.ai/v2/cli.json", **CLI})
+
+    def test_keybind_da_maquina_a_mais_fica_e_o_do_repo_vence(self):
+        self.put_cli({"keybinds": {"input.newline": "enter", "app.exit": "ctrl+q"}})
+        self.assertEqual(self.plan()["cli.json:keybinds"], "update")
+        self.apply()
+        self.assertEqual(self.cli()["keybinds"],
+                         {"input.newline": "shift+return,alt+o", "app.exit": "ctrl+q", "session.interrupt": "ctrl+c"})
+
+    def test_plugin_da_maquina_com_tag_e_trocado_na_mesma_posicao(self):
+        for old in ("@leo/vim@beta", "@leo/vim", {"package": "@leo/vim@0.1.6"}):
+            self.put_cli({"plugins": ["alheio@1.0.0", old, "outro"]})
+            self.assertEqual(self.plan()["cli.json:plugins"], "update", old)
+            self.apply()
+            self.assertEqual(self.cli()["plugins"], ["alheio@1.0.0", CLI["plugins"][0], "outro"], old)
+            self.assertNotIn("cli.json:plugins", self.plan())
+
+    def test_plugin_do_repo_ausente_entra_no_fim_e_o_alheio_fica(self):
+        self.put_cli({"plugins": ["alheio@1.0.0", "@leo/vim-outro@1"]})  # nome parecido não é o mesmo
+        self.assertEqual(self.plan()["cli.json:plugins"], "add")
+        self.apply()
+        self.assertEqual(self.cli()["plugins"], ["alheio@1.0.0", "@leo/vim-outro@1", CLI["plugins"][0]])
+
+    def test_o_arroba_do_escopo_nao_e_versao(self):
+        self.put_cli({"plugins": ["@leo"]})  # outro pacote, sem versão: não casa com @leo/vim
+        self.apply()
+        self.assertEqual(self.cli()["plugins"], ["@leo", CLI["plugins"][0]])
+
+    def test_o_resto_do_cli_json_fica_intacto(self):
+        mine = {"$schema": "x", "theme": "tokyo", "session": {"verbosity": "high"}, "plugins": ["alheio@1"]}
+        self.put_cli(mine)
+        self.apply()
+        data = self.cli()
+        for key in ("$schema", "theme", "session"):
+            self.assertEqual(data[key], mine[key])
+        self.assertEqual(data["plugins"][0], "alheio@1")
+
+    def test_cli_json_ilegivel_e_erro_3_sem_gravar_nada(self):
+        write(self.cfg / "cli.json", "{ nao e json")
+        out = self.run_cfg("opencode-apply")
+        self.assertEqual(out.returncode, 3)
+        self.assertIn("ilegível", out.stderr)
+        self.assertEqual((self.cfg / "cli.json").read_text(), "{ nao e json")
+        self.assertEqual(sorted(p.name for p in self.cfg.iterdir()), ["cli.json"])  # nem opencode.json nem gerados
+
+    def test_chave_do_cli_json_com_tipo_errado_e_erro_3(self):
+        for bad in ({"plugins": {"a": 1}}, {"keybinds": ["a"]}):
+            self.put_cli(bad)
+            self.assertEqual(self.run_cfg("opencode-plan").returncode, 3, bad)
+            self.assertEqual(self.run_cfg("opencode-apply").returncode, 3, bad)
+            self.assertEqual(json.loads((self.cfg / "cli.json").read_text()), bad)
+        self.assertFalse((self.cfg / "opencode.json").exists())
+
+    def test_symlink_do_cli_json_e_escrito_no_alvo(self):
+        real = write(self.tmp / "outro" / "cli.json", "{}")
+        (self.cfg / "cli.json").symlink_to(real)
+        self.apply()
+        self.assertTrue((self.cfg / "cli.json").is_symlink())
+        self.assertEqual(json.loads(real.read_text())["keybinds"], CLI["keybinds"])
+
+    def test_fragmento_invalido_e_erro_2(self):
+        bad_fragments = (
+            "{ nao",
+            json.dumps({}),
+            json.dumps({"theme": "x"}),
+            json.dumps({"keybinds": {"a": "b"}, "theme": "x"}),
+            json.dumps({"plugins": "x"}),
+            json.dumps({"plugins": [3]}),
+            json.dumps({"plugins": [{"options": {}}]}),
+            json.dumps({"plugins": [{"package": "a", "options": []}]}),
+            json.dumps({"keybinds": {"a": 1}}),
+            json.dumps({"keybinds": []}),
+        )
+        for bad in bad_fragments:
+            write(self.pkg / "opencode" / "cli.json", bad)
+            self.assertEqual(self.run_cfg("opencode-plan").returncode, 2, bad)
+            self.assertEqual(self.run_cfg("opencode-apply").returncode, 2, bad)
+        self.assertEqual(list(self.cfg.iterdir()), [])
+
+    def test_sem_fragmento_nao_ha_nada_a_fazer_no_cli_json(self):
+        (self.pkg / "opencode" / "cli.json").unlink()
+        self.assertFalse([k for k in self.apply() if k.startswith("cli.json")])
+        self.assertFalse((self.cfg / "cli.json").exists())
+        self.put_cli({"theme": "x"})
+        self.assertEqual(self.plan(), {})
+
+    def test_so_opencode_jsonc_nao_barra_o_cli_json(self):
+        write(self.cfg / "opencode.jsonc", "{}\n")
+        self.assertEqual(self.plan()["cli.json:plugins"], "add")
+        self.apply()
+        self.assertEqual(self.cli()["keybinds"], CLI["keybinds"])
+
+    def test_o_fragmento_do_repo_fixa_a_versao_do_plugin(self):
+        data = json.loads((PKG / "opencode" / "cli.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(data), {"plugins", "keybinds"})
+        for plugin in data["plugins"]:
+            name = plugin["package"] if isinstance(plugin, dict) else plugin
+            self.assertRegex(name, r".@[0-9]+\.[0-9]+\.[0-9]+", name)  # nada de tag flutuante
 
 
 class DenyEmPolicies(Fixture):
