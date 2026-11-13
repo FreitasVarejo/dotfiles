@@ -4,8 +4,9 @@
 # Snapshot do tmux e restauração, sobre o tmux-resurrect.
 #
 #   save            grava o snapshot (nada se não há servidor ou sessão)
-#   closed          hook session-closed: sem sessão sobrando é fechamento
-#                   deliberado (marcador); senão grava o snapshot
+#   closed          hook session-closed: grava o snapshot (a última sessão
+#                   fecha junto com o servidor e o hook não chega a rodar;
+#                   fechamento deliberado é só o do t kall)
 #   mark-closed     grava o marcador de fechamento deliberado (t kall)
 #   restore         restaura se o servidor não existe/está sem sessões e não há
 #                   marcador (o primeiro `t` e o serviço de boot chamam isto)
@@ -34,7 +35,7 @@ has_sessions() { tmux list-sessions &>/dev/null; }
 take_lock() {
   mkdir -p "$DATA"
   exec 9>"$LOCK"
-  flock -w 120 9
+  flock -w 120 9 || exit 1
 }
 
 # save: o fd 9 fecha em quem o tmux inicia, para o servidor não
@@ -54,14 +55,6 @@ save() {
 mark_closed() {
   mkdir -p "$DATA"
   : >"$MARK"
-}
-
-closed() {
-  if has_sessions; then
-    save
-  else
-    mark_closed
-  fi
 }
 
 restore() {
@@ -88,6 +81,8 @@ layout_hook() {
   local file="$1" tmp panes plugin list opt
   [[ -f "$file" ]] || return 0
   plugin=$(dirname "$(tmux show -gqv @resurrect-save-script-path)")
+  # O variables.sh é do plugin, lido em tempo de execução (SC1091), e define
+  # o default_proc_list (SC2154).
   # shellcheck disable=SC1091,SC2154
   list=$(. "$plugin/variables.sh" && echo "$default_proc_list")
   opt=$(tmux show -gqv @resurrect-processes)
@@ -129,7 +124,7 @@ revive_hook() {
 
 case "${1:-}" in
   save) save ;;
-  closed) closed ;;
+  closed) save ;;
   mark-closed) mark_closed ;;
   restore) restore ;;
   layout-hook) layout_hook "${2:-}" ;;
