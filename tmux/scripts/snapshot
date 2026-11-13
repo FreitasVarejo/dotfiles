@@ -60,10 +60,10 @@ mark_closed() {
 restore() {
   [[ -f "$DATA/last" ]] || return 0
   take_lock
-  if [[ -e "$MARK" ]]; then
-    rm -f "$MARK"
-    return 0
-  fi
+  # O marcador do t kall só sai quando um save grava snapshot novo: um `t` que
+  # só lista não pode consumi-lo e deixar o seguinte ressuscitar as sessões
+  # fechadas de propósito.
+  [[ -e "$MARK" ]] && return 0
   if has_sessions; then
     return 0
   fi
