@@ -7,7 +7,6 @@ vim.opt.spell = false
 -- Mapeia blocos de código ```shell para usar o parser de bash
 vim.treesitter.language.register("bash", "shell")
 
-vim.opt.swapfile = false
 vim.opt.timeoutlen = 300
 vim.opt.ttimeoutlen = 100
 

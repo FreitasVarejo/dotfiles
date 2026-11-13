@@ -66,3 +66,7 @@ vim.api.nvim_create_autocmd("BufWritePre", {
     end
   end,
 })
+
+-- Dentro do tmux, cada nvim grava a própria sessão para o snapshot restaurar
+-- depois de uma queda (ver config/revive.lua).
+require("config.revive")
