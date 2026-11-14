@@ -15,16 +15,17 @@
 #   vault-mcp-check            # relatório
 #   vault-mcp-check --quiet    # só o código de saída
 #
-# Lê $OBSIDIAN_MCP_ENV, ou ~/docker/personal/obsidian-mcp/.env.
+# Lê $OBSIDIAN_MCP_ENV, ou ~/docker/personal/obsidian-mcp/.env. O container
+# conferido tem o nome da pasta da stack (convenção dos compose do pi01).
 # Saída: 0 = limpo, 1 = achados, 2 = erro de uso, 3 = a stack não está nesta
 # máquina (o .env não existe).
 
 set -euo pipefail
 
 ENV_FILE="${OBSIDIAN_MCP_ENV:-$HOME/docker/personal/obsidian-mcp/.env}"
-STACK_DIR=$(dirname "$ENV_FILE")
+STACK_DIR=$(realpath -m "$(dirname "$ENV_FILE")")
 # Nomes do docker-compose.yml da stack e da rede do Traefik, não hostnames.
-CONTAINER=obsidian-mcp
+CONTAINER=$(basename "$STACK_DIR")
 TRAEFIK=traefik
 PROXY_NET=proxy_net
 
@@ -33,7 +34,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --quiet) QUIET=true ;;
     -h | --help)
-      sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -137,7 +138,9 @@ declare -A CENV=()
 if ! command -v docker &>/dev/null; then
   finding docker "não está no PATH: a configuração do container não foi conferida"
 elif ! CENV_RAW=$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$CONTAINER" 2>/dev/null); then
-  finding "$CONTAINER" "container não encontrado (ou docker sem permissão): a configuração dele não foi conferida"
+  # O container tem o nome da pasta; sem ele, ou a stack está parada ou a pasta
+  # é uma cópia (backup) da stack, e aí o .env dela é segredo esquecido.
+  finding "$CONTAINER" "nenhum container com o nome da pasta (ou docker sem permissão): stack parada, ou cópia/backup da pasta com um .env que não devia existir"
 else
   while IFS= read -r LINE; do
     [[ "$LINE" == *=* ]] && CENV[${LINE%%=*}]=${LINE#*=}

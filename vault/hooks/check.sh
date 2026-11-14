@@ -250,17 +250,23 @@ done
 # Só na máquina que roda a stack: sem o .env dela o verificador sai 3, e aqui
 # fica em silêncio (ADR 0002). Achado é fail_check, ao contrário do vault-lint
 # (6): lá é ponteiro morto, aqui é exposição real da vault.
-MCP_RC=0
-MCP_OUT=$("$DOTFILES_DIR/vault/.local/bin/vault-mcp-check" 2>&1) || MCP_RC=$?
-case "$MCP_RC" in
-  0) log_success "vault-mcp-check: segredos e configuração do obsidian-mcp em dia" ;;
-  3) ;;
-  *)
-    log_error "vault-mcp-check: a stack do obsidian-mcp tem achado"
-    sed -n 's/^  /    -> /p' <<<"$MCP_OUT"
-    echo "    -> Detalhes: vault-mcp-check"
-    fail_check
-    ;;
-esac
+# Uma rodada por stack: a do dono e as de convidados, cada uma na sua pasta
+# obsidian-mcp*/ (o nome da pasta é o nome do container).
+for MCP_ENV in "$HOME"/docker/personal/obsidian-mcp*/.env; do
+  [[ -f "$MCP_ENV" ]] || continue
+  MCP_STACK=$(basename "$(dirname "$MCP_ENV")")
+  MCP_RC=0
+  MCP_OUT=$(OBSIDIAN_MCP_ENV="$MCP_ENV" "$DOTFILES_DIR/vault/.local/bin/vault-mcp-check" 2>&1) || MCP_RC=$?
+  case "$MCP_RC" in
+    0) log_success "vault-mcp-check: segredos e configuração do $MCP_STACK em dia" ;;
+    3) ;;
+    *)
+      log_error "vault-mcp-check: a stack do $MCP_STACK tem achado"
+      sed -n 's/^  /    -> /p' <<<"$MCP_OUT"
+      echo "    -> Detalhes: OBSIDIAN_MCP_ENV=$MCP_ENV vault-mcp-check"
+      fail_check
+      ;;
+  esac
+done
 
 exit "${CHECK_FAILED:-0}"
