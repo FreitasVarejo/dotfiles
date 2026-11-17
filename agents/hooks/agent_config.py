@@ -687,7 +687,7 @@ def deny_policies(deny_path):
 
 
 def repo_block(pkg_dir, machine):
-    """O que o repo declara para o opencode.json: {share, experimental, instructions, permissions, policies}."""
+    """O que o repo declara para o opencode.json: {share, experimental, instructions, instructions_last, permissions, policies}."""
     fragment = repo_opencode(os.path.join(pkg_dir, "opencode", "config.json"))
     user = os.path.join(pkg_dir, "instructions", "user.md")
     if not os.path.isfile(user):
@@ -696,12 +696,16 @@ def repo_block(pkg_dir, machine):
     host = os.path.join(pkg_dir, "instructions", "machines", machine + ".md")
     if os.path.isfile(host):
         instructions.append(host)
-    # por último: o que só o OpenCode lê (receitas das ferramentas dele) não precede o que vale para todos
+    # por último: o que só o OpenCode lê (receitas das ferramentas dele) não precede o que vale para todos;
+    # "last" diz ao merge que esse caminho fica no fim da lista da máquina, mesmo se ela cresceu depois
     own = os.path.join(pkg_dir, "opencode", "instructions.md")
+    last = None
     if os.path.isfile(own):
         instructions.append(own)
+        last = own
     policies = deny_policies(os.path.join(pkg_dir, "permissions", "deny.json")) + fragment["policies"]
-    want = {"instructions": instructions, "permissions": fragment["permissions"], "policies": policies}
+    want = {"instructions": instructions, "instructions_last": last,
+            "permissions": fragment["permissions"], "policies": policies}
     if "share" in fragment:
         want["share"] = fragment["share"]
     if "experimental" in fragment:
@@ -731,7 +735,8 @@ def opencode_json_diffs(want, data, path):
             diffs.append(("experimental", "update" if have else "add"))
     have = child(data, "instructions", list, path) if "instructions" in data else []
     missing = [p for p in want["instructions"] if p not in have]
-    if missing:
+    last = want["instructions_last"]
+    if missing or (last and have[-1] != last):
         diffs.append(("instructions", "update" if have else "add"))
     for key in ("permissions", "policies"):
         have = child(data, key, list, path) if key in data else []
@@ -747,7 +752,12 @@ def opencode_json_merge(want, data, path):
     if "experimental" in want:
         child(data, "experimental", dict, path).update(want["experimental"])
     have = child(data, "instructions", list, path)
-    have.extend(p for p in want["instructions"] if p not in have)
+    last = want["instructions_last"]
+    if last:
+        have[:] = [p for p in have if p != last]  # sai de onde está e volta para o fim
+    have.extend(p for p in want["instructions"] if p not in have and p != last)
+    if last:
+        have.append(last)
     for key in ("permissions", "policies"):
         data[key] = block_merge(want[key], child(data, key, list, path))
 

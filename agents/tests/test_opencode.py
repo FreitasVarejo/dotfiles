@@ -176,9 +176,31 @@ class PlanEApply(Fixture):
         write(self.pkg / "instructions" / "machines" / "wsl-trabalho.md", "# wsl\n")
         self.assertEqual(self.plan()["instructions"], "update")
         self.apply()
-        self.assertEqual(sorted(self.config()["instructions"]),
-                         sorted([str(self.pkg / "instructions" / "user.md"),
-                                 str(self.pkg / "instructions" / "machines" / "wsl-trabalho.md"), self.own()]))
+        self.assertEqual(self.config()["instructions"],
+                         [str(self.pkg / "instructions" / "user.md"),
+                          str(self.pkg / "instructions" / "machines" / "wsl-trabalho.md"), self.own()])
+
+    def test_o_arquivo_do_opencode_continua_por_ultimo_quando_o_da_maquina_aparece_depois(self):
+        self.apply()
+        host = str(self.pkg / "instructions" / "machines" / "wsl-trabalho.md")
+        user = str(self.pkg / "instructions" / "user.md")
+        self.assertEqual(self.config()["instructions"], [user, self.own()])
+        write(self.pkg / "instructions" / "machines" / "wsl-trabalho.md", "# wsl\n")
+        self.assertEqual(self.plan()["instructions"], "update")  # o arquivo do OpenCode está fora do fim
+        self.apply()
+        self.assertEqual(self.config()["instructions"], [user, host, self.own()])
+        self.assertEqual(self.plan(), {})
+        before = self.snapshot()
+        self.assertEqual(self.apply(), {})
+        self.assertEqual(self.snapshot(), before)
+
+    def test_o_arquivo_do_opencode_vai_para_o_fim_mesmo_com_entrada_da_maquina_depois_dele(self):
+        user = str(self.pkg / "instructions" / "user.md")
+        self.put_config({"instructions": [user, self.own(), "/minha/regra.md"]})
+        self.assertEqual(self.plan()["instructions"], "update")
+        self.apply()
+        self.assertEqual(self.config()["instructions"], [user, "/minha/regra.md", self.own()])  # nada se remove
+        self.assertNotIn("instructions", self.plan())
 
     def test_o_arquivo_so_do_opencode_entra_por_ultimo_na_primeira_aplicacao(self):
         write(self.pkg / "instructions" / "machines" / "wsl-trabalho.md", "# wsl\n")
@@ -740,7 +762,9 @@ class PacoteReal(unittest.TestCase):
         own = PKG / "opencode" / "instructions.md"
         instructions = json.loads((self.tmp / "oc" / "opencode.json").read_text(encoding="utf-8"))["instructions"]
         self.assertEqual(instructions[-1], str(own))
-        self.assertNotIn(str(own), [str(PKG / "instructions" / "user.md")])
+        # fora de agents/instructions/: é de lá que o Claude Code e o Cursor leem (um link por arquivo)
+        self.assertNotIn(own.resolve(), [p.resolve() for p in (PKG / "instructions").rglob("*.md")])
+        self.assertEqual(own.parent.name, "opencode")
         text = own.read_text(encoding="utf-8")
         for needle in ("artifact_create", "artifact_update", "file://", "wslview", "wslpath -w", "xdg-open", "CDN",
                        "schedule_create", "worktree_create", "session_move", "`question`", "Shift+Tab"):
