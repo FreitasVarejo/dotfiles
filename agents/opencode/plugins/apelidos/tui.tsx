@@ -2,9 +2,9 @@
 // comando de barra que só despacha o comando nativo pelo id. Nada aqui reimplementa
 // o que o nativo faz, e nenhum apelido tem tecla nem entra na paleta.
 //
-// Os ids saem de packages/tui/src/app.tsx, routes/session/index.tsx e
-// feature-plugins/system/ do OpenCode (tag v2.2.7). O OpenCode que sair diferente
-// deixa o apelido sem efeito: confira os ids antes de subir a versão.
+// Os ids saem do código do OpenCode (anomalyco/opencode, tag v2.2.7): packages/tui/src/app.tsx,
+// routes/session/index.tsx e feature-plugins/system/. Se uma versão nova mudar um id,
+// o apelido fica sem efeito: confira os ids antes de subir a versão.
 //
 // Fora daqui, por já existirem no OpenCode: /resume, /continue, /effort, /quit, /clear.
 import { Plugin } from "@opencode/plugin/tui"

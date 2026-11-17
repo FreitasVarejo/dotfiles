@@ -53,7 +53,11 @@ the repo declares; whatever the machine added stays.
   a built-in by `name`: the Claude Code docs, sub-agents page.
 - `opencode/`: only what OpenCode reads (ADR 0046). `config.json` is the fragment merged
   into its `opencode.json`; `cli.json` is the fragment merged into the `cli.json` of its
-  TUI (only `plugins` and `keybinds`); `commands/<nome>.md` are hand-written, one symlink per file.
+  TUI (only `plugins`, `keybinds` and `tabs`; what the repo declares there wins over a
+  change made in the TUI); `commands/<nome>.md` are hand-written, one symlink per file;
+  `plugins/<nome>/` are local TUI plugins, one symlink per directory. A plugin that
+  dispatches a native command takes its id from the source of the installed version
+  (`~/dotfiles/agents/opencode/plugins/apelidos/tui.tsx` says where).
   What the setup generates from `subagents/` and `skills/`: the docstring and the OpenCode
   section of `~/dotfiles/agents/hooks/agent_config.py`. A generated file carries the
   marker line; one without it is never touched. A tool name, `color` or `model` the
