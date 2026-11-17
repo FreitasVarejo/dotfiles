@@ -52,8 +52,11 @@ the repo declares; whatever the machine added stays.
 - `subagents/<nome>.md` → `~/.claude/agents/<nome>.md`, one symlink per file. Overriding
   a built-in by `name`: the Claude Code docs, sub-agents page.
 - `opencode/`: only what OpenCode reads (ADR 0046). `config.json` is the fragment merged
-  into its `opencode.json`; `cli.json` is the fragment merged into the `cli.json` of its
-  TUI (only `plugins`, `keybinds` and `tabs`; what the repo declares there wins over a
+  into its `opencode.json` (`share`, `experimental`, `permissions`, `policies`; each key
+  merges only what the file declares); `instructions.md` is the instructions file only
+  OpenCode reads, merged last into `instructions` of that `opencode.json`, so it holds
+  only what concerns its own tools; `cli.json` is the fragment merged into the `cli.json`
+  of its TUI (only `plugins`, `keybinds` and `tabs`; what the repo declares there wins over a
   change made in the TUI); `commands/<nome>.md` are hand-written, one symlink per file;
   `plugins/<nome>/` are local TUI plugins, one symlink per directory. A plugin that
   dispatches a native command takes its id from the source of the installed version
