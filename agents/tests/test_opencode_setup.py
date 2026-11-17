@@ -18,8 +18,8 @@ sys.dont_write_bytecode = True
 PKG = Path(__file__).resolve().parents[1]
 
 
-class Bash(unittest.TestCase):
-    """lib.sh, setup.sh e check.sh com um `opencode` falso e HOME temporário."""
+class Base(unittest.TestCase):
+    """Um `opencode` falso, HOME temporário e os hooks do pacote (sem testes próprios)."""
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="oc-bash-"))
@@ -49,6 +49,10 @@ class Bash(unittest.TestCase):
 
     def hook(self, name, **kw):
         return subprocess.run(["bash", str(PKG / "hooks" / name)], capture_output=True, text=True, env=self.env(**kw))
+
+
+class Bash(Base):
+    """lib.sh, setup.sh e check.sh do pacote contra o repo."""
 
     def active(self, **kw):
         return self.sh('. "%s/hooks/lib.sh"; opencode_active' % PKG, **kw).returncode == 0
@@ -138,6 +142,72 @@ class Bash(unittest.TestCase):
         self.assertIn("nada aplicado", out.stdout)
         self.assertEqual((self.cfg / "opencode.json").read_text(), "{ nao")
         self.assertIn("não deu para comparar", self.hook("check.sh").stdout)
+
+
+class Plugins(Base):
+    """Os plugins locais do TUI (opencode/plugins/<nome>/): um symlink por diretório.
+
+    Roda sobre uma cópia do pacote com um plugin de teste, para não depender de quais
+    plugins o repo tem hoje."""
+
+    def setUp(self):
+        super().setUp()
+        self.repo = self.tmp / "dot"
+        (self.repo / "agents").parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(PKG, self.repo / "agents", symlinks=True, ignore=shutil.ignore_patterns("__pycache__", "mods", "tests"))
+        shutil.copytree(PKG.parent / "lib", self.repo / "lib")
+        for old in (self.repo / "agents" / "opencode" / "plugins",):
+            shutil.rmtree(old, ignore_errors=True)
+        self.src = self.repo / "agents" / "opencode" / "plugins" / "teste"
+        self.src.mkdir(parents=True)
+        (self.src / "tui.tsx").write_text("export default {}\n")
+        self.fake_opencode("2.2.7")
+
+    def hook(self, name, **kw):
+        return subprocess.run(
+            ["bash", str(self.repo / "agents" / "hooks" / name)], capture_output=True, text=True, env=self.env(**kw)
+        )
+
+    def test_o_setup_linka_o_diretorio_e_o_check_fecha(self):
+        red = self.hook("check.sh")
+        self.assertEqual(red.returncode, 1, red.stdout)
+        self.assertIn("plugins/teste não aponta", red.stdout)
+        out = self.hook("setup.sh")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        link = self.cfg / "plugins" / "teste"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), self.src.resolve())
+        self.assertTrue((link / "tui.tsx").is_file())
+        green = self.hook("check.sh")
+        self.assertEqual(green.returncode, 0, green.stdout)
+        self.assertIn("plugins/teste ->", green.stdout)
+        self.assertEqual(link.readlink(), self.src)  # a segunda aplicação não refaz o link
+        self.assertIn("config e arquivos gerados em dia", self.hook("setup.sh").stdout)
+
+    def test_plugin_que_saiu_do_repo_sai_do_diretorio_de_config(self):
+        self.hook("setup.sh")
+        link = self.cfg / "plugins" / "teste"
+        self.assertTrue(link.is_symlink())
+        shutil.rmtree(self.src)
+        out = self.hook("setup.sh")
+        self.assertFalse(link.is_symlink())
+        self.assertIn("Link pendurado removido", out.stdout)
+
+    def test_o_que_nao_e_do_repo_fica_onde_esta(self):
+        (self.cfg / "plugins").mkdir(parents=True)
+        alheio = self.tmp / "alheio"
+        alheio.mkdir()
+        (self.cfg / "plugins" / "alheio").symlink_to(alheio)
+        (self.cfg / "plugins" / "morto").symlink_to(self.tmp / "nao-existe")
+        (self.cfg / "plugins" / "teste").mkdir()  # diretório real no lugar do link
+        out = self.hook("setup.sh")
+        self.assertTrue((self.cfg / "plugins" / "alheio").is_symlink())
+        self.assertTrue((self.cfg / "plugins" / "morto").is_symlink())
+        self.assertFalse((self.cfg / "plugins" / "teste").is_symlink())
+        self.assertIn("plugins/teste é arquivo real", out.stdout)
+        check = self.hook("check.sh")
+        self.assertEqual(check.returncode, 0, check.stdout)
+        self.assertIn("plugins/teste é arquivo real", check.stdout)
 
 
 if __name__ == "__main__":

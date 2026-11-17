@@ -8,7 +8,7 @@
 #   - mescla permissions/deny.json no deny do Claude Code e do Cursor;
 #   - mescla settings/claude.json e as travas de travas/ no settings.json do Claude Code;
 #   - onde há OpenCode 2.x: mescla o opencode.json, gera agents/ e commands/ no diretório
-#     de config dele e linka os comandos de opencode/commands/.
+#     de config dele, linka os comandos de opencode/commands/ e os plugins de opencode/plugins/.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -278,6 +278,17 @@ apply_opencode() {
   done < <(opencode_command_links)
   for entry in "$OPENCODE_CONFIG_DIR"/commands/*.md; do
     if [[ -L "$entry" && ! -e "$entry" ]] && points_into_opencode_commands "$entry"; then
+      rm "$entry"
+      log_info "Link pendurado removido: ${entry/#$HOME/\~}"
+    fi
+  done
+
+  # Os plugins locais do TUI: um symlink por diretório.
+  while IFS=$'\t' read -r src dest; do
+    [[ -n "$src" ]] && link_file "$src" "$dest" points_into_opencode_plugins
+  done < <(opencode_plugin_links)
+  for entry in "$OPENCODE_CONFIG_DIR"/plugins/*; do
+    if [[ -L "$entry" && ! -e "$entry" ]] && points_into_opencode_plugins "$entry"; then
       rm "$entry"
       log_info "Link pendurado removido: ${entry/#$HOME/\~}"
     fi

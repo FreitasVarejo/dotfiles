@@ -5,8 +5,8 @@
 # espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
 # permissions/deny.json em cada agente presente, o settings/claude.json, as
 # travas de travas/, as instruções de usuário de instructions/ e os subagentes
-# de subagents/ no Claude Code, e o alvo opencode (opencode.json, arquivos gerados e
-# comandos linkados) onde há OpenCode 2.x.
+# de subagents/ no Claude Code, e o alvo opencode (opencode.json, arquivos gerados,
+# comandos e plugins linkados) onde há OpenCode 2.x.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -377,8 +377,8 @@ else
       esac
     done <<<"$diff"
   fi
-  mapfile -t OC_COMMANDS < <(opencode_command_links)
-  for pair in "${OC_COMMANDS[@]}"; do
+  mapfile -t OC_LINKS < <(opencode_command_links; opencode_plugin_links)
+  for pair in "${OC_LINKS[@]}"; do
     IFS=$'\t' read -r src dest <<<"$pair"
     if [[ -L "$dest" && "$(readlink -f "$dest")" == "$src" ]]; then
       log_success "${dest/#$HOME/\~} -> ${src/#$HOME/\~}"

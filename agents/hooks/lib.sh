@@ -60,10 +60,12 @@ AGENTS_MACHINE="${AGENTS_MACHINE:-${HOSTNAME%%.*}}"
 # $HOME; o setup mescla chaves no opencode.json e GERA agents/ e commands/ no
 # diretório de config (o OPENCODE_CONFIG_DIR do próprio OpenCode, ou o do XDG).
 # agents/opencode/ guarda o que só ele lê: o fragmento config.json e os comandos
-# escritos à mão, linkados um a um. O mapa de modelos é por máquina e fica fora do
-# repo, no diretório de config.
+# escritos à mão, linkados um a um, e os plugins locais do TUI (plugins/<nome>/),
+# um symlink por diretório. O mapa de modelos é por máquina e fica fora do repo, no
+# diretório de config.
 AGENTS_OPENCODE_DIR="$AGENTS_PKG_DIR/opencode"
 AGENTS_OPENCODE_COMMANDS_DIR="$AGENTS_OPENCODE_DIR/commands"
+AGENTS_OPENCODE_PLUGINS_DIR="$AGENTS_OPENCODE_DIR/plugins"
 OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
 # shellcheck disable=SC2034  # consumido pelos hooks via source
 OPENCODE_MODELS_FILE="$OPENCODE_CONFIG_DIR/modelos.json"
@@ -183,6 +185,22 @@ opencode_command_links() {
   local f
   for f in "$AGENTS_OPENCODE_COMMANDS_DIR"/*.md; do
     [[ -f "$f" ]] && printf '%s\t%s\n' "$f" "$OPENCODE_CONFIG_DIR/commands/$(basename "$f")"
+  done
+  return 0
+}
+
+# points_into_opencode_plugins <symlink> — idem, para opencode/plugins/.
+points_into_opencode_plugins() {
+  [[ "$(link_target "$1")" == "$AGENTS_OPENCODE_PLUGINS_DIR"/* ]]
+}
+
+# opencode_plugin_links — "<fonte>\t<destino>" para cada diretório de opencode/plugins/.
+# O OpenCode descobre cada diretório de plugins/ no diretório de config, e o link
+# para diretório vale como diretório.
+opencode_plugin_links() {
+  local d
+  for d in "$AGENTS_OPENCODE_PLUGINS_DIR"/*/; do
+    [[ -d "$d" ]] && printf '%s\t%s\n' "${d%/}" "$OPENCODE_CONFIG_DIR/plugins/$(basename "$d")"
   done
   return 0
 }
