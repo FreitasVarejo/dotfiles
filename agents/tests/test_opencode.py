@@ -37,8 +37,9 @@ FRAGMENT = {
 CLI = {
     "plugins": [{"package": "@leo/vim@0.2.0", "options": {"enabled": True, "indicator": True}}],
     "keybinds": {"input.newline": "shift+return,alt+o", "session.interrupt": "ctrl+c"},
+    "tabs": {"mode": "off"},
 }
-CLI_LINES = {"cli.json:keybinds": "add", "cli.json:plugins": "add"}
+CLI_LINES = {"cli.json:keybinds": "add", "cli.json:plugins": "add", "cli.json:tabs": "add"}
 DENY = {
     "read": ["~/.segredo", "~/dev/gmail/dados/**"],
     "shell": ["env", "printenv:*", "gh auth token"],
@@ -253,7 +254,7 @@ class PlanEApply(Fixture):
 
 
 class CliJson(Fixture):
-    """O cli.json do TUI: só `plugins` e `keybinds` são do repo; o resto é do OpenCode."""
+    """O cli.json do TUI: só `plugins`, `keybinds` e `tabs` são do repo; o resto é do OpenCode."""
 
     def test_o_plano_acusa_e_nao_grava(self):
         self.put_cli({"theme": "x"})
@@ -268,6 +269,7 @@ class CliJson(Fixture):
         self.assertEqual(self.apply(), planned)
         self.assertEqual(self.cli()["keybinds"], CLI["keybinds"])
         self.assertEqual(self.cli()["plugins"], CLI["plugins"])
+        self.assertEqual(self.cli()["tabs"], CLI["tabs"])
         self.assertEqual(self.plan(), {})
         before = self.snapshot()
         out = self.apply()
@@ -285,6 +287,13 @@ class CliJson(Fixture):
         self.apply()
         self.assertEqual(self.cli()["keybinds"],
                          {"input.newline": "shift+return,alt+o", "app.exit": "ctrl+q", "session.interrupt": "ctrl+c"})
+
+    def test_tabs_da_maquina_volta_ao_do_repo_e_o_resto_de_tabs_fica(self):
+        self.put_cli({"tabs": {"mode": "on", "scope": "global"}})  # o que o /settings gravaria
+        self.assertEqual(self.plan()["cli.json:tabs"], "update")
+        self.apply()
+        self.assertEqual(self.cli()["tabs"], {"mode": "off", "scope": "global"})
+        self.assertNotIn("cli.json:tabs", self.plan())
 
     def test_plugin_da_maquina_com_tag_e_trocado_na_mesma_posicao(self):
         for old in ("@leo/vim@beta", "@leo/vim", {"package": "@leo/vim@0.1.6"}):
@@ -323,7 +332,7 @@ class CliJson(Fixture):
         self.assertEqual(sorted(p.name for p in self.cfg.iterdir()), ["cli.json"])  # nem opencode.json nem gerados
 
     def test_chave_do_cli_json_com_tipo_errado_e_erro_3(self):
-        for bad in ({"plugins": {"a": 1}}, {"keybinds": ["a"]}):
+        for bad in ({"plugins": {"a": 1}}, {"keybinds": ["a"]}, {"tabs": ["off"]}):
             self.put_cli(bad)
             self.assertEqual(self.run_cfg("opencode-plan").returncode, 3, bad)
             self.assertEqual(self.run_cfg("opencode-apply").returncode, 3, bad)
@@ -349,6 +358,8 @@ class CliJson(Fixture):
             json.dumps({"plugins": [{"package": "a", "options": []}]}),
             json.dumps({"keybinds": {"a": 1}}),
             json.dumps({"keybinds": []}),
+            json.dumps({"tabs": "off"}),
+            json.dumps({"tabs": {"mode": ["off"]}}),
         )
         for bad in bad_fragments:
             write(self.pkg / "opencode" / "cli.json", bad)
@@ -371,7 +382,7 @@ class CliJson(Fixture):
 
     def test_o_fragmento_do_repo_fixa_a_versao_do_plugin(self):
         data = json.loads((PKG / "opencode" / "cli.json").read_text(encoding="utf-8"))
-        self.assertEqual(set(data), {"plugins", "keybinds"})
+        self.assertEqual(set(data), {"plugins", "keybinds", "tabs"})
         for plugin in data["plugins"]:
             name = plugin["package"] if isinstance(plugin, dict) else plugin
             self.assertRegex(name, r".@[0-9]+\.[0-9]+\.[0-9]+", name)  # nada de tag flutuante

@@ -15,5 +15,8 @@
     "session.verbosity.cycle": "ctrl+o",
     "open.menu": "<leader>o",
     "session.interrupt": "ctrl+c"
+  },
+  "tabs": {
+    "mode": "off"
   }
 }

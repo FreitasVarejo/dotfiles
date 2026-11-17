@@ -37,7 +37,7 @@ O deny.json tem as categorias read, shell, edit e agent. `agent` (nomes de subag
 só existe no Claude Code, onde vira `Agent(<nome>)`; no Cursor e no OpenCode é pulada.
 
 O alvo `opencode` (ADR 0046) mescla share, instructions, permissions e policies no
-opencode.json do diretório de config, mescla plugins e keybinds (de opencode/cli.json,
+opencode.json do diretório de config, mescla plugins, keybinds e tabs (de opencode/cli.json,
 quando existe) no cli.json do TUI dele e GERA agents/*.md (de subagents/) e commands/*.md
 (das skills) nele. Só age onde há OpenCode 2.x: quem decide é o lib.sh, não este script.
 """
@@ -482,7 +482,7 @@ def hooks_apply(agent, path, travas_path):
 # de shell segue a semântica do deny.json: "a:*" é prefixo, o resto é exato.
 
 OPENCODE_FRAGMENT_KEYS = {"share", "permissions", "policies"}
-OPENCODE_CLI_KEYS = {"plugins", "keybinds"}
+OPENCODE_CLI_KEYS = {"plugins", "keybinds", "tabs"}
 OPENCODE_CLI_SCHEMA = "https://opencode.ai/v2/cli.json"
 OPENCODE_MARK_PREFIX = "<!-- gerado por agents/hooks/agent_config.py a partir de "
 OPENCODE_MARK_SUFFIX = "; não edite -->"
@@ -739,12 +739,14 @@ def opencode_json_merge(want, data, path):
 
 # cli.json do TUI (OpenCode 2.x): o próprio OpenCode o reescreve (`plugin add`
 # regrava o arquivo, o atalho de verbosidade grava session.verbosity, trocar de tema
-# grava theme), então o repo só declara `plugins` e `keybinds`, e o resto é dele.
+# grava theme), então o repo só declara `plugins`, `keybinds` e `tabs`, e o resto é dele.
+# `tabs` mescla chave a chave, como `keybinds`: o que o repo declara vence, o resto de
+# `tabs` (scope, layout…) fica como a máquina tem.
 # Fragmento ausente = nada a fazer no cli.json.
 
 
 def repo_cli(pkg_dir):
-    """O fragmento opencode/cli.json do repo ({plugins, keybinds}), ou None se não existe."""
+    """O fragmento opencode/cli.json do repo ({plugins, keybinds, tabs}), ou None se não existe."""
     path = os.path.join(pkg_dir, "opencode", "cli.json")
     if not os.path.lexists(path):
         return None
@@ -764,6 +766,9 @@ def repo_cli(pkg_dir):
     keybinds = spec.get("keybinds", {})
     if not isinstance(keybinds, dict) or not all(isinstance(v, str) for v in keybinds.values()):
         raise repo_error('%s: "keybinds" não é objeto de id -> atalho (texto)' % path)
+    tabs = spec.get("tabs", {})
+    if not isinstance(tabs, dict) or not all(isinstance(v, (str, bool, int)) for v in tabs.values()):
+        raise repo_error('%s: "tabs" não é objeto de chave -> valor simples (texto, booleano ou número)' % path)
     return spec
 
 
@@ -790,10 +795,11 @@ def plugin_slot(have, item):
 def opencode_cli_diffs(want, data, path):
     """[(cli.json:<chave>, add|update)]. `add` quando nada do que o repo declara está lá."""
     diffs = []
-    if "keybinds" in want:
-        have = child(data, "keybinds", dict, path)
-        if any(have.get(k) != v for k, v in want["keybinds"].items()):
-            diffs.append(("cli.json:keybinds", "update" if any(k in have for k in want["keybinds"]) else "add"))
+    for key in ("keybinds", "tabs"):
+        if key in want:
+            have = child(data, key, dict, path)
+            if any(have.get(k) != v for k, v in want[key].items()):
+                diffs.append(("cli.json:" + key, "update" if any(k in have for k in want[key]) else "add"))
     if "plugins" in want:
         have = child(data, "plugins", list, path)
         slots = [plugin_slot(have, item) for item in want["plugins"]]
@@ -803,8 +809,9 @@ def opencode_cli_diffs(want, data, path):
 
 
 def opencode_cli_merge(want, data, path):
-    if "keybinds" in want:
-        child(data, "keybinds", dict, path).update(want["keybinds"])
+    for key in ("keybinds", "tabs"):
+        if key in want:
+            child(data, key, dict, path).update(want[key])
     if "plugins" in want:
         have = child(data, "plugins", list, path)
         for item in want["plugins"]:
