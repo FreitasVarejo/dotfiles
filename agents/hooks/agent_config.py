@@ -36,7 +36,7 @@ Uso:
 O deny.json tem as categorias read, shell, edit e agent. `agent` (nomes de subagente)
 só existe no Claude Code, onde vira `Agent(<nome>)`; no Cursor e no OpenCode é pulada.
 
-O alvo `opencode` (ADR 0046) mescla share, instructions, permissions e policies no
+O alvo `opencode` (ADR 0046) mescla share, experimental, instructions, permissions e policies no
 opencode.json do diretório de config, mescla plugins, keybinds e tabs (de opencode/cli.json,
 quando existe) no cli.json do TUI dele e GERA agents/*.md (de subagents/) e commands/*.md
 (das skills) nele. Só age onde há OpenCode 2.x: quem decide é o lib.sh, não este script.
@@ -481,7 +481,7 @@ def hooks_apply(agent, path, travas_path):
 # (ex. ~/ObsidianVault/daily) vê só "2026-01-01.md" e o padrão não casa. Entrada
 # de shell segue a semântica do deny.json: "a:*" é prefixo, o resto é exato.
 
-OPENCODE_FRAGMENT_KEYS = {"share", "permissions", "policies"}
+OPENCODE_FRAGMENT_KEYS = {"share", "experimental", "permissions", "policies"}
 OPENCODE_CLI_KEYS = {"plugins", "keybinds", "tabs"}
 OPENCODE_CLI_SCHEMA = "https://opencode.ai/v2/cli.json"
 OPENCODE_MARK_PREFIX = "<!-- gerado por agents/hooks/agent_config.py a partir de "
@@ -623,7 +623,7 @@ def subagent_permissions(tools, disallowed, default):
 
 
 def repo_opencode(fragment_path):
-    """O fragmento do opencode.json do repo: {share, permissions, policies}."""
+    """O fragmento do opencode.json do repo: {share, experimental, permissions, policies}."""
     try:
         with open(fragment_path, encoding="utf-8") as fh:
             spec = json.loads(fh.read().replace("${HOME}", os.environ["HOME"]))
@@ -633,6 +633,9 @@ def repo_opencode(fragment_path):
         raise repo_error("%s: esperado um objeto só com %s" % (fragment_path, sorted(OPENCODE_FRAGMENT_KEYS)))
     if not isinstance(spec.get("share", ""), str):
         raise repo_error("%s: 'share' não é texto" % fragment_path)
+    experimental = spec.get("experimental", {})
+    if not isinstance(experimental, dict) or not all(isinstance(v, bool) for v in experimental.values()):
+        raise repo_error("%s: 'experimental' não é objeto de flags true/false" % fragment_path)
     for key in ("permissions", "policies"):
         items = spec.get(key, [])
         if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
@@ -684,7 +687,7 @@ def deny_policies(deny_path):
 
 
 def repo_block(pkg_dir, machine):
-    """O que o repo declara para o opencode.json: {share, instructions, permissions, policies}."""
+    """O que o repo declara para o opencode.json: {share, experimental, instructions, permissions, policies}."""
     fragment = repo_opencode(os.path.join(pkg_dir, "opencode", "config.json"))
     user = os.path.join(pkg_dir, "instructions", "user.md")
     if not os.path.isfile(user):
@@ -697,6 +700,8 @@ def repo_block(pkg_dir, machine):
     want = {"instructions": instructions, "permissions": fragment["permissions"], "policies": policies}
     if "share" in fragment:
         want["share"] = fragment["share"]
+    if "experimental" in fragment:
+        want["experimental"] = fragment["experimental"]
     return want
 
 
@@ -716,6 +721,10 @@ def opencode_json_diffs(want, data, path):
     diffs = []
     if "share" in want and data.get("share") != want["share"]:
         diffs.append(("share", "add" if "share" not in data else "update"))
+    if "experimental" in want:
+        have = child(data, "experimental", dict, path) if "experimental" in data else {}
+        if any(have.get(k) != v for k, v in want["experimental"].items()):
+            diffs.append(("experimental", "update" if have else "add"))
     have = child(data, "instructions", list, path) if "instructions" in data else []
     missing = [p for p in want["instructions"] if p not in have]
     if missing:
@@ -731,6 +740,8 @@ def opencode_json_diffs(want, data, path):
 def opencode_json_merge(want, data, path):
     if "share" in want:
         data["share"] = want["share"]
+    if "experimental" in want:
+        child(data, "experimental", dict, path).update(want["experimental"])
     have = child(data, "instructions", list, path)
     have.extend(p for p in want["instructions"] if p not in have)
     for key in ("permissions", "policies"):

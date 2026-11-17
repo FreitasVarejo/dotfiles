@@ -24,6 +24,7 @@ MARK = "<!-- gerado por agents/hooks/agent_config.py a partir de "
 
 FRAGMENT = {
     "share": "disabled",
+    "experimental": {"artifacts": True, "schedules": True},
     "permissions": [
         {"action": "read", "resource": "*", "effect": "allow"},
         {"action": "grep", "resource": "*", "effect": "allow"},
@@ -137,7 +138,8 @@ class PlanEApply(Fixture):
     def test_o_plano_acusa_o_que_falta_e_nao_grava(self):
         plan = self.plan()
         self.assertEqual({k: v for k, v in plan.items() if "/" not in k},
-                         {"share": "add", "instructions": "add", "permissions": "add", "policies": "add"} | CLI_LINES)
+                         {"share": "add", "experimental": "add", "instructions": "add", "permissions": "add",
+                          "policies": "add"} | CLI_LINES)
         self.assertEqual(plan["agents/auditor.md"], "add")
         self.assertEqual(plan["commands/forked.md"], "add")
         self.assertEqual(list(self.cfg.iterdir()), [])
@@ -154,6 +156,7 @@ class PlanEApply(Fixture):
         self.apply()
         data = self.config()
         self.assertEqual(data["share"], "disabled")
+        self.assertEqual(data["experimental"], {"artifacts": True, "schedules": True})
         self.assertEqual(data["instructions"], [str(self.pkg / "instructions" / "user.md")])
         self.assertEqual(data["permissions"][-1],
                          {"action": "shell", "resource": str(self.home) + "/.claude/skills/*/scripts/*", "effect": "allow"})
@@ -186,6 +189,29 @@ class PlanEApply(Fixture):
         self.assertEqual(data["instructions"][0], "/minha/regra.md")
         self.assertEqual(data["permissions"][0]["resource"], "make *")
         self.assertEqual(data["policies"][0]["resource"], "shell:rm *")
+
+    def test_experimental_flag_que_falta_ou_esta_desligada_e_acusada_e_ligada(self):
+        for have in ({}, {"artifacts": False, "schedules": True}, {"schedules": True}):
+            self.put_config({"experimental": have} if have else {})
+            self.assertEqual(self.plan()["experimental"], "update" if have else "add", have)
+            self.apply()
+            self.assertEqual(self.config()["experimental"], {"artifacts": True, "schedules": True})
+            self.assertNotIn("experimental", self.plan())
+
+    def test_experimental_da_maquina_a_mais_fica_e_a_segunda_aplicacao_nao_reescreve(self):
+        self.put_config({"experimental": {"outra_flag": True, "artifacts": False}})
+        self.apply()
+        self.assertEqual(self.config()["experimental"], {"outra_flag": True, "artifacts": True, "schedules": True})
+        self.assertNotIn("experimental", self.plan())
+        before = self.snapshot()
+        self.assertEqual(self.apply(), {})
+        self.assertEqual(self.snapshot(), before)
+
+    def test_experimental_com_tipo_errado_na_maquina_e_erro_3(self):
+        self.put_config({"experimental": ["artifacts"]})
+        self.assertEqual(self.run_cfg("opencode-plan").returncode, 3)
+        self.assertEqual(self.run_cfg("opencode-apply").returncode, 3)
+        self.assertEqual(self.config(), {"experimental": ["artifacts"]})
 
     def test_bloco_do_repo_vai_contiguo_para_o_fim_na_ordem_do_repo(self):
         block = self.expected_permissions()
@@ -248,7 +274,8 @@ class PlanEApply(Fixture):
         self.assertEqual(json.loads(real.read_text())["share"], "disabled")
 
     def test_fragmento_invalido_e_erro_2(self):
-        for bad in ("{ nao", json.dumps({"mcp": {}}), json.dumps({"share": "disabled", "permissions": [{"action": "x"}]})):
+        for bad in ("{ nao", json.dumps({"mcp": {}}), json.dumps({"share": "disabled", "permissions": [{"action": "x"}]}),
+                    json.dumps({"experimental": ["artifacts"]}), json.dumps({"experimental": {"artifacts": "yes"}})):
             write(self.pkg / "opencode" / "config.json", bad)
             self.assertEqual(self.run_cfg("opencode-plan").returncode, 2, bad)
 
@@ -673,6 +700,7 @@ class PacoteReal(unittest.TestCase):
     def test_o_fragmento_do_repo_traz_o_canario_e_o_share(self):
         data = json.loads((PKG / "opencode" / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(data["share"], "disabled")
+        self.assertEqual(data["experimental"], {"artifacts": True, "schedules": True})
         self.assertIn("read:*canario-do-deny-opencode", [p["resource"] for p in data["policies"]])
         self.apply()
 

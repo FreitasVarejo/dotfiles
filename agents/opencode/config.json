@@ -1,5 +1,6 @@
 {
   "share": "disabled",
+  "experimental": { "artifacts": true, "schedules": true },
   "permissions": [
     { "action": "read", "resource": "*", "effect": "allow" },
     { "action": "grep", "resource": "*", "effect": "allow" },
