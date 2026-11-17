@@ -91,6 +91,7 @@ class Fixture(unittest.TestCase):
         write(self.pkg / "permissions" / "deny.json", json.dumps(DENY))
         write(self.pkg / "opencode" / "config.json", json.dumps(FRAGMENT))
         write(self.pkg / "opencode" / "cli.json", json.dumps(CLI))
+        write(self.pkg / "opencode" / "instructions.md", "# só o opencode\n")
         write(self.pkg / "subagents" / "auditor.md", AUDITOR)
         write(self.pkg / "subagents" / "Implementador.md", IMPLEMENTADOR)
         write(self.pkg / "skills" / "plain" / "SKILL.md", skill_md("plain"))
@@ -157,10 +158,13 @@ class PlanEApply(Fixture):
         data = self.config()
         self.assertEqual(data["share"], "disabled")
         self.assertEqual(data["experimental"], {"artifacts": True, "schedules": True})
-        self.assertEqual(data["instructions"], [str(self.pkg / "instructions" / "user.md")])
+        self.assertEqual(data["instructions"], [str(self.pkg / "instructions" / "user.md"), self.own()])
         self.assertEqual(data["permissions"][-1],
                          {"action": "shell", "resource": str(self.home) + "/.claude/skills/*/scripts/*", "effect": "allow"})
         self.assertEqual(data["permissions"], self.expected_permissions())
+
+    def own(self):
+        return str(self.pkg / "opencode" / "instructions.md")
 
     def expected_permissions(self):
         text = json.dumps(FRAGMENT["permissions"]).replace("${HOME}", str(self.home))
@@ -168,13 +172,40 @@ class PlanEApply(Fixture):
 
     def test_instrucao_da_maquina_so_entra_se_o_arquivo_existir(self):
         self.apply()
-        self.assertEqual(len(self.config()["instructions"]), 1)
+        self.assertEqual(len(self.config()["instructions"]), 2)
         write(self.pkg / "instructions" / "machines" / "wsl-trabalho.md", "# wsl\n")
         self.assertEqual(self.plan()["instructions"], "update")
         self.apply()
+        self.assertEqual(sorted(self.config()["instructions"]),
+                         sorted([str(self.pkg / "instructions" / "user.md"),
+                                 str(self.pkg / "instructions" / "machines" / "wsl-trabalho.md"), self.own()]))
+
+    def test_o_arquivo_so_do_opencode_entra_por_ultimo_na_primeira_aplicacao(self):
+        write(self.pkg / "instructions" / "machines" / "wsl-trabalho.md", "# wsl\n")
+        self.apply()
         self.assertEqual(self.config()["instructions"],
                          [str(self.pkg / "instructions" / "user.md"),
-                          str(self.pkg / "instructions" / "machines" / "wsl-trabalho.md")])
+                          str(self.pkg / "instructions" / "machines" / "wsl-trabalho.md"), self.own()])
+
+    def test_instrucao_do_opencode_ausente_ou_ja_presente(self):
+        self.apply()
+        before = self.snapshot()
+        self.assertNotIn("instructions", self.plan())
+        self.assertEqual(self.apply(), {})
+        self.assertEqual(self.snapshot(), before)
+        (self.pkg / "opencode" / "instructions.md").unlink()
+        self.assertNotIn("instructions", self.plan())  # sem o arquivo no repo, nada a acrescentar
+        self.put_config({"instructions": ["/minha/regra.md"]})
+        self.apply()
+        self.assertEqual(self.config()["instructions"],
+                         ["/minha/regra.md", str(self.pkg / "instructions" / "user.md")])
+
+    def test_instrucao_da_maquina_vem_antes_da_do_opencode(self):
+        self.put_config({"instructions": ["/minha/regra.md"]})
+        self.assertEqual(self.plan()["instructions"], "update")
+        self.apply()
+        self.assertEqual(self.config()["instructions"],
+                         ["/minha/regra.md", str(self.pkg / "instructions" / "user.md"), self.own()])
 
     def test_o_que_a_maquina_tem_a_mais_fica_e_o_share_do_repo_vence(self):
         self.put_config({
@@ -703,6 +734,20 @@ class PacoteReal(unittest.TestCase):
         self.assertEqual(data["experimental"], {"artifacts": True, "schedules": True})
         self.assertIn("read:*canario-do-deny-opencode", [p["resource"] for p in data["policies"]])
         self.apply()
+
+    def test_o_arquivo_de_instrucoes_do_opencode_entra_por_ultimo_e_leva_as_receitas(self):
+        self.apply()
+        own = PKG / "opencode" / "instructions.md"
+        instructions = json.loads((self.tmp / "oc" / "opencode.json").read_text(encoding="utf-8"))["instructions"]
+        self.assertEqual(instructions[-1], str(own))
+        self.assertNotIn(str(own), [str(PKG / "instructions" / "user.md")])
+        text = own.read_text(encoding="utf-8")
+        for needle in ("artifact_create", "artifact_update", "file://", "wslview", "wslpath -w", "xdg-open", "CDN",
+                       "schedule_create", "worktree_create", "session_move", "`question`", "Shift+Tab"):
+            self.assertIn(needle, text, needle)
+        # o que o Claude Code e o Cursor leem não cita as ferramentas do OpenCode
+        for path in (PKG / "instructions").rglob("*.md"):
+            self.assertNotIn("artifact_create", path.read_text(encoding="utf-8"), path.name)
 
     def test_comandos_a_mao_nao_executam_nem_trocam_nada_sem_querer(self):
         # shellRegex !`...` e $1..$9 são avaliados pelo OpenCode no molde do comando

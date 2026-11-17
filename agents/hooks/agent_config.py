@@ -696,6 +696,10 @@ def repo_block(pkg_dir, machine):
     host = os.path.join(pkg_dir, "instructions", "machines", machine + ".md")
     if os.path.isfile(host):
         instructions.append(host)
+    # por último: o que só o OpenCode lê (receitas das ferramentas dele) não precede o que vale para todos
+    own = os.path.join(pkg_dir, "opencode", "instructions.md")
+    if os.path.isfile(own):
+        instructions.append(own)
     policies = deny_policies(os.path.join(pkg_dir, "permissions", "deny.json")) + fragment["policies"]
     want = {"instructions": instructions, "permissions": fragment["permissions"], "policies": policies}
     if "share" in fragment:

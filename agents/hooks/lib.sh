@@ -59,7 +59,8 @@ AGENTS_MACHINE="${AGENTS_MACHINE:-${HOSTNAME%%.*}}"
 # OpenCode (ADR 0046): só o 2.x, só onde está instalado. Nada aqui espelha o
 # $HOME; o setup mescla chaves no opencode.json e GERA agents/ e commands/ no
 # diretório de config (o OPENCODE_CONFIG_DIR do próprio OpenCode, ou o do XDG).
-# agents/opencode/ guarda o que só ele lê: o fragmento config.json e os comandos
+# agents/opencode/ guarda o que só ele lê: o fragmento config.json, o instructions.md
+# (entra por último em `instructions`) e os comandos
 # escritos à mão, linkados um a um, e os plugins locais do TUI (plugins/<nome>/),
 # um symlink por diretório. O mapa de modelos é por máquina e fica fora do repo, no
 # diretório de config.
