@@ -1,0 +1,6 @@
+#!/bin/bash
+# medir <arquivo>: centroide espectral médio (Hz, ponderado pela energia de cada quadro), duração e caminho.
+f="$1"
+dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f")
+ffmpeg -v error -i "$f" -ac 1 -af "aspectralstats=measure=centroid+flux,astats=metadata=1:reset=1:measure_overall=none:measure_perchannel=RMS_level,ametadata=print:file=-" -f null - 2>/dev/null |
+awk -v d="$dur" -v f="$f" '/centroid=/{split($0,a,"=");c=a[2]} /RMS_level=/{split($0,a,"=");r=a[2]; if(r!="-inf"){w=10^(r/10); s+=c*w; W+=w}} END{printf "%6.0f Hz  %5.2fs  %s\n", (W>0?s/W:0), d, f}'
