@@ -67,6 +67,31 @@ vim.api.nvim_create_autocmd("BufWritePre", {
   end,
 })
 
+-- Cursorline só na janela ativa. Quem desliga o cursorline de propósito
+-- (picker, terminal, dashboard) não pode ser religado só por receber o foco,
+-- como faria um `setlocal cursorline` em todo WinEnter; por isso o WinLeave
+-- marca as janelas que estavam com ele ligado e o WinEnter religa só essas.
+-- Adaptado de craftzdog/dotfiles@c6bad80 (config/autocmds.lua, augroup CursorLine).
+local cursorline_group = vim.api.nvim_create_augroup("active_cursorline", { clear = true })
+vim.api.nvim_create_autocmd("WinLeave", {
+  group = cursorline_group,
+  callback = function()
+    if vim.wo.cursorline then
+      vim.w.auto_cursorline = true
+      vim.wo.cursorline = false
+    end
+  end,
+})
+vim.api.nvim_create_autocmd("WinEnter", {
+  group = cursorline_group,
+  callback = function()
+    if vim.w.auto_cursorline then
+      vim.wo.cursorline = true
+      vim.w.auto_cursorline = nil
+    end
+  end,
+})
+
 -- Dentro do tmux, cada nvim grava a própria sessão para o snapshot restaurar
 -- depois de uma queda (ver config/revive.lua).
 require("config.revive")

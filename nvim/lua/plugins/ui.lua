@@ -1,18 +1,11 @@
 return {
   -- Pasta aberta na linha de comando fica com o explorer do Snacks; o yazi é
   -- só por tecla ou :Yazi (que o próprio plugin registra, com cwd/toggle/logs).
+  -- Duas teclas: <leader>- no arquivo atual e <leader>cw no cwd.
   {
     "mikavilpas/yazi.nvim",
     event = "VeryLazy",
     keys = {
-      -- Uma tecla só; troca o <BS> nativo do modo normal (anda para a esquerda).
-      {
-        "<BS>",
-        function()
-          require("yazi").yazi()
-        end,
-        desc = "Open yazi at the current file",
-      },
       {
         "<leader>-",
         function()
@@ -27,14 +20,18 @@ return {
         end,
         desc = "Open yazi at the current working directory",
       },
-      {
-        "<leader>y",
-        function()
-          require("yazi").toggle()
-        end,
-        desc = "Toggle the last yazi session",
-      },
     },
+  },
+
+  -- Nome do grupo <leader>y (copiar referência para o agente, em
+  -- config/keymaps.lua). O function form acrescenta ao `opts.spec` do LazyVim
+  -- em vez de substituí-lo.
+  {
+    "folke/which-key.nvim",
+    opts = function(_, opts)
+      opts.spec = opts.spec or {}
+      table.insert(opts.spec, { "<leader>y", group = "yank ref", mode = { "n", "x" } })
+    end,
   },
 
   {
@@ -56,15 +53,19 @@ return {
     opts = {
       image = { enabled = false },
       -- O preset nvim-remote do lazygit abre com --remote-tab, uma tab por
-      -- arquivo. Aqui o `e` carrega os selecionados como buffers na janela em
-      -- que o Neovim estava; o `q` fecha o lazygit antes de o arquivo abrir.
-      -- Só o `edit`: o editAtLine (e num hunk) fica com o preset, que abre tab.
-      -- Com --remote o `:drop` roda com o float ainda em modo terminal, e ao
-      -- sair desse modo o Neovim desfaz o cursor posicionado na linha.
+      -- arquivo. Aqui o `e` (edit) e o `e` num hunk (editAtLine) abrem o
+      -- arquivo na janela de onde o lazygit foi aberto: o comando manda `q` ao
+      -- lazygit, troca para essa janela (config/lazygit.lua guarda a origem,
+      -- pelos mapas <leader>gg/gG de config/keymaps.lua) e só então faz o
+      -- --remote, indo à linha no editAtLine. A troca sai do modo terminal
+      -- antes do :drop; era ele rodando com o float ainda em modo terminal
+      -- que desfazia o cursor posicionado na linha. Sem $NVIM abre direto.
+      -- Adaptado de craftzdog/dotfiles@c6bad80 (lua/craftzdog/utils/lazygit.lua).
       lazygit = {
         config = {
           os = {
-            edit = '[ -z "$NVIM" ] && (nvim -- {{filename}}) || (nvim --server "$NVIM" --remote-send "q" && nvim --server "$NVIM" --remote {{filename}})',
+            edit = require("config.lazygit").edit_command(),
+            editAtLine = require("config.lazygit").edit_command({ at_line = true }),
           },
         },
       },
