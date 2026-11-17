@@ -14,7 +14,8 @@
     "input.newline": "shift+return,ctrl+return,alt+return,ctrl+j,alt+o",
     "session.verbosity.cycle": "ctrl+o",
     "open.menu": "<leader>o",
-    "session.interrupt": "ctrl+c"
+    "session.interrupt": "ctrl+c",
+    "session.child.first": "down,ctrl+down"
   },
   "tabs": {
     "mode": "off"
