@@ -80,29 +80,6 @@ class Faixa(Base):
         self.assertEqual(out, [{"root": "/r/a", "files": 2}, {"root": "/r/b", "files": 1}])
 
 
-class Linha(Base):
-    def test_k_e_contexto_como_a_statusline_do_claude(self):
-        out = self.js("rodape.ts", """console.log(JSON.stringify([
-            m.k(999), m.k(1000), m.k(123456), m.k(1000000), m.k(2500000),
-            m.contexto(123456, 1000000), m.contexto(undefined, 1000000), m.contexto(50, undefined),
-            m.contexto(undefined, undefined) ?? null,
-        ]))""")
-        self.assertEqual(out, ["999", "1k", "123.4k", "1M", "2.5M",
-                               "ctx 123.4k/1M 12%", "ctx -/1M", "ctx 50", None])
-
-    def test_tokens_em_uso_ignora_o_que_veio_antes_da_compactacao(self):
-        def tok(n):
-            return {"input": n, "output": 1, "reasoning": 0, "cache": {"read": 2, "write": 3}}
-        mensagens = [
-            {"type": "assistant", "tokens": tok(100)},
-            {"type": "compaction", "status": "completed"},
-            {"type": "user"},
-        ]
-        out = self.js("rodape.ts", "console.log(JSON.stringify([m.tokensEmUso(%s) ?? null, m.tokensEmUso(%s), m.tokensEmUso([]) ?? null]))"
-                      % (json.dumps(mensagens), json.dumps(mensagens[:1] + [{"type": "assistant", "tokens": tok(7)}])))
-        self.assertEqual(out, [None, 7 + 1 + 2 + 3, None])
-
-
 class Uso(Base):
     """`/api/experimental/usage/limits` é a rota do OpenCode Console: sem resposta para o modelo, nada no rodapé."""
 

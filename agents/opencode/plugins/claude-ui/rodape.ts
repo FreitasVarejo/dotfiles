@@ -1,5 +1,5 @@
-// Lógica do rodapé do plugin `claude-ui`: a faixa das travas pendentes, o modelo, o contexto e o uso da
-// assinatura. Não importa o pacote do OpenCode (só `node:`), para o teste de `agents/tests/` rodá-la no Node.
+// Lógica do rodapé do plugin `claude-ui`: a faixa das travas pendentes e o uso da assinatura.
+// Não importa o pacote do OpenCode (só `node:`), para o teste de `agents/tests/` rodá-la no Node.
 // Escreva só sintaxe que o Node apaga (sem enum nem parameter property) e importe com `.ts`.
 import { execFile } from "node:child_process"
 import { realpathSync } from "node:fs"
@@ -67,34 +67,6 @@ export function faixa(p: Pendentes, home: string = homedir()): string | undefine
     ...(p.doctor ? ["freitask doctor (vault tocado)"] : []),
   ]
   return "o Stop cobra: " + partes.join(" · ")
-}
-
-/** 123456 vira "123k", 1000000 vira "1M". */
-export function k(n: number): string {
-  if (n >= 1_000_000) return Math.floor(n / 100_000) / 10 + "M"
-  if (n >= 1_000) return Math.floor(n / 100) / 10 + "k"
-  return String(n)
-}
-
-/** Como a statusline do Claude Code: `ctx 123k/1M 12%`, ou `ctx -/1M` antes da primeira resposta. */
-export function contexto(tokens: number | undefined, window: number | undefined): string | undefined {
-  if (tokens === undefined && window === undefined) return undefined
-  const total = window ? k(window) : "?"
-  if (tokens === undefined) return `ctx -/${total}`
-  if (!window) return `ctx ${k(tokens)}`
-  return `ctx ${k(tokens)}/${total} ${Math.round((tokens / window) * 100)}%`
-}
-
-type Mensagem = { type: string; tokens?: { input: number; output: number; reasoning: number; cache: { read: number; write: number } } }
-
-/** Tokens em uso: os da última resposta com uso depois da última compactação (como o rodapé nativo conta). */
-export function tokensEmUso(messages: readonly (Mensagem & { status?: string })[]): number | undefined {
-  const compaction = messages.findLastIndex((m) => m.type === "compaction" && m.status === "completed")
-  const last = messages.findLast((m, i) => m.type === "assistant" && m.tokens !== undefined && i > compaction)
-  const t = last?.tokens
-  if (!t) return undefined
-  const total = t.input + t.output + t.reasoning + t.cache.read + t.cache.write
-  return total > 0 ? total : undefined
 }
 
 type Orcamento = {

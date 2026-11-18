@@ -71,8 +71,8 @@ the repo declares; whatever the machine added stays.
   dispatches by `travas.json` (its docstring says how); the tests are
   `~/dotfiles/agents/tests/test_opencode_travas.py`. It also turns `${CLAUDE_SESSION_ID}`
   in skills into the shell variable OpenCode sets, so a skill keeps one text for both
-  agents. `plugins/claude-ui/` is the TUI plugin with the footer (model, context, the trava
-  strip), `/permissions` and `ctrl+r` history search (its header says what and why `ctrl+r`
+  agents. `plugins/claude-ui/` is the TUI plugin with the footer (the trava strip),
+  `/permissions` and `ctrl+r` history search (its header says what and why `ctrl+r`
   only reaches it in INSERT); `rodape.ts` and `dialogos.ts` stay free of the OpenCode package,
   tests in `~/dotfiles/agents/tests/test_opencode_claude_ui.py`. The memory
   directory `~/.claude/projects/<slug>/memory/` is shared with Claude Code on purpose

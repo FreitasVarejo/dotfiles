@@ -1,8 +1,8 @@
 // Plugin de TUI `claude-ui`: três coisas do Claude Code que o OpenCode 2.x não tem.
 //
-// - Rodapé (statusline): modelo, contexto em uso e, quando a rota responde para o modelo, o que resta da
-//   assinatura; e a faixa das travas pendentes, a mesma do mod `agents/mods/travas-pendentes`, perguntando
-//   às travas (`pendente <sessão>`). Entra nos slots `prompt.footer.status` e `home.footer.status`.
+// - Rodapé: a faixa das travas pendentes, a mesma do mod `agents/mods/travas-pendentes`, perguntando às
+//   travas (`pendente <sessão>`), e, quando a rota responde para o modelo, o que resta da assinatura. Entra no
+//   slot `prompt.footer.status`; na home não há nada. O modelo e o contexto não entram: o OpenCode já os mostra.
 // - `/permissions`: lista as aprovações "sempre" do projeto e remove a escolhida (rotas `permission.saved.*`).
 //   Só cobre o que o dono salvou como "sempre", não as regras da config.
 // - `ctrl+r` (e `/historico`): busca no histórico de prompts e cola o escolhido no prompt. O plugin de vim
@@ -19,7 +19,7 @@ import { Plugin } from "@opencode/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { buscarNoHistorico, confirmacaoDeRemocao, lerHistorico, opcoesDasSalvas, opcoesDoHistorico } from "./dialogos.ts"
 import type { Salva } from "./dialogos.ts"
-import { contexto, faixa, pendentes, SEM_PENDENTES, semPendencia, tokensEmUso, usoDaAssinatura } from "./rodape.ts"
+import { faixa, pendentes, SEM_PENDENTES, semPendencia, usoDaAssinatura } from "./rodape.ts"
 import type { Pendentes } from "./rodape.ts"
 
 const PRIORIDADE_DA_BUSCA = 50
@@ -28,30 +28,12 @@ const PENDENCIAS_A_CADA_MS = 30_000
 // O que mexe no estado das travas (o toque de uma ferramenta, o fim de um turno): a faixa reconfere.
 const EVENTOS = ["session.tool.success", "session.tool.failed", "session.idle", "session.execution.succeeded"] as const
 
-function Rodape(props: { context: Plugin.Context; sessionID?: string; uso: () => { texto: string; esgotado: boolean } | undefined }) {
+function Rodape(props: { context: Plugin.Context; sessionID: string; uso: () => { texto: string; esgotado: boolean } | undefined }) {
   const ctx = props.context
   const [pendente, setPendente] = createSignal<Pendentes>(SEM_PENDENTES)
-  const raiz = createMemo(() => (props.sessionID ? ctx.data.session.root(props.sessionID) : undefined))
-  const sessao = createMemo(() => (props.sessionID ? ctx.data.session.get(props.sessionID) : undefined))
-  const local = () => sessao()?.location ?? ctx.location
-  const modelo = createMemo(() => {
-    const atual = ctx.ui.model.current()
-    if (!atual) return undefined
-    const info = ctx.data.location.model.list(local())?.find((m) => m.providerID === atual.providerID && m.id === atual.modelID)
-    return { atual, info }
-  })
-  const rodando = () => (props.sessionID ? ctx.data.session.status(props.sessionID) === "running" : false)
-  const linha = createMemo(() => {
-    const m = modelo()
-    const tokens = props.sessionID ? tokensEmUso(ctx.data.session.message.list(props.sessionID)) : undefined
-    return [
-      m ? (m.info?.name ?? m.atual.modelID) : undefined,
-      props.sessionID && (m || tokens !== undefined) ? contexto(tokens, m?.info?.limit.context) : undefined,
-      props.uso()?.texto,
-    ]
-      .filter((parte): parte is string => Boolean(parte))
-      .join(" · ")
-  })
+  const raiz = createMemo(() => ctx.data.session.root(props.sessionID))
+  const rodando = () => ctx.data.session.status(props.sessionID) === "running"
+  const linha = () => props.uso()?.texto
 
   // A pergunta às travas sai do tempo do evento: uma rajada de ferramentas vira uma consulta só.
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -96,7 +78,7 @@ function Rodape(props: { context: Plugin.Context; sessionID?: string; uso: () =>
   })
 
   const aviso = () => faixa(pendente())
-  // A faixa é o que o dono precisa agir: não encolhe, e quem cede lugar é o modelo/contexto.
+  // A faixa é o que o dono precisa agir: não encolhe, e quem cede lugar é o uso da assinatura.
   return (
     <>
       <Show when={linha()}>
@@ -123,7 +105,7 @@ function promptFocado(ctx: Plugin.Context): any {
 export default Plugin.define({
   id: "dotfiles.claude-ui",
   setup(ctx) {
-    // O uso da assinatura é por local e vale para os dois rodapés: uma consulta, repetida de tempos em tempos.
+    // O uso da assinatura é por local: uma consulta, repetida de tempos em tempos.
     const [info, setInfo] = createSignal<any>(null)
     const carregarUso = async () => {
       try {
@@ -146,11 +128,8 @@ export default Plugin.define({
 
     ctx.ui.slot({
       append: "prompt.footer.status",
-      render: (entrada) => <Rodape context={ctx} sessionID={entrada.sessionID} uso={uso} />,
-    })
-    ctx.ui.slot({
-      append: "home.footer.status",
-      render: () => <Rodape context={ctx} uso={uso} />,
+      // Na home o slot não traz sessão: sem sessão não há trava a mostrar, e o plugin não escreve nada.
+      render: (entrada) => (entrada.sessionID ? <Rodape context={ctx} sessionID={entrada.sessionID} uso={uso} /> : null),
     })
 
     const sessaoAtual = () => {
