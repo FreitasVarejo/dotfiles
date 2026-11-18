@@ -8,6 +8,7 @@ diretório temporário. O docker é um falso no PATH."""
 
 import importlib.machinery
 import importlib.util
+import json
 import os
 import shlex
 import subprocess
@@ -502,93 +503,51 @@ class PlanDocker(unittest.TestCase):
 
 
 class Arquivar(unittest.TestCase):
-    """`## arquivar sem perguntar` num vault de fixture; os repos de cada projeto e as PRs vêm de dublês."""
+    """`## arquivar sem perguntar` mostra o que o `vault-arquivaveis` diz; a regra e o cruzamento com as PRs
+    são testados em `vault/tests/test_vault_arquivaveis.py`."""
 
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.vault = Path(os.path.realpath(tmp.name))
-        self.prs = {}
-        for target, fake in (("VAULT", str(self.vault)),
-                             ("vinculos", lambda *a, cols=1: [["/r/" + a[1], "/r/" + a[1], a[1]]] if a[0] == "repos" else [["x"]]),
-                             ("slug", lambda root: "o/" + os.path.basename(root)),
-                             ("pr_states", lambda s, branch: self.prs.get((s, branch), []))):
-            patcher = mock.patch.object(P, target, fake)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+    def arquivar(self, doc, rc=0, net=True, projects=("p",)):
+        with mock.patch.object(P, "run", return_value=(rc, doc if isinstance(doc, str) else json.dumps(doc))) as run:
+            linhas = P.report_arquivar(set(projects), net)
+        self.run_args = run.call_args.args[0]
+        return linhas
 
-    def task(self, project, tid, callout="question", aberto=False):
-        path = self.vault / "projects" / project / "tasks" / (tid + ".md")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("> [!%s] %s\n> [[projects/%s/tasks/%s|%s]]\n\n- [x] feito\n%s"
-                        % (callout, tid, project, tid, tid, "- [ ] falta\n" if aberto else ""))
-        return str(path)
+    def test_task_arquivavel_vira_linha_com_fase_e_pr(self):
+        doc = {"consultou": True, "motivo": "", "tasks": [
+            {"projeto": "p", "id": "pronta", "fase": "Em homologação", "callout": "question",
+             "estado": "pode-arquivar", "prs": [{"repo": "o/p", "numero": 7}]},
+            {"projeto": "p", "id": "parou", "fase": "Bloqueada", "callout": "warning",
+             "estado": "pode-arquivar", "prs": [{"repo": "o/a", "numero": 3}, {"repo": "o/b", "numero": 4}]}]}
+        self.assertEqual(self.arquivar(doc), [
+            "p `pronta` (Em homologação): PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`",
+            "p `parou` (Bloqueada): PR #3 em o/a, #4 em o/b mergeada, nenhuma aberta, nenhum `- [ ]`"])
+        self.assertEqual(self.run_args, ["vault-arquivaveis", "p"])
 
-    def arquivar(self, projects=("p",), net=True):
-        active = sorted(str(f) for f in self.vault.glob("projects/*/tasks/*.md"))
-        return P.report_arquivar(set(projects), active, net)
-
-    def test_pr_mergeada_sem_item_aberto_entra_mesmo_de_outra_sessao(self):
-        self.task("p", "pronta")
-        self.prs[("o/p", "pronta")] = [(7, "MERGED")]
-        self.assertEqual(self.arquivar(), ["p `pronta` (Em homologação): PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`"])
-
-    def test_bloqueada_com_pr_mergeada_entra_com_a_fase(self):
-        self.task("p", "parou", callout="warning")
-        self.prs[("o/p", "parou")] = [(7, "MERGED")]
-        self.assertEqual(self.arquivar(), ["p `parou` (Bloqueada): PR #7 em o/p mergeada, nenhuma aberta, nenhum `- [ ]`"])
-
-    def test_bloqueada_com_pr_aberta_ou_item_aberto_fica(self):
-        self.task("p", "pr-aberta", callout="warning")
-        self.task("p", "com-item", callout="warning", aberto=True)
-        self.prs[("o/p", "pr-aberta")] = [(7, "MERGED"), (9, "OPEN")]
-        self.prs[("o/p", "com-item")] = [(8, "MERGED")]
-        self.assertEqual(self.arquivar(), ["nada"])
-
-    def test_item_aberto_fica(self):
-        self.task("p", "falta", aberto=True)
-        self.prs[("o/p", "falta")] = [(7, "MERGED")]
-        self.assertEqual(self.arquivar(), ["nada"])
-
-    def test_pr_aberta_da_mesma_branch_fica(self):
-        self.task("p", "outra-pr")
-        self.prs[("o/p", "outra-pr")] = [(7, "MERGED"), (9, "OPEN")]
-        self.assertEqual(self.arquivar(), ["nada"])
-
-    def test_pr_aberta_noutro_repo_do_projeto_fica(self):
-        self.task("p", "dois-repos")
-        self.prs[("o/a", "dois-repos")] = [(7, "MERGED")]
-        self.prs[("o/b", "dois-repos")] = [(3, "OPEN")]
-        dois = lambda *a, cols=1: [["/r/a", "/r/a", "p"], ["/r/b", "/r/b", "p"]] if a[0] == "repos" else [["x"]]
-        with mock.patch.object(P, "vinculos", dois):
-            self.assertEqual(self.arquivar(), ["nada"])
-            del self.prs[("o/b", "dois-repos")]
-            self.assertEqual(self.arquivar(), ["p `dois-repos` (Em homologação): PR #7 em o/a mergeada, nenhuma aberta, nenhum `- [ ]`"])
-
-    def test_so_pr_fechada_ou_nenhuma_fica(self):
-        self.task("p", "fechada")
-        self.task("p", "sem-pr")
-        self.prs[("o/p", "fechada")] = [(7, "CLOSED")]
-        self.assertEqual(self.arquivar(), ["nada"])
-
-    def test_fora_de_homologacao_ou_de_projeto_nao_tocado_fica(self):
-        self.task("p", "em-implementacao", callout="example")
-        self.task("q", "de-outro-projeto")
-        self.prs[("o/p", "em-implementacao")] = [(7, "MERGED")]
-        self.prs[("o/q", "de-outro-projeto")] = [(8, "MERGED")]
-        self.assertEqual(self.arquivar(), ["nada"])
-
-    def test_gh_que_falha_tira_a_task_e_diz_por_que(self):
-        self.task("p", "pronta")
-        with mock.patch.object(P, "pr_states", return_value=None):
-            (linha,) = self.arquivar()
+    def test_gh_que_falhou_tira_a_task_e_diz_por_que(self):
+        doc = {"consultou": True, "motivo": "", "tasks": [
+            {"projeto": "p", "id": "pronta", "fase": "Em homologação", "callout": "question",
+             "estado": "gh-falhou", "repos": ["o/p"]}]}
+        (linha,) = self.arquivar(doc)
         self.assertIn("não consultei", linha)
         self.assertIn("não arquive", linha)
 
-    def test_sem_rede_nao_consulta(self):
-        self.task("p", "pronta")
-        self.prs[("o/p", "pronta")] = [(7, "MERGED")]
-        self.assertEqual(self.arquivar(net=False), ["não consultei (--sem-rede)"])
+    def test_sem_task_arquivavel_diz_nada(self):
+        self.assertEqual(self.arquivar({"consultou": True, "motivo": "", "tasks": []}), ["nada"])
+
+    def test_sem_rede_passa_a_flag_e_diz_que_nao_consultou(self):
+        doc = {"consultou": False, "motivo": "--sem-rede", "tasks": []}
+        self.assertEqual(self.arquivar(doc, net=False), ["não consultei (--sem-rede)"])
+        self.assertEqual(self.run_args, ["vault-arquivaveis", "--sem-rede", "p"])
+
+    def test_motivo_do_executavel_vai_na_linha(self):
+        doc = {"consultou": False, "motivo": "o vault-vinculos não respondeu", "tasks": []}
+        self.assertEqual(self.arquivar(doc), ["não consultei (o vault-vinculos não respondeu)"])
+
+    def test_executavel_ausente_ou_que_falha_diz_que_nao_consultou(self):
+        for rc, out in ((1, ""), (0, "isto não é json")):
+            with self.subTest(rc=rc):
+                (linha,) = self.arquivar(out, rc=rc)
+                self.assertIn("não consultei (o vault-arquivaveis não respondeu", linha)
 
 
 class PlanHosts(Repo):
