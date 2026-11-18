@@ -25,6 +25,8 @@ the repo declares; whatever the machine added stays.
   (ADR 0028). A trava is for a rule whose breach is irreparable and cheap to detect;
   the rule's text stays where it lives (the vault's `AGENTS.md` is the floor for
   channels without hooks). A trava with no tool to call does nothing (ADR 0027).
+  OpenCode runs the same scripts through `plugins/travas/` (see below): never a second copy
+  of a trava for it.
 - `settings/claude.json`: keys only Claude Code reads (`skillOverrides`, `autoMode`, …),
   merged key by key into its `settings.json` (ADR 0028). `autoMode` holds no project
   fact: the classifier reads it only from user scope, so it reaches every repo.
@@ -63,7 +65,13 @@ the repo declares; whatever the machine added stays.
   the source of the installed version (`~/dotfiles/agents/opencode/plugins/apelidos/tui.tsx`
   says where). `plugins/contexto/` is the server plugin that brings Claude Code's context
   to OpenCode (its header says what); `contexto.ts` stays free of the OpenCode package so
-  `~/dotfiles/agents/tests/test_opencode_contexto.py` runs it under Node. The memory
+  `~/dotfiles/agents/tests/test_opencode_contexto.py` runs it under Node.
+  `plugins/travas/` is the server plugin that runs `travas/` in OpenCode: `server.ts` is only
+  glue and `adaptador.py` translates the OpenCode event into Claude Code's hook JSON and
+  dispatches by `travas.json` (its docstring says how); the tests are
+  `~/dotfiles/agents/tests/test_opencode_travas.py`. It also turns `${CLAUDE_SESSION_ID}`
+  in skills into the shell variable OpenCode sets, so a skill keeps one text for both
+  agents. The memory
   directory `~/.claude/projects/<slug>/memory/` is shared with Claude Code on purpose
   (ADR 0046); the writing rules for it live in `instructions.md`.
   What the setup generates from `subagents/` and `skills/`: the docstring and the OpenCode
