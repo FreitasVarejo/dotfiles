@@ -922,7 +922,10 @@ def generated_agents(pkg_dir, config_dir, default, models):
 
 
 def command_skills(pkg_dir):
-    """Skills do pacote que ganham comando: fork, só-manual ou com $ARGUMENTS; fora, as com ${CLAUDE_SESSION_ID}."""
+    """Skills do pacote que ganham comando: fork, só-manual ou com $ARGUMENTS.
+
+    A que usa ${CLAUDE_SESSION_ID} também: o plugin `travas` troca o id no texto dela (opencode/plugins/travas/).
+    """
     found = []
     for skill_dir in sorted(glob.glob(os.path.join(pkg_dir, "skills", "*"))):
         skill_md = os.path.join(skill_dir, "SKILL.md")
@@ -932,22 +935,10 @@ def command_skills(pkg_dir):
         with open(skill_md, encoding="utf-8") as fh:
             text = fh.read()
         wanted = data.get("context") == "fork" or data.get("disable-model-invocation") == "true" or "$ARGUMENTS" in text
-        if not wanted or skill_uses_session_id(skill_dir):
+        if not wanted:
             continue
         found.append((os.path.basename(skill_dir), skill_md, data))
     return found
-
-
-def skill_uses_session_id(skill_dir):
-    for root, _, names in os.walk(skill_dir):
-        for name in names:
-            try:
-                with open(os.path.join(root, name), "rb") as fh:
-                    if b"CLAUDE_SESSION_ID" in fh.read():
-                        return True
-            except OSError:
-                continue
-    return False
 
 
 def generated_commands(pkg_dir, config_dir):

@@ -684,12 +684,13 @@ class ComandoPorSkill(Fixture):
         return sorted(p.stem for p in (self.cfg / "commands").glob("*.md"))
 
     def test_quem_ganha_comando(self):
-        # fork, só-manual e $ARGUMENTS ganham; a comum e a que usa ${CLAUDE_SESSION_ID} não
-        self.assertEqual(self.commands(), ["args", "forked", "manual"])
+        # fork, só-manual e $ARGUMENTS ganham, e a só-manual que usa ${CLAUDE_SESSION_ID} também
+        # (o plugin `travas` troca o id no texto dela); a comum não
+        self.assertEqual(self.commands(), ["args", "forked", "manual", "session"])
 
-    def test_session_id_em_qualquer_arquivo_da_skill_exclui(self):
+    def test_session_id_na_skill_nao_tira_o_comando(self):
         write(self.pkg / "skills" / "forked" / "scripts" / "x", "echo ${CLAUDE_SESSION_ID}\n")
-        self.assertEqual(self.commands(), ["args", "manual"])
+        self.assertEqual(self.commands(), ["args", "forked", "manual", "session"])
 
     def test_fork_vira_subagent_true_e_os_outros_nao(self):
         self.apply()
@@ -732,12 +733,12 @@ class PacoteReal(unittest.TestCase):
         )
         self.assertEqual(out.returncode, 0, out.stderr)
 
-    def test_todos_os_subagentes_e_a_fechar_fora(self):
+    def test_todos_os_subagentes_e_a_fechar_dentro(self):
         self.apply()
         agents = sorted(p.stem for p in (self.tmp / "oc" / "agents").glob("*.md"))
         self.assertEqual(agents, sorted(p.stem.lower() for p in (PKG / "subagents").glob("*.md")))
         commands = {p.stem for p in (self.tmp / "oc" / "commands").glob("*.md")}
-        self.assertNotIn("fechar", commands)
+        self.assertIn("fechar", commands)
         self.assertIn("verificar", commands)
         forked = (self.tmp / "oc" / "commands" / "verificar.md").read_text(encoding="utf-8")
         self.assertIn("\nsubagent: true\n", forked)
