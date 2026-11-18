@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""vault-arquivaveis — as tasks que já podem ser arquivadas porque a PR delas foi mergeada.
+
+  vault-arquivaveis [--sem-rede] [<projeto>...]
+
+Cruza as tasks ativas de cada projeto com as PRs do GitHub. Quem precisa da
+regra chama este executável pelo nome no PATH e não a copia: a skill `fechar`
+(arquiva sozinha) e a `current-project-state` (só mostra).
+
+A regra: é arquivável a task de `projects/<projeto>/tasks/` que está em `question`
+(Em homologação) ou em `warning` (Bloqueada, onde o `integrar` a deixa quando
+para), sem `- [ ]` aberto, cuja branch `<id>` tem PR mergeada e nenhuma aberta
+em qualquer repo vinculado ao projeto. PR fechada sem merge não conta. Os repos
+são os que o `vault-vinculos repos <projeto>` lista, e o GitHub de cada um vem
+do remote `origin`.
+
+Saída: um JSON só, com as chaves
+  consultou  false com --sem-rede, ou quando o `vault-vinculos` não respondeu
+  motivo     por que não consultou ("" quando consultou)
+  tasks      lista ordenada por projeto, id e fase; cada item traz `projeto`,
+             `id`, `fase` (nome) e `callout` (`question` ou `warning`), e mais
+               estado "pode-arquivar": `prs` = [{"repo": "dono/repo", "numero": N}],
+                      as mergeadas
+               estado "gh-falhou": `repos` = os repos em que o gh não respondeu;
+                      a task não é arquivável enquanto isso
+Task que não é arquivável não aparece. Sai 0 mesmo sem nenhuma task, e 2 em erro
+de uso. Só lê: não arquiva nada (quem arquiva é `freitask archive <id> done`) e
+só fala com a rede para listar PRs; --sem-rede a pula e diz que não consultou.
+Sem projeto na linha de comando, a lista é vazia. O vault é o de $HOME.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+
+VAULT = os.path.realpath(os.path.join(os.path.expanduser("~"), "ObsidianVault"))
+FASES = {"question": "Em homologação", "warning": "Bloqueada"}
+OPEN_ITEM = re.compile(r"^\s*- \[ \]", re.M)
+CALLOUT = re.compile(r"^> \[!(\w+)\]", re.M)
+
+
+def run(args, timeout=30):
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, errors="surrogateescape", timeout=timeout)
+        return r.returncode, r.stdout.rstrip()
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+
+
+def vinculos(*args, cols=1):
+    """Linhas do `vault-vinculos`, cada uma com `cols` colunas; None quando ele falta ou falha."""
+    rc, out = run(["vault-vinculos", *args])
+    if rc != 0:
+        return None
+    # O run tira o fim da saída, e com ele o tab de uma última coluna vazia.
+    return [(l.split("\t") + [""] * cols)[:cols] for l in out.split("\n") if l]
+
+
+def slug(root):
+    _, url = run(["git", "-C", root, "remote", "get-url", "origin"])
+    m = re.match(r"^(?:git@github\.com:|https://github\.com/)([^/]+/[^/]+?)(?:\.git)?$", url)
+    return m.group(1) if m else ""
+
+
+def pr_states(s, branch):
+    """(número, estado) de cada PR da branch no repo, aberta, fechada ou mergeada; None quando o gh falha."""
+    rc, out = run(["gh", "pr", "list", "--repo", s, "--head", branch, "--state", "all", "--limit", "100",
+                   "--json", "number,state"], timeout=25)
+    try:
+        return [(p["number"], p["state"]) for p in json.loads(out or "[]")] if rc == 0 else None
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
+def candidatas(projetos):
+    """(projeto, id, callout) das tasks ativas em fase de arquivar e sem item aberto."""
+    achadas = []
+    for projeto in projetos:
+        for path in sorted(glob.glob(os.path.join(VAULT, "projects", projeto, "tasks", "*.md"))):
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            m = CALLOUT.search(text)
+            if m and m.group(1) in FASES and not OPEN_ITEM.search(text):
+                achadas.append((projeto, os.path.basename(path)[:-3], m.group(1)))
+    return achadas
+
+
+def arquivaveis(projetos, net):
+    """O documento JSON da saída, como dicionário."""
+    doc = {"consultou": True, "motivo": "", "tasks": []}
+    if not net:
+        return {"consultou": False, "motivo": "--sem-rede", "tasks": []}
+    achadas = candidatas(projetos)
+    if not achadas:
+        return doc
+    if vinculos("projetos") is None:
+        return {"consultou": False, "tasks": [],
+                "motivo": "o vault-vinculos não respondeu (o ~/dotfiles/setup.sh o põe no PATH), não sei que repos cada projeto tem"}
+    slugs = {p: [s for s in (slug(clone) for _, clone, _ in vinculos("repos", p, cols=3) or []) if s]
+             for p in {p for p, _, _ in achadas}}
+    pares = [(t, s) for p, t, _ in achadas for s in slugs[p]]
+    # Uma chamada por branch e repo, que `--head` não aceita lista: em paralelo, para não somar segundos.
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        found = dict(zip(pares, ex.map(lambda par: pr_states(par[1], par[0]), pares)))
+    for p, t, callout in sorted(achadas):
+        item = {"projeto": p, "id": t, "fase": FASES[callout], "callout": callout}
+        falhou = [s for s in slugs[p] if found[(t, s)] is None]
+        if falhou:
+            doc["tasks"].append({**item, "estado": "gh-falhou", "repos": falhou})
+            continue
+        prs = [(s, n, st) for s in slugs[p] for n, st in found[(t, s)]]
+        mergeadas = [{"repo": s, "numero": n} for s, n, st in prs if st == "MERGED"]
+        if mergeadas and not any(st == "OPEN" for _, _, st in prs):
+            doc["tasks"].append({**item, "estado": "pode-arquivar", "prs": mergeadas})
+    return doc
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("projetos", nargs="*", metavar="projeto")
+    ap.add_argument("--sem-rede", action="store_true", help="não consulta o GitHub e diz que não consultou")
+    a = ap.parse_args()
+    json.dump(arquivaveis(list(dict.fromkeys(a.projetos)), not a.sem_rede), sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
+if __name__ == "__main__":
+    main()
