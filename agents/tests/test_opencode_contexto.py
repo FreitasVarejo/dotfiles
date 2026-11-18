@@ -265,19 +265,49 @@ class ClaudeMd(Base):
         (entry,) = self.entries("proj")
         self.assertEqual(entry["value"].count("Contents of"), 2)
 
-    def test_agents_md_ao_lado_deixa_o_claude_md_de_fora(self):
+    def test_claude_md_so_com_o_import_do_agents_md_fica_de_fora(self):
         self.write("proj/CLAUDE.md", "@AGENTS.md\n")
         self.write("proj/AGENTS.md", "regras\n")
         self.assertEqual(self.entries("proj"), [])
+
+    def test_claude_md_com_agents_md_ao_lado_entra_so_com_a_secao_propria(self):
+        self.write("proj/CLAUDE.md", "@AGENTS.md\n\n## Portões e métricas\n\nSECAO PROPRIA\n")
+        self.write("proj/AGENTS.md", "REGRAS DO AGENTS\n")
+        (entry,) = self.entries("proj")
+        self.assertIn("SECAO PROPRIA", entry["value"])
+        self.assertNotIn("REGRAS DO AGENTS", entry["value"])
+        self.assertEqual(entry["value"].count("Contents of"), 1)
+
+    def test_import_de_agents_md_que_o_opencode_nao_le_continua_expandido(self):
+        self.write("proj/CLAUDE.md", "@AGENTS.md\n@docs/AGENTS.md\n\nPROPRIO\n")
+        self.write("proj/AGENTS.md", "NATIVO\n")
+        self.write("proj/docs/AGENTS.md", "NAO LIDO\n")
+        (entry,) = self.entries("proj")
+        self.assertIn("PROPRIO", entry["value"])
+        self.assertIn("NAO LIDO", entry["value"])
+        self.assertNotIn("NATIVO", entry["value"])
+
+    def test_import_do_agents_md_de_uma_pasta_acima_na_cadeia_tambem_e_pulado(self):
+        self.write("AGENTS.md", "DA HOME\n")
+        self.write("a/b/CLAUDE.md", "@../../AGENTS.md\n\nPROPRIO\n")
+        (entry,) = self.entries("a/b")
+        self.assertIn("PROPRIO", entry["value"])
+        self.assertNotIn("DA HOME", entry["value"])
+
+    def test_agents_md_fora_da_cadeia_da_sessao_nao_e_nativo(self):
+        self.write("proj/CLAUDE.md", "@../outro/AGENTS.md\n\nPROPRIO\n")
+        self.write("outro/AGENTS.md", "DE OUTRA PASTA\n")
+        (entry,) = self.entries("proj")
+        self.assertIn("DE OUTRA PASTA", entry["value"])
 
     def test_da_home_ate_a_pasta_da_sessao_o_mais_geral_primeiro(self):
         self.write("CLAUDE.md", "HOME\n")
         self.write("a/CLAUDE.md", "A\n")
         self.write("a/b/c/CLAUDE.md", "C\n")
         self.write("a/b/AGENTS.md", "x\n")
-        self.write("a/b/CLAUDE.md", "B ignorado\n")
+        self.write("a/b/CLAUDE.md", "B\n")
         keys = [e["key"] for e in self.entries("a/b/c")]
-        self.assertEqual(keys, ["claude-md-home", "claude-md-a", "claude-md-a-b-c"])
+        self.assertEqual(keys, ["claude-md-home", "claude-md-a", "claude-md-a-b", "claude-md-a-b-c"])
         for key in keys:
             self.assertRegex(key, KEY)
 

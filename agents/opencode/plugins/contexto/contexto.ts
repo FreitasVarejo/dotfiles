@@ -5,7 +5,7 @@
 // O que o Claude Code carrega sozinho e o OpenCode não:
 // - regras de `.claude/rules/*.md` com `paths:`, quando um arquivo casa;
 // - a memória de `~/.claude/projects/<slug>/memory/`;
-// - o `CLAUDE.md` com `@imports`.
+// - o `CLAUDE.md` com `@imports`, menos o import de um `AGENTS.md` que o OpenCode já lê sozinho.
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 
@@ -302,11 +302,33 @@ function resolveImport(target: string, from: string, home: string): string {
 }
 
 /**
+ * Os `AGENTS.md` que o OpenCode carrega na partida, pelo caminho real: o global
+ * (`$OPENCODE_CONFIG_DIR` ou `$XDG_CONFIG_HOME/opencode`) e o de cada pasta da sessão até a home
+ * (fora da home, até a raiz do projeto). Os aninhados sob demanda não entram: só valem depois de uma leitura.
+ */
+export function nativeAgentsMd(cwd: string, home: string, env: Record<string, string | undefined> = process.env): Set<string> {
+  const start = resolve(cwd)
+  const base = resolve(home)
+  const stop = inside(base, start) ? base : findProject(start).root
+  const files = [join(env.OPENCODE_CONFIG_DIR || join(env.XDG_CONFIG_HOME || join(base, ".config"), "opencode"), "AGENTS.md")]
+  for (let current = start; inside(stop, current); current = dirname(current)) {
+    files.push(join(current, "AGENTS.md"))
+    if (current === stop || dirname(current) === current) break
+  }
+  return new Set(files.filter((file) => readText(file) !== undefined).map(realOr))
+}
+
+/** O `@import` que aponta para um `AGENTS.md` que o OpenCode já lê: expandi-lo duplicaria o texto. */
+function isNativeImport(target: string, from: string, home: string, native: ReadonlySet<string>): boolean {
+  return native.has(realOr(resolveImport(target, from, home)))
+}
+
+/**
  * O `CLAUDE.md` com os `@imports` expandidos: cada arquivo vira um bloco "Contents of <caminho>",
  * o importado logo depois de quem o importou. Import que sai da home é ignorado, com aviso no texto;
- * além de 5 níveis também.
+ * além de 5 níveis também. Import de arquivo em `native` (ver `nativeAgentsMd`) é pulado em silêncio.
  */
-export function expandClaudeMd(file: string, home: string): string {
+export function expandClaudeMd(file: string, home: string, native: ReadonlySet<string> = new Set()): string {
   const parts: string[] = []
   const seen = new Set<string>()
   const homeReal = realOr(home)
@@ -316,6 +338,7 @@ export function expandClaudeMd(file: string, home: string): string {
     seen.add(realOr(path))
     parts.push("Contents of " + path + (parent ? " (imported from " + parent + ")" : "") + ":\n\n" + text.trim())
     for (const target of importTargets(text)) {
+      if (isNativeImport(target, path, home, native)) continue
       const next = resolveImport(target, path, home)
       const exists = readText(next) !== undefined
       if (!inside(homeReal, realOr(next))) {
@@ -334,9 +357,20 @@ export function expandClaudeMd(file: string, home: string): string {
   return capBytes(parts.join("\n\n"), "CLAUDE.md cortado")
 }
 
+/** O texto não tem nada além de `@imports` que o OpenCode já lê (e linhas em branco). */
+function onlyNativeImports(text: string, file: string, home: string, native: ReadonlySet<string>): boolean {
+  const targets = importTargets(text)
+  if (targets.length === 0 || !targets.every((target) => isNativeImport(target, file, home, native))) return false
+  let rest = maskCode(text)
+  if (rest !== text) return false
+  for (const target of targets) rest = rest.replace("@" + target, "")
+  return rest.trim() === ""
+}
+
 /**
  * Os `CLAUDE.md` da home até a pasta da sessão (fora da home, só a pasta), o mais geral primeiro.
- * Pasta com `AGENTS.md` ao lado fica de fora: o OpenCode já lê esse arquivo sozinho.
+ * O `CLAUDE.md` entra sempre, mesmo com `AGENTS.md` ao lado, que pode ter seção própria; só o `@import`
+ * de um `AGENTS.md` que o OpenCode já lê é pulado. Um `CLAUDE.md` que só tem esse import fica de fora.
  */
 export function claudeMdEntries(cwd: string, home: string): Entry[] {
   const start = resolve(cwd)
@@ -347,12 +381,14 @@ export function claudeMdEntries(cwd: string, home: string): Entry[] {
     if (current === base || dirname(current) === current) break
   }
   const dirs = inside(base, start) ? chain : [start]
+  const native = nativeAgentsMd(cwd, home)
   const entries: Entry[] = []
   for (const dir of dirs) {
     const file = join(dir, "CLAUDE.md")
-    if (readText(file) === undefined || existsSync(join(dir, "AGENTS.md"))) continue
+    const text = readText(file)
+    if (text === undefined || onlyNativeImports(text, file, home, native)) continue
     const where = inside(base, dir) ? relative(base, dir) : dir
-    entries.push({ key: keyOf("claude-md", where === "" ? "home" : where), value: expandClaudeMd(file, home) })
+    entries.push({ key: keyOf("claude-md", where === "" ? "home" : where), value: expandClaudeMd(file, home, native) })
   }
   return entries
 }
