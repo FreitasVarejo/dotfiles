@@ -5,6 +5,10 @@
 # histórico do vaultgit, o git dos repos que carregam contrato apontando para o
 # projeto, a esteira do GitHub e o host vinculado.
 #
+# A task em homologação cuja PR já foi mergeada vem marcada "pode arquivar": a
+# regra é do `vault-arquivaveis` (`vault-arquivaveis --help`), que o coletor só
+# chama. Marcar não arquiva nada.
+#
 # Escreve em exatamente um lugar, e só com --gravar: o registro da própria
 # rodada, em projects/<projeto>/estado-<host>.md. Nunca toca em tasks/.
 #
@@ -61,7 +65,7 @@ while [[ $# -gt 0 ]]; do
       [[ -n "$HOST_FORCADO" ]] || { echo "coletar-estado: --host quer um alias" >&2; exit 2; }
       ;;
     -h | --help)
-      sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*)
@@ -468,6 +472,32 @@ gh_json() {
   jq -n --argjson prs "$prs" '{prs:$prs}'
 }
 
+# As tasks em homologação cuja PR da branch <id> foi mergeada: quem responde é o
+# vault-arquivaveis. Sem ele, sem rede ou com falha, a lista vem vazia e a razão
+# vai para `## fontes` e para `consultou`: "não vi" não é "não há".
+arquivaveis_json() {
+  local o bruto args=()
+  o='{"consultou":false,"motivo":"","tasks":[]}'
+  if ! command -v vault-arquivaveis >/dev/null; then
+    fonte arquivaveis ausente "vault-arquivaveis não está no PATH (o ~/dotfiles/setup.sh o põe)"
+    echo "$o" | jq -c '.motivo = "o vault-arquivaveis não está no PATH"'
+    return 0
+  fi
+  [[ $REDE -eq 0 ]] && args+=(--sem-rede)
+  if ! bruto=$(timeout 90 vault-arquivaveis "${args[@]}" "$PROJETO" 2>/dev/null) ||
+    ! printf '%s' "$bruto" | jq -e '.tasks' >/dev/null 2>&1; then
+    fonte arquivaveis erro "vault-arquivaveis falhou — não sei que task já pode arquivar"
+    echo "$o" | jq -c '.motivo = "o vault-arquivaveis falhou"'
+    return 0
+  fi
+  if [[ $(printf '%s' "$bruto" | jq -r '.consultou') == true ]]; then
+    fonte arquivaveis ok "PRs mergeadas das tasks em homologação"
+  else
+    fonte arquivaveis pulado "$(printf '%s' "$bruto" | jq -r '.motivo')"
+  fi
+  printf '%s' "$bruto" | jq -c .
+}
+
 notas_avulsas_json() {
   local painel="$VAULT/CURRENT.md"
   if [[ ! -f "$painel" ]]; then
@@ -569,6 +599,7 @@ VAULTLOG=$(vault_json)
 REPOS=$(repos_json)
 PLANOS=$(planos_json)
 GH=$(gh_json)
+ARQUIVAVEIS=$(arquivaveis_json)
 NOTAS=$(notas_avulsas_json)
 PENDENCIAS=$(pendencias_json)
 HOST=$(host_json)
@@ -616,15 +647,16 @@ DOC=$(jq -n \
   --slurpfile gh <(printf '%s' "$GH") --slurpfile notas <(printf '%s' "$NOTAS") \
   --slurpfile pendencias <(printf '%s' "$PENDENCIAS") --slurpfile host <(printf '%s' "$HOST") \
   --slurpfile avisos <(printf '%s' "$AVISOS") --slurpfile registro <(printf '%s' "$REGISTRO_JSON") \
+  --slurpfile arquivaveis <(printf '%s' "$ARQUIVAVEIS") \
   --arg janela_origem "$JANELA_ORIGEM" \
   '$fontes[0] as $fontes | $tasks[0] as $tasks | $vault[0] as $vault
   | $repos[0] as $repos | $planos[0] as $planos | $gh[0] as $gh
   | $notas[0] as $notas | $pendencias[0] as $pendencias | $host[0] as $host
-  | $avisos[0] as $avisos | $registro[0] as $registro
+  | $avisos[0] as $avisos | $registro[0] as $registro | $arquivaveis[0] as $arquivaveis
   | {projeto:$projeto, pedido:$pedido, gerado_em:$gerado, janela_dias:$janela,
     desde:$desde, moc:$moc, adrs:$adrs, fontes:$fontes, tasks:$tasks,
     mudancas_vault:$vault, repos:$repos, planos:$planos,
-    esperando: ($gh + {notas_avulsas:$notas, pendencias:$pendencias}),
+    esperando: ($gh + {notas_avulsas:$notas, pendencias:$pendencias, arquivaveis:$arquivaveis}),
     host:$host, avisos:$avisos, registro:$registro,
     janela_origem:$janela_origem}')
 
@@ -812,7 +844,20 @@ printf '%s' "$DOC" | jq -r --argjson fases "$FASES_JSON" --argjson ocultas "$OCU
     + "\n      \(.title)"
     + "\n      atualizado \(.updatedAt[0:10]) por \(.author.login // "?")" ]; $semgh),
   "### tasks em homologação",
-  bloco([ $ativas[] | select(.callout == "question") | "  - \(.id)  ·  \(.titulo)" ]),
+  ( $r.esperando.arquivaveis as $arq
+    | ( [ $ativas[] | select(.callout == "question") ] ) as $homologando
+    | ( if $arq.consultou | not then
+          (if ($homologando|length) > 0 then ["  (arquivar: não consultei — \($arq.motivo))"] else [] end)
+        else [] end ) as $aviso
+    | $aviso + [ $homologando[] | . as $t
+        | ( [ $arq.tasks[] | select(.id == $t.id) ] | .[0] ) as $a
+        | "  - \($t.id)  ·  \($t.titulo)"
+          + ( if $a.estado == "pode-arquivar" then
+                "\n      pode arquivar: " + ( [ $a.prs[] | "#\(.numero)" ] as $n
+                  | if ($n|length) == 1 then "PR \($n[0]) mergeada" else "PRs \($n | join(", ")) mergeadas" end )
+              elif $a.estado == "gh-falhou" then "\n      não consultei a PR (gh falhou em \($a.repos | join(", ")))"
+              else "" end ) ]
+    | bloco(.) ),
   "### notas avulsas do painel que citam o projeto",
   bloco([ $r.esperando.notas_avulsas[] | "  - \(.[0:400])" ]),
   "### notas de spec com seção de pendências",

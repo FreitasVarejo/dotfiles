@@ -67,7 +67,7 @@ Sempre estas quatro, nesta ordem. A tabela diz de onde sai cada uma:
 |---|---|
 | **Últimas mudanças** | `## mudanças na janela` — os três blocos: vault (ADR nova, spec reescrita, review), repos (commits, branch, árvore suja) e os planos de sessão |
 | **O que está pronto** | tasks em `Pronta (check)` + `### Arquivadas na janela` (as `done`; `dropped` foi abandonada, não entregue) |
-| **O que espera você** | `## esperando você` inteiro, cruzado com a idade que veio do registro |
+| **O que espera você** | `## esperando você` inteiro, cruzado com a idade que veio do registro. Task em homologação com a linha "pode arquivar: PR #N mergeada" não espera homologação: proponha `freitask archive <id> done` ao dono, sem arquivar você |
 | **Próximos passos** | tasks em `Refinada (tip)`, `Não iniciada (todo)` e `Bloqueada (warning)` — a bloqueada primeiro, com o motivo, porque ela trava as outras; depois a Refinada, que já tem o desenho fechado, e só então a Não iniciada |
 
 Como narrar:
@@ -148,6 +148,9 @@ a conversa, use a CLI.
   que moram os PRs abertos. Sem rede, você está respondendo sobre metade da
   pergunta; diga isso. Gravar offline **não** apaga a fila de PR — o coletor
   preserva o que não conseguiu conferir.
+- **"pode arquivar" depende da rede.** Com `--sem-rede`, ou sem o `vault-arquivaveis`
+  no PATH, a seção diz "arquivar: não consultei"; não conclua que a task segue
+  esperando homologação. A regra está em `vault-arquivaveis --help`.
 - **Worktree não é frente nova.** O coletor junta os worktrees de um clone
   (`vault-vinculos --help`) e os mostra como um repo com N branches em voo.
 - **Task `dropped` que ficou com callout `todo`.** Ela aparece arquivada, não em
