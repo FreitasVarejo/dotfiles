@@ -5,20 +5,24 @@
 //   slot `prompt.footer.status`; na home não há nada. O modelo e o contexto não entram: o OpenCode já os mostra.
 // - `/permissions`: lista as aprovações "sempre" do projeto e remove a escolhida (rotas `permission.saved.*`).
 //   Só cobre o que o dono salvou como "sempre", não as regras da config.
-// - `ctrl+r` (e `/historico`): busca no histórico de prompts e cola o escolhido no prompt. O plugin de vim
+// - `ctrl+r` (e `/historico`): busca no histórico de prompts, do mais novo para o mais antigo e com a data de
+//   cada um, e cola o escolhido no prompt. O histórico é do plugin (`historico.ts`: um arquivo com data, sem
+//   limite, no formato do `history.jsonl` do Claude Code), não o `prompt-history.jsonl` do OpenCode, que guarda
+//   só 50 prompts sem data. O plugin de vim
 //   (cli.json) trata `ctrl+r` como refazer no modo NORMAL e, no INSERT, devolve a tecla (`run` devolve false):
 //   esta camada tem prioridade menor que a do vim e maior que a do `session.rename` (também `ctrl+r`),
 //   então a tecla só chega aqui no INSERT, que é onde se quer buscar.
 //
-// A lógica está em `rodape.ts` e `dialogos.ts`, que não importam o OpenCode (testadas por
+// A lógica está em `rodape.ts`, `historico.ts` e `dialogos.ts`, que não importam o OpenCode (testadas por
 // `~/dotfiles/agents/tests/test_opencode_claude_ui.py`); aqui só a cola. A API vem do código do OpenCode
 // (anomalyco/opencode, tag v2.2.7): packages/plugin/src/tui/context.ts (slots, `ui.dialog`, `keymap`, `client`,
 // `data`). Se uma versão nova mudar um slot, uma rota ou o nome de um evento, a peça fica sem efeito: confira
 // antes de subir a versão.
 import { Plugin } from "@opencode/plugin/tui"
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
-import { buscarNoHistorico, confirmacaoDeRemocao, lerHistorico, opcoesDasSalvas, opcoesDoHistorico } from "./dialogos.ts"
+import { buscarNoHistorico, confirmacaoDeRemocao, opcoesDasSalvas, opcoesDoHistorico } from "./dialogos.ts"
 import type { Salva } from "./dialogos.ts"
+import { lerRegistros, vigiar } from "./historico.ts"
 import { faixa, pendentes, SEM_PENDENTES, semPendencia, usoDaAssinatura } from "./rodape.ts"
 import type { Pendentes } from "./rodape.ts"
 
@@ -171,7 +175,7 @@ export default Plugin.define({
 
     const historico = async () => {
       const editor = promptFocado(ctx)
-      const opcoes = opcoesDoHistorico(await lerHistorico())
+      const opcoes = opcoesDoHistorico(await lerRegistros())
       if (opcoes.length === 0) {
         ctx.ui.toast.show({ variant: "info", message: "Histórico de prompts vazio." })
         return
@@ -190,6 +194,19 @@ export default Plugin.define({
         editor.insertText(texto)
       }, 20)
     }
+
+    // O histórico próprio: a cada prompt que o TUI grava no arquivo nativo, uma linha com a hora e o projeto.
+    let desligarHistorico: (() => void) | undefined
+    let encerrado = false
+    void vigiar({
+      contexto: () => {
+        const id = sessaoAtual()
+        return { project: (id ? ctx.data.session.get(id)?.location?.directory : undefined) ?? ctx.location?.directory ?? process.cwd(), sessionId: id }
+      },
+    }).then((desligar) => {
+      if (encerrado) desligar()
+      else desligarHistorico = desligar
+    })
 
     ctx.keymap.layer(() => ({
       mode: "base",
@@ -227,6 +244,8 @@ export default Plugin.define({
     }))
 
     return () => {
+      encerrado = true
+      desligarHistorico?.()
       clearInterval(intervalo)
     }
   },

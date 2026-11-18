@@ -201,45 +201,32 @@ class Pendentes(Ambiente):
 
 
 class Historico(Base):
-    def escreve(self, linhas):
+    """O histórico próprio (`historico.ts`) e a lista da busca (`dialogos.ts`)."""
+
+    def escreve(self, linhas, nome="prompt-history.jsonl"):
         estado = self.tmp / "state" / "opencode"
-        estado.mkdir(parents=True)
-        arquivo = estado / "prompt-history.jsonl"
-        arquivo.write_text("\n".join(l if isinstance(l, str) else json.dumps(l) for l in linhas) + "\n")
+        estado.mkdir(parents=True, exist_ok=True)
+        arquivo = estado / nome
+        arquivo.write_text("".join((l if isinstance(l, str) else json.dumps(l)) + "\n" for l in linhas))
         return arquivo
 
     def entrada(self, texto, **extra):
         return {"text": texto, "files": [], "agents": [], "skills": [], "pasted": [], "mode": "normal", **extra}
 
-    def test_caminho_segue_o_xdg_state_home(self):
-        out = self.js("dialogos.ts", "console.log(JSON.stringify([m.historicoPath({XDG_STATE_HOME: '/x/s'}, '/h'), m.historicoPath({}, '/h')]))")
-        self.assertEqual(out, ["/x/s/opencode/prompt-history.jsonl", "/h/.local/state/opencode/prompt-history.jsonl"])
+    def historico(self, corpo, env=None):
+        return self.js("historico.ts", corpo, env={**self.env, "TZ": "UTC", **(env or {})})
 
-    def test_leitura_pula_linha_torta_e_arquivo_ausente(self):
+    def test_os_dois_arquivos_seguem_o_xdg_state_home_e_nao_se_misturam(self):
+        out = self.historico("console.log(JSON.stringify([m.nativoPath({XDG_STATE_HOME: '/x/s'}, '/h'), m.proprioPath({XDG_STATE_HOME: '/x/s'}, '/h'),"
+                             " m.nativoPath({}, '/h'), m.proprioPath({}, '/h')]))")
+        self.assertEqual(out, ["/x/s/opencode/prompt-history.jsonl", "/x/s/opencode/claude-ui-history.jsonl",
+                               "/h/.local/state/opencode/prompt-history.jsonl", "/h/.local/state/opencode/claude-ui-history.jsonl"])
+
+    def test_leitura_do_nativo_pula_linha_torta_e_arquivo_ausente(self):
         arquivo = self.escreve([self.entrada("um"), "{torta", json.dumps({"sem": "texto"}), self.entrada("dois")])
-        corpo = "const e = await m.lerHistorico(%s)\nconsole.log(JSON.stringify(e.map((x) => x.text)))"
-        self.assertEqual(self.js("dialogos.ts", corpo % json.dumps(str(arquivo))), ["um", "dois"])
-        self.assertEqual(self.js("dialogos.ts", "console.log(JSON.stringify(await m.lerHistorico(%s)))"
-                                 % json.dumps(str(self.tmp / "nada.jsonl"))), [])
-
-    def opcoes(self, entradas):
-        return self.js("dialogos.ts", "console.log(JSON.stringify(m.opcoesDoHistorico(%s)))" % json.dumps(entradas))
-
-    def test_a_mais_nova_vem_primeiro_sem_repetir_texto(self):
-        out = self.opcoes([self.entrada("velho"), self.entrada("meio"), self.entrada("velho"), self.entrada("   ")])
-        self.assertEqual([o["value"] for o in out], ["velho", "meio"])
-
-    def test_prompt_de_varias_linhas_mostra_a_primeira_e_o_total(self):
-        out = self.opcoes([self.entrada("\n  explica o rebase\ncom exemplo\nde tres")])
-        self.assertEqual(out[0]["title"], "explica o rebase")
-        self.assertEqual(out[0]["value"], "\n  explica o rebase\ncom exemplo\nde tres")
-        self.assertEqual(out[0]["footer"], "4 linhas")
-
-    def test_titulo_comprido_e_cortado_e_shell_leva_o_ponto_de_exclamacao(self):
-        out = self.opcoes([self.entrada("x" * 300), self.entrada("ls -la", mode="shell")])
-        self.assertEqual(out[0]["title"], "! ls -la")
-        self.assertEqual(len(out[1]["title"]), 100)
-        self.assertTrue(out[1]["title"].endswith("…"))
+        corpo = "const e = await m.lerNativo(%s)\nconsole.log(JSON.stringify(e.map((x) => x.text)))"
+        self.assertEqual(self.historico(corpo % json.dumps(str(arquivo))), ["um", "dois"])
+        self.assertEqual(self.historico("console.log(JSON.stringify(await m.lerNativo(%s)))" % json.dumps(str(self.tmp / "nada.jsonl"))), [])
 
     def test_texto_colado_volta_ao_conteudo_real_so_onde_o_rotulo_esta(self):
         rotulo = "[Pasted ~2 lines]"
@@ -247,13 +234,131 @@ class Historico(Base):
             {"text": "linha1\nlinha2", "source": {"start": 5, "end": 5 + len(rotulo), "text": rotulo}}])
         torta = self.entrada("veja outra coisa", pasted=[
             {"text": "XXX", "source": {"start": 5, "end": 10, "text": rotulo}}])
-        out = self.js("dialogos.ts", "console.log(JSON.stringify([m.expandir(%s), m.expandir(%s)]))"
-                      % (json.dumps(entrada), json.dumps(torta)))
+        out = self.historico("console.log(JSON.stringify([m.expandir(%s), m.expandir(%s)]))" % (json.dumps(entrada), json.dumps(torta)))
         self.assertEqual(out, ["veja linha1\nlinha2 ok", "veja outra coisa"])
 
+    def test_registro_tem_a_forma_do_history_do_claude_code(self):
+        out = self.historico("console.log(JSON.stringify([m.registroDe(%s, {timestamp: 5, project: '/p', sessionId: 'ses_1'}),"
+                             " m.registroDe(%s, {importado: true}), m.registroDe(%s) ?? null]))"
+                             % (json.dumps(self.entrada("oi")), json.dumps(self.entrada("ls", mode="shell")),
+                                json.dumps(self.entrada("  "))))
+        self.assertEqual(out, [
+            {"display": "oi", "pastedContents": {}, "timestamp": 5, "project": "/p", "sessionId": "ses_1"},
+            {"display": "ls", "pastedContents": {}, "mode": "shell", "importado": True},
+            None])
+
+    def test_primeira_vez_importa_o_nativo_sem_data_e_depois_nao_repete(self):
+        nativo = self.escreve([self.entrada("um"), "{torta", self.entrada("   "), self.entrada("dois", mode="shell")])
+        proprio = self.tmp / "state" / "opencode" / "claude-ui-history.jsonl"
+        corpo = ("const r = [await m.importarNativo(%s, %s)]\n"
+                 "r.push(await m.importarNativo(%s, %s))\nconsole.log(JSON.stringify(r))") % ((json.dumps(str(nativo)), json.dumps(str(proprio))) * 2)
+        self.assertEqual(self.historico(corpo), [True, False])
+        linhas = [json.loads(l) for l in proprio.read_text().splitlines()]
+        self.assertEqual(linhas, [
+            {"display": "um", "pastedContents": {}, "importado": True},
+            {"display": "dois", "pastedContents": {}, "mode": "shell", "importado": True}])
+
+    def test_sem_nativo_a_importacao_deixa_o_arquivo_proprio_vazio_como_marca(self):
+        proprio = self.tmp / "state" / "opencode" / "claude-ui-history.jsonl"
+        self.historico("await m.importarNativo(%s, %s)\nconsole.log('{}')" % (json.dumps(str(self.tmp / "nada")), json.dumps(str(proprio))))
+        self.assertEqual(proprio.read_text(), "")
+
+    def test_anexar_grava_uma_linha_e_nao_repete_o_mesmo_texto_em_dez_segundos(self):
+        proprio = self.tmp / "state" / "opencode" / "claude-ui-history.jsonl"
+        corpo = ("const f = %s\nconst r = []\n"
+                 "for (const [d, t] of [['a', 1000], ['a', 5000], ['b', 5000], ['a', 12000]])\n"
+                 "  r.push(await m.anexar({display: d, pastedContents: {}, timestamp: t}, f))\n"
+                 "console.log(JSON.stringify(r))") % json.dumps(str(proprio))
+        self.assertEqual(self.historico(corpo), [True, False, True, True])
+        self.assertEqual([json.loads(l)["timestamp"] for l in proprio.read_text().splitlines()], [1000, 5000, 12000])
+
+    def novas(self, antes, depois):
+        return self.historico("console.log(JSON.stringify(m.novasLinhas(%s, %s)))" % (json.dumps(antes), json.dumps(depois)))
+
+    def test_novas_linhas_do_nativo(self):
+        self.assertEqual(self.novas(["a", "b"], ["a", "b", "c"]), ["c"])
+        self.assertEqual(self.novas(["a", "b"], ["a", "b"]), [])
+        self.assertEqual(self.novas([], ["a"]), ["a"])
+        # o TUI passou de 50 e reescreveu o arquivo sem a mais antiga
+        self.assertEqual(self.novas(["a", "b", "c"], ["b", "c", "d"]), ["d"])
+        # repetido que não está no fim não confunde
+        self.assertEqual(self.novas(["a", "b", "a"], ["a", "b", "a", "b", "a"]), ["b", "a"])
+        # arquivo trocado: tudo é novo; arquivo apagado: nada
+        self.assertEqual(self.novas(["a", "b"], ["x"]), ["x"])
+        self.assertEqual(self.novas(["a", "b"], []), [])
+
+    def test_vigiar_grava_o_que_o_tui_grava_no_nativo_com_a_hora_e_o_projeto(self):
+        nativo = self.escreve([self.entrada("velho")])
+        proprio = nativo.parent / "claude-ui-history.jsonl"
+        corpo = """
+import { appendFileSync, writeFileSync, readFileSync } from "node:fs"
+const nativo = %s, proprio = %s
+const parar = await m.vigiar({ nativo, proprio, esperaMs: 20, agora: () => 1700000000000,
+  contexto: () => ({ project: "/p", sessionId: "ses_1" }) })
+const espera = (ms) => new Promise((r) => setTimeout(r, ms))
+const linha = (t, extra = {}) => JSON.stringify({ text: t, files: [], agents: [], skills: [], pasted: [], mode: "normal", ...extra }) + "\\n"
+appendFileSync(nativo, linha("novo um"))
+await espera(300)
+appendFileSync(nativo, linha("ls -la", { mode: "shell" }))
+await espera(300)
+// o TUI reescreve o arquivo sem a mais antiga: não vira prompt novo
+writeFileSync(nativo, linha("novo um") + linha("ls -la", { mode: "shell" }))
+await espera(300)
+parar()
+appendFileSync(nativo, linha("depois de desligar"))
+await espera(300)
+console.log(JSON.stringify(readFileSync(proprio, "utf8").trim().split("\\n").map((l) => JSON.parse(l))))
+""" % (json.dumps(str(nativo)), json.dumps(str(proprio)))
+        self.assertEqual(self.historico(corpo), [
+            {"display": "velho", "pastedContents": {}, "importado": True},
+            {"display": "novo um", "pastedContents": {}, "timestamp": 1700000000000, "project": "/p", "sessionId": "ses_1"},
+            {"display": "ls -la", "pastedContents": {}, "timestamp": 1700000000000, "project": "/p", "sessionId": "ses_1", "mode": "shell"}])
+
+    def test_leitura_dos_registros_pula_linha_torta(self):
+        arquivo = self.escreve([{"display": "um", "pastedContents": {}}, "{torta", {"sem": "display"},
+                                {"display": "dois", "pastedContents": {}, "timestamp": 3}], nome="claude-ui-history.jsonl")
+        out = self.historico("console.log(JSON.stringify((await m.lerRegistros(%s)).map((r) => r.display)))" % json.dumps(str(arquivo)))
+        self.assertEqual(out, ["um", "dois"])
+
+    def test_data_e_hora_na_hora_local(self):
+        # 2026-11-18 14:32 UTC; o teste fixa TZ=UTC
+        out = self.historico("console.log(JSON.stringify([m.dataHora(Date.UTC(2026, 10, 18, 14, 32)), m.dataHora(Date.UTC(2027, 0, 5, 9, 5))]))")
+        self.assertEqual(out, ["18/11/2026 14:32", "05/01/2027 09:05"])
+
+    def registro(self, texto, ts=None, **extra):
+        return {"display": texto, "pastedContents": {}, **({"timestamp": ts} if ts is not None else {}), **extra}
+
+    def opcoes(self, registros):
+        return self.js("dialogos.ts", "console.log(JSON.stringify(m.opcoesDoHistorico(%s)))" % json.dumps(registros),
+                       env={**self.env, "TZ": "UTC"})
+
+    def test_a_mais_nova_vem_primeiro_com_a_data_e_sem_repetir_texto(self):
+        t = lambda dia: __import__("calendar").timegm((2026, 11, dia, 10, 0, 0)) * 1000
+        out = self.opcoes([self.registro("velho", t(1)), self.registro("meio", t(2)), self.registro("velho", t(3)), self.registro("   ", t(4))])
+        self.assertEqual([o["value"] for o in out], ["velho", "meio"])
+        self.assertEqual([o["footer"] for o in out], ["03/11/2026 10:00", "02/11/2026 10:00"])
+
+    def test_importado_aparece_sem_data_e_depois_dos_que_tem_data(self):
+        out = self.opcoes([self.registro("antigo um", importado=True), self.registro("antigo dois", importado=True),
+                           self.registro("com data", 1700000000000)])
+        self.assertEqual([o["value"] for o in out], ["com data", "antigo dois", "antigo um"])
+        self.assertEqual([o["footer"] for o in out][1:], ["importado", "importado"])
+
+    def test_prompt_de_varias_linhas_mostra_a_primeira_e_o_total(self):
+        out = self.opcoes([self.registro("\n  explica o rebase\ncom exemplo\nde tres", 1700000000000)])
+        self.assertEqual(out[0]["title"], "explica o rebase")
+        self.assertEqual(out[0]["value"], "\n  explica o rebase\ncom exemplo\nde tres")
+        self.assertEqual(out[0]["footer"], "14/11/2023 22:13 · 4 linhas")
+
+    def test_titulo_comprido_e_cortado_e_shell_leva_o_ponto_de_exclamacao(self):
+        out = self.opcoes([self.registro("x" * 300, 2), self.registro("ls -la", 1, mode="shell")])
+        self.assertEqual(len(out[0]["title"]), 100)
+        self.assertTrue(out[0]["title"].endswith("…"))
+        self.assertEqual(out[1]["title"], "! ls -la")
+
     def test_busca_por_palavras_em_qualquer_ordem_sem_caixa_e_no_texto_inteiro(self):
-        opcoes = self.opcoes([self.entrada("explica o Rebase\ncom exemplo"), self.entrada("instala o ripgrep"),
-                              self.entrada("rebase do bjju")])
+        opcoes = self.opcoes([self.registro("explica o Rebase\ncom exemplo", 1), self.registro("instala o ripgrep", 2),
+                              self.registro("rebase do bjju", 3)])
         def busca(q):
             return self.js("dialogos.ts", "console.log(JSON.stringify(m.buscarNoHistorico(%s, %s).map((o) => o.value)))"
                            % (json.dumps(q), json.dumps(opcoes)))
