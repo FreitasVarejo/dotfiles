@@ -1,6 +1,6 @@
 ---
 name: freitask
-description: Abre uma task do freitask no vault do Obsidian a partir do que o dono descrever, escolhendo o projeto pelo escopo de cada um (o MOC), com a pasta e o repo da sessão só como pista. Use quando o dono pedir para abrir, criar, anotar ou registrar uma task, uma frente de trabalho ou "uma coisa para fazer depois" — mesmo sem dizer "freitask". Hoje só abre task nova; mudar fase, arquivar, renomear ou mover de projeto continua sendo a CLI direto.
+description: Abre uma task do freitask no vault do Obsidian a partir do que o dono descrever, escolhendo o projeto pelo escopo de cada um (o MOC), com a pasta e o repo da sessão só como pista. Use quando o dono pedir para abrir, criar, anotar ou registrar uma task, uma frente de trabalho ou "uma coisa para fazer depois" — mesmo sem dizer "freitask". Abre task nova, ou acrescenta o pedido a uma task sem código do mesmo assunto quando o dono aceita; mudar fase, arquivar, renomear ou mover de projeto continua sendo a CLI direto.
 argument-hint: "<o que a task é, em uma ou duas frases>"
 model: claude-sonnet-5-5
 effort: high
@@ -74,9 +74,15 @@ chamada, e a resposta do dono já roda no modelo da sessão.
 - não há descrição nenhuma, nem em `$ARGUMENTS` nem na conversa;
 - dois escopos de projeto cabem, ou nenhum (§1);
 - a descrição cabe em duas tasks diferentes, e escolher uma seria chutar;
-- uma task ativa do projeto parece ser a mesma coisa. Pergunte se é task
-  nova ou um acréscimo àquela. Se for acréscimo, não crie nada: diga qual é a
-  task e pare.
+- uma task ativa do projeto parece ser a mesma coisa, ou uma em Não iniciada,
+  Refinando ou Refinada (ainda sem código) é do mesmo assunto. Pergunte, com o
+  id dela: "acrescento isto à X em vez de criar uma nova?". Aceito, a task nova
+  não nasce, e a fase da X diz o que fazer:
+  - sem código: o pedido vira uma seção na X, por `references/juntar.md`
+    ("Pedido novo"), e a resposta diz qual é a task;
+  - com código (Em implementação em diante): não escreva nela, que o contrato
+    dela está congelado (`~/ObsidianVault/AGENTS.md`, "Fase"). Diga qual é a
+    task e pare.
 
 ## 3. A task
 
