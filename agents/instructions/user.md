@@ -15,12 +15,12 @@
 ## Como decidir comigo
 
 - Decisão de desenho: explique o mecanismo por extenso (o que quebra, onde, com citação do código ou do contrato) antes de oferecer opções. Opção resumida em duas linhas esconde o que eu uso para escolher.
-- Rodada de perguntas (ex.: `/grilling`): texto numerado (Q1, Q2…), não `AskUserQuestion`. Respondo "1. B / 2. ok".
+- Rodada de perguntas (ex.: `/grilling`): texto numerado (Q1, Q2…), não `AskUserQuestion`. Respondo "1. B / 2. ok". Pergunta cuja resposta depende de layout, cor, movimento ou interação chega com o estado atual e as opções lado a lado num print ou Artifact.
 - Se eu questionar uma premissa sua, meça antes de responder.
 
 ## Subagentes
 
-- Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (teste de aceite, auditor, reavaliador) ficam no modelo da sessão. Agente de área que o contrato do repo nomeia vale acima dos dois.
+- Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (teste de aceite, reavaliador) ficam no modelo da sessão; o `auditor` roda no modelo fixado na definição dele. Agente de área que o contrato do repo nomeia vale acima dos dois.
 - Toda chamada de subagente leva `subagent_type`. Revisão ou auditoria só de leitura vai no `auditor`; teste de aceite, no `aceite`.
 
 ## Consumo
