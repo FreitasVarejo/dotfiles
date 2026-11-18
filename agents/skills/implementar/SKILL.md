@@ -6,9 +6,11 @@ allowed-tools:
   - Bash(~/.claude/skills/implementar/scripts/lote)
   - Bash(~/.claude/skills/implementar/scripts/lote *)
   - Bash(freitask set *)
+  - Bash(freitask archive *)
   - Bash(freitask list *)
   - Bash(freitask doctor *)
   - Read(~/ObsidianVault/**)
+  - Read(~/.claude/skills/freitask/references/*)
   - Edit(~/ObsidianVault/projects/**)
 metadata:
   surfaces: "code"
@@ -56,9 +58,19 @@ lote", "depois de"), depois a de prioridade alta. Depender do *merge* de outra
 do mesmo lote é **espera**: o merge vem depois do CI, pelo caminho que o contrato
 do repo dá.
 
-Mostre a tabela (task, classe, motivo) e a ordem das **já**, e espere o OK. O
-dono pode mudar uma task de classe ou tirá-la do lote. A triagem termina quando
-toda task do lote tem classe e motivo e o dono respondeu.
+**Juntar.** Duas **já** em Refinada que mexem no mesmo lugar (a mesma pasta ou
+os mesmos arquivos, pelo que o texto delas cita) e que o `lote` mostra sem
+branch, worktree nem PR viram uma proposta: juntar numa só, para sair uma branch
+e uma PR. A soma dos itens do checklist das duas passa de 5? Então não há
+proposta (`~/ObsidianVault/projects/workflow-ia/decisoes/0005-freitask-e-frente-issue-e-execucao-onde-ha-esteira.md`).
+Nomeie a que fica e a que entra, e a soma dos itens. Com o OK, o passo é o de
+`~/.claude/skills/freitask/references/juntar.md`, e a que entrou sai do lote.
+Sem o OK, as duas seguem separadas.
+
+Mostre a tabela (task, classe, motivo), a ordem das **já** e as propostas de
+juntar, e espere o OK. O dono pode mudar uma task de classe, tirá-la do lote ou
+recusar uma junção. A triagem termina quando toda task do lote tem classe e
+motivo e o dono respondeu.
 
 ## 3. Uma task por vez
 
