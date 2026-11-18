@@ -283,7 +283,7 @@ apply_opencode() {
     fi
   done
 
-  # Os plugins locais do TUI: um symlink por diretório.
+  # Os plugins locais (TUI ou servidor): um symlink por diretório.
   while IFS=$'\t' read -r src dest; do
     [[ -n "$src" ]] && link_file "$src" "$dest" points_into_opencode_plugins
   done < <(opencode_plugin_links)

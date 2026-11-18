@@ -61,7 +61,7 @@ AGENTS_MACHINE="${AGENTS_MACHINE:-${HOSTNAME%%.*}}"
 # diretório de config (o OPENCODE_CONFIG_DIR do próprio OpenCode, ou o do XDG).
 # agents/opencode/ guarda o que só ele lê: o fragmento config.json, o instructions.md
 # (entra por último em `instructions`) e os comandos
-# escritos à mão, linkados um a um, e os plugins locais do TUI (plugins/<nome>/),
+# escritos à mão, linkados um a um, e os plugins locais, de TUI ou de servidor (plugins/<nome>/),
 # um symlink por diretório. O mapa de modelos é por máquina e fica fora do repo, no
 # diretório de config.
 AGENTS_OPENCODE_DIR="$AGENTS_PKG_DIR/opencode"
