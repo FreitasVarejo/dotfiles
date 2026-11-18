@@ -13,6 +13,7 @@ conector do vault (`obsidian-web-mcp`), com os caminhos relativos a
 | `freitask kebab` | monte o id: minúsculas, acento dobrado (`ação` → `acao`), palavras ligadas por hífen, sem outra pontuação. Procure o `<id>.md` no vault inteiro, inclusive em `tasks/archived/`: ele precisa estar livre |
 | `freitask new` e o §4 | escreva `projects/<p>/tasks/<id>.md` de uma vez: o bloco no "Formato do bloco" do `AGENTS.md` do vault (leia-o pelo conector), com callout `todo`, e o corpo do §4 logo abaixo |
 | "De onde veio", no §4 | "Aberta em DD/MM numa conversa do claude.ai." |
+| o acréscimo do §2 (`references/juntar.md`, "Pedido novo") | edite `projects/<p>/tasks/<id>.md` da task pelo conector, com a seção do `juntar.md`, e troque a linha de estado em itálico do bloco; o que arquiva a B não se faz aqui |
 | `freitask doctor`, no §5 | termine a resposta pedindo ao dono para rodar `freitask rebuild` e depois `freitask doctor` |
 
 O `rebuild` é o que põe a task no `CURRENT.md`; sem ele, ela existe no disco e
