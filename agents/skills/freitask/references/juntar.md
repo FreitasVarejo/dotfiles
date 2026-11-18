@@ -6,8 +6,10 @@ juntar é mexer em texto. Com código (Em implementação em diante) o agente s�
 sugere, e quem junta é o dono. O passo roda depois do OK do dono à proposta,
 nunca antes.
 
-A é a task que fica, a mais adiantada na fase; o dono troca na proposta. A fase
-da A não muda.
+A é a task que fica, a mais adiantada na fase; o dono troca na proposta. Na
+triagem a fase da A não muda: a B já vem refinada. Na captura, uma A Refinada
+volta para Refinando (`freitask set <A> --status abstract`): o pedido entrou
+cru, e o próximo `/implementar` o implementaria sem refino.
 
 ## A seção na A
 
