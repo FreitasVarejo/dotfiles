@@ -6,8 +6,8 @@ metadata:
   surfaces: "code"
   upstream: "https://github.com/mattpocock/skills"
   upstream-path: "skills/engineering/improve-codebase-architecture"
-  upstream-commit: "0ab1b63a410a03d3627979a109c8695de27af954"
-  vendored-at: "2026-09-21"
+  upstream-commit: "abeeaf95660ba9e8b7c753eb38f441ca707a8823"
+  vendored-at: "2026-11-19"
 ---
 
 # Improve Codebase Architecture
@@ -32,7 +32,7 @@ Read the project's glossary and any ADRs in the area you're touching first, at t
 
 Read the project's earlier reviews as well. The project is the one named in the arguments, or else the one `vault-vinculos repo .` links to this repo (ask when it links several). Its earlier reviews are the `tipo: registro` notes at the project's root whose `origem:` names this skill, and the tasks that cite each one, archived ones included, say what became of every candidate. Leave out a candidate whose task was archived `dropped` unless the code has since changed what its reason rests on. An earlier review's files and line numbers describe its `commit:`: measure again before you repeat a finding.
 
-Then spawn a sub-agent to walk the codebase. Don't follow rigid heuristics; explore organically and note where you experience friction:
+Then spawn a sub-agent with a fresh context window to walk the codebase. Don't follow rigid heuristics; explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow**, with an interface nearly as complex as the implementation?

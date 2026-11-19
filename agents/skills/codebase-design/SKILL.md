@@ -5,8 +5,8 @@ metadata:
   surfaces: "code"
   upstream: "https://github.com/mattpocock/skills"
   upstream-path: "skills/engineering/codebase-design"
-  upstream-commit: "0ab1b63a410a03d3627979a109c8695de27af954"
-  vendored-at: "2026-09-21"
+  upstream-commit: "abeeaf95660ba9e8b7c753eb38f441ca707a8823"
+  vendored-at: "2026-11-19"
 ---
 
 # Codebase Design

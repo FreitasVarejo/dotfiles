@@ -5,8 +5,8 @@ metadata:
   surfaces: "code,web"
   upstream: "https://github.com/mattpocock/skills"
   upstream-path: "skills/productivity/grilling"
-  upstream-commit: "0ab1b63a410a03d3627979a109c8695de27af954"
-  vendored-at: "2026-09-21"
+  upstream-commit: "abeeaf95660ba9e8b7c753eb38f441ca707a8823"
+  vendored-at: "2026-11-19"
 ---
 
 Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
@@ -27,9 +27,11 @@ Format a round like so:
 ➡️ <your recommended answer>
 ```
 
+Word each question so "yes" accepts your recommended answer.
+
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
 
-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.
+Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent with a fresh context window to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.
 
 The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.
 
