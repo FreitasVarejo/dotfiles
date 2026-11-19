@@ -26,6 +26,8 @@ Itens: <todos os `- [ ]` da task | os itens N e M>.
 <Só na homologação reprovada: o que falhou, nas palavras do dono.>
 <Só com obstáculo relatado por task anterior do lote: o que o ambiente recusou
 ou exigiu e o comando que funcionou.>
+<Só em task de investigação: antes de mexer no código, a skill
+`diagnosing-bugs`; a causa confirmada vai na mensagem do commit.>
 
 Como trabalhar:
 - O vault (~/ObsidianVault) é só leitura para você. Quem escreve na task é a
