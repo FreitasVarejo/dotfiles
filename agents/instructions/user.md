@@ -31,6 +31,10 @@
 
 - Em sessão ou subagente isolado em worktree, comando do Bash que toca o git é simples e vai separado: sem `git -C`, sem variável de shell nem `$()`, sem laço nem `xargs`.
 
+## Git
+
+- Push, PR e merge só com o meu OK, inclusive em sessão de segundo plano (agent view, `claude --bg`). Commit na branch da task pode.
+
 ## Escrever contrato (`AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, `docs/agents/`)
 
 - Só ponteiro e regra. Sem contagem, sem cópia de estado, sem afirmar o que uma ferramenta faz ou fará (aponte para `--help`).
