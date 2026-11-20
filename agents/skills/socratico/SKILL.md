@@ -105,7 +105,25 @@ Restrições dos casos:
 
 Em 2 a 3 linhas, diga o que leu: título do capítulo, se há nota e quantos cards
 ela já tem. Não liste os termos-chave nem os intercalados: isso entrega a
-prova. Depois apresente o primeiro caso e faça a primeira pergunta.
+prova.
+
+**Confira a sugestão de prompt (só no Claude Code).** A sugestão de prompt, o
+texto fantasma com a próxima mensagem do dono, pode completar a resposta no
+lugar dele e estraga a tentativa. Ela só se desliga na abertura da sessão, pelo
+`.claude/settings.json` da pasta onde a sessão abriu (o Claude Code não sobe
+pela árvore). Confira os dois fatos:
+
+- a sessão abriu na própria pasta do livro: o diretório de trabalho do início,
+  não um `cd` seu nem uma subpasta;
+- essa pasta tem `.claude/settings.json` com `"promptSuggestionEnabled": false`.
+
+Se algum falhar, avise **uma vez**, em uma ou duas linhas, antes da primeira
+pergunta: a sugestão de prompt pode vazar a resposta, e para ficar desligada o
+dono abre a sessão na pasta do livro (`cd ~/ObsidianVault/study/<livro>` e
+`claude`). Faltando só o arquivo, diga que ele falta. Só avise: o arquivo e as
+settings ficam como estão, e a sessão segue.
+
+Depois apresente o primeiro caso e faça a primeira pergunta.
 
 ## 2. Durante a sessão
 
