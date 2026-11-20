@@ -23,6 +23,12 @@
 - Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (reavaliador) ficam no modelo da sessão; o `auditor` e o `aceite` rodam no modelo fixado na definição de cada um. Agente de área que o contrato do repo nomeia vale acima dos dois.
 - Toda chamada de subagente leva `subagent_type`. Revisão ou auditoria só de leitura vai no `auditor`; teste de aceite, no `aceite`.
 
+## Modelo
+
+- Fable só quando eu o escolho, em um de dois casos: decisão cara de reverter em que o raciocínio é o gargalo (escolha de desenho, tradeoff, avaliação de risco), ou tarefa em que o Opus em esforço alto já falhou. Não são motivo: orquestração, grilling, produção, coleta, revisão, autonomia, plano sobrando.
+- Se eu perguntar se vale o Fable, diga qual dos dois casos se aplica ou desaconselhe.
+- Fable só para a sessão: `claude --model fable` ou o seletor do `/model` sem gravar. Nunca salvo como padrão, nem em `settings.json` nem em subagente.
+
 ## Consumo
 
 - Custo, modelos, subagentes e uso do plano do Claude Code: `claude-uso --help`.
