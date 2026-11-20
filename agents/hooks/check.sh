@@ -1,8 +1,10 @@
 #!/bin/bash
 # shellcheck shell=bash
-# Checks READ-ONLY do pacote 'agents': skills visíveis para os agentes (Claude
-# Code e Cursor CLI leem o mesmo ~/.claude/skills), referências entre skills,
-# espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
+# Checks READ-ONLY do pacote 'agents': medem a MÁQUINA, não o diff. O que é do repo
+# (skill que cita skill inexistente, JSON inválido em mcp/, permissions/, settings/ e
+# travas/) é teste em agents/tests/test_repo.py e não se repete aqui.
+# Skills visíveis para os agentes (Claude Code e Cursor CLI leem o mesmo
+# ~/.claude/skills), espelho das skills `web` no claude.ai, MCP servers de mcp/, o deny de
 # permissions/deny.json em cada agente presente, o settings/claude.json, as
 # travas de travas/, as instruções de usuário de instructions/ e os subagentes
 # de subagents/ no Claude Code, e o alvo opencode (opencode.json, arquivos gerados,
@@ -59,32 +61,6 @@ for dir in "${AGENT_SKILL_DIRS[@]}"; do
   done
 done
 
-# 2. Referências entre skills -------------------------------------------------
-# Skill vendorada que cita outra ("Skill tool with \"grilling\"", "/grilling")
-# precisa que a citada exista no pacote. Casca quebrada vira vermelho.
-echo ""
-log_info "--- Referências entre skills ---"
-REF_OK=true
-for skill in "${PKG_SKILLS[@]}"; do
-  md="$AGENTS_SKILLS_DIR/$skill/SKILL.md"
-  # shellcheck disable=SC2016  # crases literais no padrão, não expansão
-  mapfile -t refs < <(grep -oE 'Skill tool[^"]*"[a-z0-9-]+"|`/[a-z][a-z0-9-]+`' "$md" |
-    grep -oE '"[a-z0-9-]+"|/[a-z][a-z0-9-]+' | tr -d '"/' | sort -u)
-  for ref in "${refs[@]}"; do
-    [[ "$ref" == "$skill" ]] && continue
-    # Caminhos de filesystem que aparecem entre crases não são skills.
-    case "$ref" in tmp|dev|home|usr|etc|var|bin|opt|proc) continue ;; esac
-    if [[ -f "$AGENTS_SKILLS_DIR/$ref/SKILL.md" ]]; then
-      log_success "'$skill' cita '$ref' (existe)"
-    else
-      log_missing "'$skill' cita '$ref', que não está no pacote"
-      REF_OK=false
-      fail_check
-    fi
-  done
-done
-[[ "$REF_OK" == true ]] && log_success "Nenhuma referência quebrada"
-
 # 3. Espelho das skills `web` no claude.ai ------------------------------------
 # O que se sobe para o claude.ai sincroniza de volta para
 # ~/.claude/skills/synced/<bucket>/<skill>/. Essa cópia é o espelho do canal
@@ -111,23 +87,18 @@ done
 [[ "$WEB_ANY" == true ]] || log_optional "Nenhuma skill marcada 'web'."
 
 # 4. MCP servers ---------------------------------------------------------------
-# config_failed <status> <o-que> — agent_config caiu: o motivo já foi para
-# stderr. Arquivo do repo inválido (2) é vermelho, como skill quebrada; arquivo
-# do agente ilegível (3) é aviso, porque o conserto é à mão e fora do repo.
+# config_failed <o-que> — agent_config caiu: o motivo já foi para stderr. É aviso,
+# porque o conserto é à mão: arquivo do agente ilegível, ou arquivo do repo
+# inválido, que o teste do repo (agents/tests/test_repo.py) é quem reprova.
 config_failed() {
-  if [[ "$1" -eq 2 ]]; then
-    log_missing "$2: arquivo do repo inválido (erro acima)"
-    fail_check
-  else
-    log_warn "$2: não deu para comparar (erro acima)"
-  fi
+  log_warn "$1: não deu para comparar (erro acima)"
 }
 
 # report_mcp <agente> <arquivo> — compara o arquivo do agente com agents/mcp/.
 report_mcp() {
   local agent="$1" file="$2" name verdict out
   out=$(agent_config mcp-plan "$agent" "$file" "$AGENTS_MCP_DIR") ||
-    { config_failed $? "$agent: MCP"; return; }
+    { config_failed "$agent: MCP"; return; }
   while IFS=$'\t' read -r name verdict; do
     [[ -n "$name" ]] || continue
     case "$verdict" in
@@ -214,7 +185,7 @@ fi
 report_deny() {
   local agent="$1" file="$2" missing
   missing=$(agent_config deny-plan "$agent" "$file" "$AGENTS_DENY_FILE") ||
-    { config_failed $? "$agent: deny"; return; }
+    { config_failed "$agent: deny"; return; }
   if [[ -z "$missing" ]]; then
     log_success "$agent: deny em dia (${file/#$HOME/\~})"
   else
@@ -251,7 +222,7 @@ if ! command -v python3 &>/dev/null; then
 elif ! command -v claude &>/dev/null; then
   log_optional "Sem Claude Code: settings dele não verificado."
 elif ! diff=$(agent_config settings-plan claude "$CLAUDE_SETTINGS" "$AGENTS_CLAUDE_SETTINGS_FILE"); then
-  config_failed $? "claude: settings"
+  config_failed "claude: settings"
 elif [[ -z "$diff" ]]; then
   log_success "claude: settings em dia (${CLAUDE_SETTINGS/#$HOME/\~})"
 else
@@ -270,7 +241,7 @@ if ! command -v python3 &>/dev/null; then
 elif ! command -v claude &>/dev/null; then
   log_optional "Sem Claude Code: travas não verificadas."
 elif ! diff=$(agent_config hooks-plan claude "$CLAUDE_SETTINGS" "$AGENTS_TRAVAS_FILE"); then
-  config_failed $? "claude: travas"
+  config_failed "claude: travas"
 elif [[ -z "$diff" ]]; then
   log_success "claude: travas registradas (${CLAUDE_SETTINGS/#$HOME/\~})"
 else
@@ -354,7 +325,7 @@ else
   diff=$(agent_config opencode-plan "$OPENCODE_CONFIG_DIR" "$AGENTS_PKG_DIR" "$AGENTS_MACHINE")
   plan_status=$?
   if ((plan_status != 0)); then
-    config_failed "$plan_status" "opencode"
+    config_failed "opencode"
   elif [[ -z "$diff" ]]; then
     log_success "opencode: opencode.json e arquivos gerados em dia ($OC_DIR_SHOWN)"
   else
