@@ -5,7 +5,10 @@
 // O que o Claude Code carrega sozinho e o OpenCode não:
 // - regras de `.claude/rules/*.md` com `paths:`, quando um arquivo casa;
 // - a memória de `~/.claude/projects/<slug>/memory/`;
-// - o `CLAUDE.md` com `@imports`, menos o import de um `AGENTS.md` que o OpenCode já lê sozinho.
+// - o `CLAUDE.md` com `@imports`, menos o import de um `AGENTS.md` que o OpenCode já lê sozinho;
+// - o `CLAUDE.local.md` ao lado de cada `CLAUDE.md`, logo depois dele e com os mesmos `@imports`: é onde
+//   os ponteiros pessoais de um repo cujo `AGENTS.md` é do time moram, fora do git. Como no Claude Code,
+//   só o da pasta da cadeia: num worktree o arquivo não existe (está fora do git) e não se busca no clone principal.
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
 
@@ -367,10 +370,17 @@ function onlyNativeImports(text: string, file: string, home: string, native: Rea
   return rest.trim() === ""
 }
 
+/** Os arquivos de instrução por pasta, na ordem do Claude Code: o `CLAUDE.local.md` vem depois do `CLAUDE.md`. */
+const CLAUDE_FILES = [
+  { name: "CLAUDE.md", prefix: "claude-md" },
+  { name: "CLAUDE.local.md", prefix: "claude-local-md" },
+]
+
 /**
- * Os `CLAUDE.md` da home até a pasta da sessão (fora da home, só a pasta), o mais geral primeiro.
+ * Os `CLAUDE.md` e `CLAUDE.local.md` da home até a pasta da sessão (fora da home, só a pasta), o mais geral
+ * primeiro e, em cada pasta, o `CLAUDE.md` antes do `CLAUDE.local.md`.
  * O `CLAUDE.md` entra sempre, mesmo com `AGENTS.md` ao lado, que pode ter seção própria; só o `@import`
- * de um `AGENTS.md` que o OpenCode já lê é pulado. Um `CLAUDE.md` que só tem esse import fica de fora.
+ * de um `AGENTS.md` que o OpenCode já lê é pulado. Um arquivo que só tem esse import fica de fora.
  */
 export function claudeMdEntries(cwd: string, home: string): Entry[] {
   const start = resolve(cwd)
@@ -384,11 +394,13 @@ export function claudeMdEntries(cwd: string, home: string): Entry[] {
   const native = nativeAgentsMd(cwd, home)
   const entries: Entry[] = []
   for (const dir of dirs) {
-    const file = join(dir, "CLAUDE.md")
-    const text = readText(file)
-    if (text === undefined || onlyNativeImports(text, file, home, native)) continue
-    const where = inside(base, dir) ? relative(base, dir) : dir
-    entries.push({ key: keyOf("claude-md", where === "" ? "home" : where), value: expandClaudeMd(file, home, native) })
+    for (const { name, prefix } of CLAUDE_FILES) {
+      const file = join(dir, name)
+      const text = readText(file)
+      if (text === undefined || onlyNativeImports(text, file, home, native)) continue
+      const where = inside(base, dir) ? relative(base, dir) : dir
+      entries.push({ key: keyOf(prefix, where === "" ? "home" : where), value: expandClaudeMd(file, home, native) })
+    }
   }
   return entries
 }

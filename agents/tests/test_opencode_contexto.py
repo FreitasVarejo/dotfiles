@@ -1,5 +1,5 @@
-"""O plugin `contexto` do OpenCode (agents/opencode/plugins/contexto/): regras com `paths:`, memória e
-CLAUDE.md com `@imports`.
+"""O plugin `contexto` do OpenCode (agents/opencode/plugins/contexto/): regras com `paths:`, memória,
+CLAUDE.md e CLAUDE.local.md com `@imports`.
 
 O OpenCode só carrega o plugin de verdade na partida dele; aqui a lógica (`contexto.ts`) e os ganchos
 (`server.ts`, com um `ctx` falso) rodam no Node, que apaga os tipos do TypeScript. Cada teste monta um
@@ -311,6 +311,54 @@ class ClaudeMd(Base):
         for key in keys:
             self.assertRegex(key, KEY)
 
+    def test_claude_local_md_entra_depois_do_claude_md_da_mesma_pasta(self):
+        self.write("proj/CLAUDE.md", "DO TIME\n")
+        self.write("proj/CLAUDE.local.md", "PESSOAL, veja @notas.md\n")
+        self.write("proj/notas.md", "IMPORTADO DO LOCAL\n")
+        entries = self.entries("proj")
+        self.assertEqual([e["key"] for e in entries], ["claude-md-proj", "claude-local-md-proj"])
+        self.assertNotIn("PESSOAL", entries[0]["value"])
+        self.assertIn("PESSOAL", entries[1]["value"])
+        self.assertIn("IMPORTADO DO LOCAL", entries[1]["value"])
+        self.assertIn("(imported from %s)" % (self.home / "proj/CLAUDE.local.md"), entries[1]["value"])
+        for e in entries:
+            self.assertRegex(e["key"], KEY)
+
+    def test_claude_local_md_sem_claude_md_entra_sozinho(self):
+        self.write("proj/AGENTS.md", "DO TIME\n")
+        self.write("proj/CLAUDE.local.md", "PESSOAL\n")
+        (entry,) = self.entries("proj")
+        self.assertEqual(entry["key"], "claude-local-md-proj")
+        self.assertNotIn("DO TIME", entry["value"])
+
+    def test_claude_local_md_segue_a_cadeia_e_o_limite_de_imports_do_claude_md(self):
+        self.write("CLAUDE.local.md", "LOCAL HOME\n")
+        self.write("a/CLAUDE.md", "A\n")
+        self.write("a/b/CLAUDE.md", "B\n")
+        self.write("a/b/CLAUDE.local.md", "LOCAL B @../../../fora.md\n")
+        (self.tmp / "fora.md").write_text("DE FORA\n")
+        keys = [e["key"] for e in self.entries("a/b")]
+        self.assertEqual(keys, ["claude-local-md-home", "claude-md-a", "claude-md-a-b", "claude-local-md-a-b"])
+        local = self.entries("a/b")[3]["value"]
+        self.assertNotIn("DE FORA", local)
+        self.assertIn("import ignorado, fora da home: @../../../fora.md", local)
+
+    def test_claude_local_md_so_com_o_import_do_agents_md_fica_de_fora(self):
+        self.write("proj/AGENTS.md", "regras\n")
+        self.write("proj/CLAUDE.local.md", "@AGENTS.md\n")
+        self.assertEqual(self.entries("proj"), [])
+
+    def test_worktree_nao_acha_o_claude_local_md_do_clone_principal(self):
+        # O arquivo fica fora do git: o worktree nasce sem ele, e o Claude Code também não o busca no principal.
+        self.write("main/.git/HEAD", "x")
+        self.write("main/.git/worktrees/wt/gitdir", "x")
+        self.write("main/CLAUDE.local.md", "SO NO PRINCIPAL\n")
+        self.write("wt/.git", "gitdir: %s\n" % (self.home / "main/.git/worktrees/wt"))
+        self.write("wt/CLAUDE.md", "DO TIME\n")
+        (entry,) = self.entries("wt")
+        self.assertEqual(entry["key"], "claude-md-wt")
+        self.assertNotIn("SO NO PRINCIPAL", entry["value"])
+
 
 class Ganchos(Base):
     """`server.ts` com um `ctx` falso: o que cada gancho põe, e quando."""
@@ -362,6 +410,18 @@ class Ganchos(Base):
             'await hooks["session.prompt"]({ sessionID: "s1" })\nawait hooks["session.prompt"]({ sessionID: "s1" })',
         )
         self.assertEqual(puts, [{"session": "s1", "key": "memoria"}, {"session": "s1", "key": "claude-md-proj"}])
+
+    def test_a_partida_traz_o_claude_local_md_depois_do_claude_md(self):
+        self.write("proj/CLAUDE.local.md", "ponteiros pessoais\n")
+        puts = self.run_plugin(self.home / "proj", 'await hooks["session.prompt"]({ sessionID: "s1" })')
+        self.assertEqual(
+            puts,
+            [
+                {"session": "s1", "key": "memoria"},
+                {"session": "s1", "key": "claude-md-proj"},
+                {"session": "s1", "key": "claude-local-md-proj"},
+            ],
+        )
 
     def test_ferramenta_de_arquivo_poe_a_regra_uma_vez(self):
         done = {"status": "completed", "sessionID": "s1"}
