@@ -6,7 +6,6 @@ script da skill: globs do que mudou, dois espaços, o comando na raiz do repo.
 
 ```portoes
 *                                                       ./precommit.sh
-agents/**|*/hooks/**|lib/**|setup.sh|healthcheck.sh     ./healthcheck.sh
 agents/**                                               python3 -I -m unittest discover -s agents/tests
 agents/mods/**                                          for m in agents/mods/*/; do claude plugin validate "$m" && { [[ -f "${m}UPSTREAM" ]] || claude plugin test "$m"; } || exit 1; done
 vault/**|agents/skills/fechar/scripts/pendencias        ./vault/tests/vault-vinculos.sh
@@ -19,9 +18,10 @@ bash/**                                                 python3 -I -m unittest d
 - `nvim/**`: abrir o Neovim e exercitar o que mudou.
 - `tmux/**`: `tmux source-file ~/.config/tmux/tmux.conf` e o atalho que mudou.
 - `bash/**`: um terminal novo, e o comando ou atalho que mudou.
-- `agents/**`: uma sessão nova do Claude Code e `/memory` ou a lista de skills,
-  conforme o que mudou; uma trava se testa passando no stdin dela o JSON do
-  evento que ela escuta.
+- `agents/**`: rode `./setup.sh` e depois `./healthcheck.sh` (diagnóstico da
+  máquina, não portão); abra uma sessão nova do Claude Code e `/memory` ou a
+  lista de skills, conforme o que mudou; uma trava se testa passando no stdin
+  dela o JSON do evento que ela escuta.
 - `agents/mods/**`: uma sessão interativa nova do Claude Code, provocando o que o
   mod mostra; o que ele recusou aparece numa linha esmaecida da conversa.
 - `vault/**`: o comando do `~/.local/bin` que mudou, contra o vault real só em
