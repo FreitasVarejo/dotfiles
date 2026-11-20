@@ -25,12 +25,15 @@
 #   Os worktrees de um clone são um repo só, e vale o contrato do principal:
 #   contrato mudado numa branch ainda não vale. Num repo bare, o clone é o
 #   próprio repo. Fora de git, não há clone.
-# - Repo vinculado: o contrato é AGENTS.md, CLAUDE.md e docs/agents/*.md da
-#   raiz do clone; contrato aninhado não conta. Se ele cita o tasks/ de algum
-#   projeto (`projects/<p>/tasks`), mesmo de um que não existe mais, o repo
-#   alimenta só os projetos cujo tasks/ cita. Sem tasks/ nenhum, alimenta todo
-#   projeto que cita como `projects/<p>` seguido de `/`, espaço, crase ou fim
-#   de linha.
+# - Repo vinculado: o contrato é AGENTS.md, CLAUDE.md, CLAUDE.local.md e
+#   docs/agents/*.md da raiz do clone; contrato aninhado não conta. O
+#   CLAUDE.local.md fica fora do git (é onde um repo da empresa, de AGENTS.md do
+#   time, guarda os ponteiros pessoais), então só vale o que está na raiz do
+#   clone principal: o de um worktree não existe e não é lido. Se ele cita o
+#   tasks/ de algum projeto (`projects/<p>/tasks`), mesmo de um que não existe
+#   mais, o repo alimenta só os projetos cujo tasks/ cita. Sem tasks/ nenhum,
+#   alimenta todo projeto que cita como `projects/<p>` seguido de `/`, espaço,
+#   crase ou fim de linha.
 # - Onde moram os repos: os diretórios ~/dotfiles, ~/dev/* e ~/projects/*.
 #   `repos` sem projeto lista cada um, com o clone vazio fora de git; com
 #   projeto, um por clone vinculado a ele.
@@ -109,7 +112,7 @@ clone_de() {
 
 contrato_de() {
   local f
-  for f in "$1/AGENTS.md" "$1/CLAUDE.md" "$1"/docs/agents/*.md; do
+  for f in "$1/AGENTS.md" "$1/CLAUDE.md" "$1/CLAUDE.local.md" "$1"/docs/agents/*.md; do
     [[ -f "$f" ]] && printf '%s\n' "$f"
   done
   return 0

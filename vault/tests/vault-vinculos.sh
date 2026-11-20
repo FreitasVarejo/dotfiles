@@ -100,6 +100,14 @@ git -C "$D/principal" worktree add -q -b wt2 "$D/principal-wt2"
 git -C "$D/principal" worktree add -q -b wt3 "$D/principal/.claude/worktrees/wt3"
 # Worktree de outro nome, que o glob acha antes do principal.
 git -C "$D/principal" worktree add -q -b wt4 "$D/aaa-wt"
+# Repo da empresa: o AGENTS.md é do time, o ponteiro pessoal está no CLAUDE.local.md, fora do git.
+novo_repo "$D/empresa" AGENTS.md 'regras do time, sem vault'
+escreve "$D/empresa/CLAUDE.local.md" 'o vault: `~/ObsidianVault/projects/beta/`'
+printf 'CLAUDE.local.md\n' >>"$D/empresa/.git/info/exclude"
+git -C "$D/empresa" worktree add -q -b wt1 "$D/empresa-wt1"
+novo_repo "$D/local-com-tasks" AGENTS.md 'projects/alfa/tasks'
+escreve "$D/local-com-tasks/CLAUDE.local.md" 'projects/beta/tasks'
+novo_repo "$D/local-aninhado" apps/web/CLAUDE.local.md 'projects/alfa/tasks'
 escreve "$D/nao-git/AGENTS.md" 'projects/alfa/tasks'
 escreve "$D/arquivo.txt" 'não é diretório'
 novo_repo "$HOME/projects/outro" README.md 'nada'
@@ -146,6 +154,14 @@ confere "repo: subpasta responde pela raiz do clone" "$(linha "$D/com-tasks" alf
   "$(vv repo "$D/com-tasks/docs/agents")"
 confere "repo: projeto que o freitask não lista não se vincula" "$(linha "$D/crase" "")" \
   "$(FREITASK_PROJETOS="alfa beta" vv repo "$D/crase")"
+confere "repo: CLAUDE.local.md da raiz, fora do git, vincula" "$(linha "$D/empresa" beta)" \
+  "$(vv repo "$D/empresa")"
+confere "repo: o CLAUDE.local.md soma ao contrato do time" "$(linha "$D/local-com-tasks" "alfa beta")" \
+  "$(vv repo "$D/local-com-tasks")"
+confere "repo: worktree responde pelo CLAUDE.local.md do clone principal" "$(linha "$D/empresa" beta)" \
+  "$(vv repo "$D/empresa-wt1")"
+confere "repo: CLAUDE.local.md aninhado não conta" "$(linha "$D/local-aninhado" "")" \
+  "$(vv repo "$D/local-aninhado")"
 confere "repo: fora de git não responde nada" "" "$(vv repo "$D/nao-git")"
 vv repo "$FIX/nao-existe" >/dev/null
 confere "repo: pasta que não existe sai 0" 0 $?
@@ -159,6 +175,14 @@ confere "repos: todo diretório das raízes, com clone vazio fora de git" "$(
   linha "$D/com-tasks" "$D/com-tasks" alfa
   echo
   linha "$D/crase" "$D/crase" gama
+  echo
+  linha "$D/empresa" "$D/empresa" beta
+  echo
+  linha "$D/empresa-wt1" "$D/empresa" beta
+  echo
+  linha "$D/local-aninhado" "$D/local-aninhado" ""
+  echo
+  linha "$D/local-com-tasks" "$D/local-com-tasks" "alfa beta"
   echo
   linha "$D/monorepo" "$D/monorepo" ""
   echo
@@ -184,7 +208,12 @@ confere "repos <p>: um por clone vinculado, worktrees num repo só" "$(
   linha "$D/principal" "$D/principal" alfa
   echo
   linha "$D/com-tasks" "$D/com-tasks" alfa
+  echo
+  linha "$D/local-com-tasks" "$D/local-com-tasks" "alfa beta"
 )" "$(vv repos alfa)"
+confere "repos <p>: o clone vinculado só pelo CLAUDE.local.md, worktree num repo só" "$(
+  linha "$D/empresa" "$D/empresa" beta
+)" "$(vv repos beta | grep empresa)"
 confere "repos <p>: projeto sem repo é resposta vazia" "" "$(vv repos nenhum)"
 ln -s "$HOME" "$FIX/home-link"
 confere "repos <p>: com HOME por symlink, a linha ainda é a do principal" "$FIX/home-link/dev/principal" \
