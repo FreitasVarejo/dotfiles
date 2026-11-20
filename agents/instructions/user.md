@@ -20,7 +20,7 @@
 
 ## Subagentes
 
-- Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (teste de aceite, reavaliador) ficam no modelo da sessão; o `auditor` roda no modelo fixado na definição dele. Agente de área que o contrato do repo nomeia vale acima dos dois.
+- Código ou página já decidida, além de um ajuste pontual, quem escreve é o subagente `implementador`; a sessão decide, faz o briefing e revisa o diff que volta. Investigação antes do código e papel de julgamento (reavaliador) ficam no modelo da sessão; o `auditor` e o `aceite` rodam no modelo fixado na definição de cada um. Agente de área que o contrato do repo nomeia vale acima dos dois.
 - Toda chamada de subagente leva `subagent_type`. Revisão ou auditoria só de leitura vai no `auditor`; teste de aceite, no `aceite`.
 
 ## Consumo
