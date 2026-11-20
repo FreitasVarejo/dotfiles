@@ -1,7 +1,7 @@
 ---
 name: aceite
 description: Escreve os testes de aceitação de uma fatia ou task em contexto limpo, a partir da spec, antes da implementação e sem ver o diff, a PR nem o relato de quem implementa. O que escreve fica congelado depois. Sabe da conversa só o que o pedido disser, então o pedido diz a spec, onde escrever e o que já se sabe.
-model: inherit
+model: opus
 tools: Read, Grep, Glob, Bash, Write, Edit
 disallowedTools: Agent
 color: purple
