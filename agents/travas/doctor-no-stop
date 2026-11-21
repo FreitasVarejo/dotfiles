@@ -35,8 +35,8 @@ FILE_TOOLS = {"Edit", "Write", "NotebookEdit", "MultiEdit"}
 # Subcomando do freitask que escreve → posições dos ids entre os posicionais dele.
 FREITASK_WRITES = {"set": (0,), "archive": (0,), "unarchive": (0,), "delete": (0,),
                    "rename": (0, 1), "move": (0,), "new": (1,)}
-# Opções que levam o valor na palavra seguinte, por subcomando: espelha os
-# `parse_flags(2, {...})` de `~/dev/freitask.nvim/lua/freitask/cli.lua`.
+# Opções que levam o valor na palavra seguinte, por subcomando: espelha o
+# `freitask help --json`.
 FREITASK_VALUE_OPTS = {"set": {"status", "title", "desc"}, "new": {"desc"}}
 PREFIXES = {"sudo", "doas", "command", "builtin", "exec", "nice", "nohup", "time", "env"}
 

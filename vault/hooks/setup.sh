@@ -2,17 +2,17 @@
 # shellcheck shell=bash
 # Setup do pacote 'vault': cria os repositórios de checkpoints dos vaults do
 # Obsidian (fora das pastas sincronizadas), ativa os timers que os alimentam e
-# põe no lugar o freitask (clone do repo e a TUI compilada).
+# põe no lugar o freitask (clone do repo e o binário Rust compilado).
 #
 #   - vault pessoal (~/ObsidianVault)            -> vault-checkpoint.timer
 #   - vaults extras (~/.config/vault-checkpoint/<nome>.env, stowados deste
 #     pacote)                                     -> vault-checkpoint@<nome>.timer
 #   - freitask: clone em $FREITASK_REPO, `git pull --ff-only` nele e `cargo install`
-#     da TUI
+#     do binário (instala o rustup se o cargo faltar ou for velho)
 #
 # Idempotente: repetir não recria repo, não duplica exclude nem remoto, só
-# avança o clone existente quando dá fast-forward limpo e só recompila a TUI
-# quando o fonte mudou.
+# avança o clone existente quando dá fast-forward limpo e só recompila o
+# binário quando o fonte mudou.
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -134,7 +134,7 @@ EXCL
   enable_timer "vault-checkpoint@$name.timer"
 done
 
-# 3. Freitask: clone e TUI ----------------------------------------------------
+# 3. Freitask: clone e binário ----------------------------------------------------
 # O clone é o motor da CLI `freitask` (este pacote stowa o shim). Se ele já
 # existe, `pull_freitask` o avança, mas só onde não atropela: é o clone de
 # desenvolvimento do dono, então nada de pull com arquivo rastreado modificado,
@@ -164,7 +164,7 @@ pull_freitask() {
 
 echo ""
 log_info "--- Freitask ---"
-if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
+if [[ -d "$FREITASK_REPO/.git" || -f "$FREITASK_REPO/.git" ]]; then
   log_success "freitask já clonado: $FREITASK_REPO"
   pull_freitask "$FREITASK_REPO"
 elif command -v git &>/dev/null; then
@@ -178,21 +178,65 @@ else
   log_warn "git não encontrado; não foi possível clonar o freitask"
 fi
 
-# A TUI (`freitask` sem argumentos) é conveniência: sem ela a CLI segue
-# inteira, então falta de cargo é aviso. Recompila só quando algum fonte é mais
-# novo que o binário instalado — `cargo install` refaz o build toda vez.
-TUI_SRC="$FREITASK_REPO/tui"
-TUI_BIN="${CARGO_HOME:-$HOME/.cargo}/bin/freitask-tui"
-if [[ ! -f "$TUI_SRC/Cargo.toml" ]]; then
-  log_warn "Clone do freitask sem tui/ (desatualizado?); TUI não instalada"
-elif ! command -v cargo &>/dev/null; then
-  log_warn "cargo não encontrado; TUI do freitask não instalada"
-  echo "    -> $PM_INSTALL cargo && ~/dotfiles/setup.sh"
-elif [[ -x "$TUI_BIN" && -z "$(find "$TUI_SRC/src" "$TUI_SRC/Cargo.toml" "$TUI_SRC/Cargo.lock" -newer "$TUI_BIN" -print -quit)" ]]; then
-  log_success "freitask-tui em dia: $TUI_BIN"
-elif cargo install --quiet --locked --path "$TUI_SRC"; then
-  log_success "freitask-tui instalado: $TUI_BIN"
-else
-  log_warn "cargo install da TUI falhou"
-  echo "    -> Rode à mão para ver o erro: cargo install --locked --path \"$TUI_SRC\""
-fi
+# O freitask é a CLI inteira (necessário, não conveniência): o binário Rust do
+# crate crates/freitask, que também abre a TUI. O shim stowado só faz exec dele.
+# Recompila só quando algum fonte é mais novo que o binário instalado —
+# `cargo install` refaz o build toda vez. Falha aqui é aviso, nunca aborta.
+FREITASK_SRC="$FREITASK_REPO/crates/freitask"
+FREITASK_BIN="${CARGO_HOME:-$HOME/.cargo}/bin/freitask"
+
+# cargo_meets <versão mínima>: o cargo do PATH existe e não é mais velho que ela.
+cargo_meets() {
+  local need="$1" have
+  have=$(cargo --version 2>/dev/null | awk '{print $2}') || return 1
+  [[ -n "$have" && "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)" == "$need" ]]
+}
+
+# ensure_cargo <versão mínima>: deixa no PATH deste script um cargo que a
+# atenda, instalando o rustup (ou atualizando a toolchain dele) se preciso.
+ensure_cargo() {
+  local need="$1" cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+  cargo_meets "$need" && return 0
+  if command -v rustup &>/dev/null || [[ -x "$cargo_bin/rustup" ]]; then
+    PATH="$cargo_bin:$PATH"
+    log_info "toolchain do Rust abaixo de $need; rustup update stable"
+    rustup update stable || return 1
+  elif command -v curl &>/dev/null; then
+    log_info "cargo ausente ou abaixo de $need; instalando o rustup"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal || return 1
+    PATH="$cargo_bin:$PATH"
+  else
+    return 1
+  fi
+  cargo_meets "$need"
+}
+
+install_freitask() {
+  local need
+  if [[ ! -f "$FREITASK_REPO/Cargo.toml" ]]; then
+    log_warn "Clone do freitask sem Cargo.toml (desatualizado?); binário não instalado"
+    return 0
+  fi
+  if [[ -x "$FREITASK_BIN" && -z "$(find "$FREITASK_REPO/crates" "$FREITASK_REPO/Cargo.toml" "$FREITASK_REPO/Cargo.lock" -newer "$FREITASK_BIN" -print -quit)" ]]; then
+    log_success "freitask em dia: $FREITASK_BIN"
+    return 0
+  fi
+  need=$(sed -n 's/^rust-version *= *"\([^"]*\)".*/\1/p' "$FREITASK_REPO/Cargo.toml" | head -n1)
+  if [[ -z "$need" ]]; then
+    log_warn "freitask: rust-version não encontrado em $FREITASK_REPO/Cargo.toml; binário não instalado"
+    return 0
+  fi
+  if ! ensure_cargo "$need"; then
+    log_warn "Sem cargo $need ou mais novo; o freitask não foi instalado"
+    echo "    -> Rode à mão: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal"
+    echo "    -> Depois: ~/dotfiles/setup.sh"
+    return 0
+  fi
+  if cargo install --quiet --locked --path "$FREITASK_SRC"; then
+    log_success "freitask instalado: $FREITASK_BIN"
+  else
+    log_warn "cargo install do freitask falhou"
+    echo "    -> Rode à mão para ver o erro: cargo install --locked --path \"$FREITASK_SRC\""
+  fi
+}
+install_freitask

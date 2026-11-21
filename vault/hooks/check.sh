@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck shell=bash
 # Checks READ-ONLY do pacote 'vault': repositório de checkpoints, timer, clone
-# do freitask e a TUI, e integridade dos dados (via `freitask doctor`).
+# do freitask e o binário, e integridade dos dados (via `freitask doctor`).
 
 DOTFILES_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../lib/common.sh
@@ -98,7 +98,7 @@ freitask_vs_origin() {
   fi
 }
 
-if [[ -f "$FREITASK_REPO/lua/freitask/init.lua" ]]; then
+if [[ -f "$FREITASK_REPO/Cargo.toml" ]]; then
   log_success "freitask encontrado: $FREITASK_REPO"
   if command -v git &>/dev/null && git -C "$FREITASK_REPO" rev-parse --git-dir &>/dev/null; then
     case "$(freitask_vs_origin)" in
@@ -117,11 +117,21 @@ else
   echo "    -> Clone noutro lugar? Exporte FREITASK_REPO em ~/.bashrc.local"
   fail_check
 fi
-if command -v freitask-tui &>/dev/null || [[ -x "${CARGO_HOME:-$HOME/.cargo}/bin/freitask-tui" ]]; then
-  log_success "freitask-tui instalado"
+FREITASK_BIN="${CARGO_HOME:-$HOME/.cargo}/bin/freitask"
+if [[ -x "$FREITASK_BIN" ]]; then
+  log_success "freitask (binário Rust) instalado: $FREITASK_BIN"
 else
-  log_warn "freitask-tui não instalado (\`freitask\` sem argumentos não abre a TUI)"
-  echo "    -> ~/dotfiles/setup.sh (precisa de cargo: $PM_INSTALL cargo)"
+  log_missing "freitask: binário não instalado em $FREITASK_BIN"
+  echo "    -> ~/dotfiles/setup.sh"
+  fail_check
+fi
+FREITASK_RUST_NEED=$(sed -n 's/^rust-version *= *"\([^"]*\)".*/\1/p' "$FREITASK_REPO/Cargo.toml" 2>/dev/null | head -n1)
+if [[ -n "$FREITASK_RUST_NEED" ]] && command -v cargo &>/dev/null; then
+  FREITASK_CARGO_HAVE=$(cargo --version 2>/dev/null | awk '{print $2}')
+  if [[ -n "$FREITASK_CARGO_HAVE" && "$(printf '%s\n%s\n' "$FREITASK_RUST_NEED" "$FREITASK_CARGO_HAVE" | sort -V | head -n1)" != "$FREITASK_RUST_NEED" ]]; then
+    log_warn "cargo $FREITASK_CARGO_HAVE do PATH é mais velho que o rust-version $FREITASK_RUST_NEED do freitask"
+    echo "    -> ~/dotfiles/setup.sh instala o rustup e atualiza a toolchain"
+  fi
 fi
 
 # 5. Integridade dos dados do freitask ---------------------------------------

@@ -47,7 +47,7 @@ The freitask code lives in its own repo, `~/dev/freitask.nvim`, with its own con
 Changes to task behaviour go there. This repo only carries the wiring:
 
 - the CLI wrapper `vault/.local/bin/freitask` — with no arguments in a terminal it
-  opens the TUI (`freitask-tui`);
+  opens the TUI;
 - the clone and the TUI: `vault/hooks/setup.sh` and `vault/hooks/check.sh`;
 - in Neovim, `<leader>k` opens the TUI in a float (`nvim/lua/plugins/freitask.lua`) and saving
   a task runs `freitask rebuild` (`nvim/lua/config/autocmds.lua`).
