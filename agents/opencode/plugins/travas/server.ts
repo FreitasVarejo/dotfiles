@@ -5,7 +5,12 @@
 //
 // - `execute.before`: a trava que recusa (`tasks-so-pelo-freitask`) faz a chamada falhar com o motivo
 //   dela como erro da ferramenta, que é o texto que o modelo lê; as que só anotam (a verificação)
-//   rodam junto.
+//   rodam junto. A que pergunta (`chave-com-aprovacao`, `permissionDecision: "ask"`) vira um pedido
+//   de `ctx.permission.assert`, e a recusa do dono é relançada. Cada uso pede de novo: o pedido não leva
+//   `save`, então um "always" não grava regra (no código do OpenCode, o `reply` só grava o `save`, e o TUI
+//   só oferece "always" com `save`), e a ação é só da trava (`ASK_ACTION`), então nem uma regra gravada
+//   de `shell` libera o uso seguinte. Sem regra que case, o efeito padrão é "ask". Falha do `assert` que
+//   não é recusa (erro do OpenCode, sessão sumida) não recusa nada.
 // - `execute.after`: os toques (`doctor-no-stop marca`, `verificacao-no-stop pos-bash`).
 // - `experimental.idle`: o Stop. Cobra uma vez por prompt do dono (`stop_hook_active` na segunda
 //   passada), nunca em sessão-filha (o Stop do Claude Code só roda no agente principal) e nunca
@@ -20,13 +25,14 @@
 // o que o subagente editou.
 //
 // A API vem do código do OpenCode (anomalyco/opencode, tag v2.2.7): packages/plugin/src/promise/
-// (tool.ts, session.ts, skill.ts) e packages/plugin/src/README.md. `experimental.idle` é experimental:
+// (tool.ts, session.ts, skill.ts, permission.ts), packages/plugin/src/README.md e, para o que o
+// `assert` faz com `save` e regras, packages/core/src/permission.ts. `experimental.idle` é experimental:
 // se uma versão nova mudar o nome ou o formato, o Stop deixa de cobrar; confira antes de subir a versão.
 // `Plugin.define` só devolve o objeto, então o plugin é o objeto direto: o teste de `agents/tests/`
 // carrega este arquivo no Node, sem o pacote do OpenCode.
 import type { Plugin } from "@opencode/plugin"
-import { ask, withSessionVar, SESSION_TOKEN } from "./travas.ts"
-import type { Request } from "./travas.ts"
+import { ask, refusal, withSessionVar, ASK_ACTION, SESSION_TOKEN } from "./travas.ts"
+import type { Request, Response } from "./travas.ts"
 
 type Place = { cwd: string; root: string; child: boolean }
 
@@ -55,10 +61,10 @@ const plugin = {
       }
     }
 
-    const tool = async (kind: "antes" | "depois", event: any): Promise<string | undefined> => {
+    const tool = async (kind: "antes" | "depois", event: any): Promise<Response> => {
       const sessionID = String(event.sessionID)
       const place = await whereIs(sessionID)
-      if (!place) return undefined
+      if (!place) return {}
       const request: Request = {
         evento: kind,
         sessao: place.root,
@@ -71,18 +77,33 @@ const plugin = {
         request.status = event.status
         if (event.status === "completed") request.aplicados = event.result?.output?.applied
       }
-      return (await ask(request)).nega
+      return await ask(request)
     }
 
     await ctx.tool.hook("execute.before", async (event) => {
-      let reason: string | undefined
+      let answer: Response
       try {
-        reason = await tool("antes", event)
+        answer = await tool("antes", event)
       } catch {
         return
       }
       // Fora do `try`: é a recusa, e ela tem de chegar à ferramenta.
-      if (reason) throw new Error(reason)
+      if (answer.nega) throw new Error(answer.nega)
+      if (!answer.pergunta) return
+      const question = answer.pergunta
+      try {
+        await ctx.permission.assert({
+          sessionID: String(event.sessionID),
+          agent: event.agent === undefined ? undefined : String(event.agent),
+          action: ASK_ACTION,
+          resources: [question],
+          metadata: { command: event.input?.command },
+          source: { type: "tool", messageID: String(event.messageID), id: String(event.id) },
+        } as never)
+      } catch (error) {
+        const refused = refusal(error, question)
+        if (refused) throw refused
+      }
     })
 
     await ctx.tool.hook("execute.after", async (event) => {

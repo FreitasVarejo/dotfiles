@@ -17,8 +17,31 @@ export type Request = {
   parada_ativa?: boolean
 }
 
-/** `nega` recusa a ferramenta; `bloqueia` pede mais um turno antes de encerrar; vazio é "nada a dizer". */
-export type Response = { nega?: string; bloqueia?: string }
+/**
+ * `nega` recusa a ferramenta; `pergunta` pede a aprovação do dono antes dela; `bloqueia` pede mais um
+ * turno antes de encerrar; vazio é "nada a dizer".
+ */
+export type Response = { nega?: string; pergunta?: string; bloqueia?: string }
+
+/**
+ * A ação do pedido de permissão que a pergunta de uma trava abre (`ctx.permission.assert`). É só da
+ * trava: nenhuma regra do OpenCode, configurada ou gravada, tem esta ação, e o nome é o que o TUI mostra
+ * ("Call tool chave-de-api"). Mude-a junto com a trava que pergunta.
+ */
+export const ASK_ACTION = "chave-de-api"
+
+/**
+ * A recusa do dono (ou de uma regra) a um pedido de `ctx.permission.assert`, como erro a relançar; `undefined`
+ * quando o erro é outro, e então a trava não recusa nada (ADR 0027). Os dois jeitos de recusar chegam pela
+ * `_tag`: `Tool.Error` (regra que nega, ou recusa com texto do dono) e `Permission.DeclinedError` (recusa
+ * simples, sem texto, que o `execute.before` da ferramenta mostraria vazia).
+ */
+export function refusal(error: unknown, question: string): Error | undefined {
+  const tag = (error as { _tag?: unknown } | null | undefined)?._tag
+  if (tag === "Tool.Error") return error as Error
+  if (tag === "Permission.DeclinedError") return new Error("O dono recusou este uso.\n\n" + question)
+  return undefined
+}
 
 const ADAPTER = fileURLToPath(new URL("./adaptador.py", import.meta.url))
 /** Teto da chamada inteira: o Stop roda o doctor (60s) e a verificação (30s) dentro do adaptador. */

@@ -9,6 +9,7 @@ O plugin `server.ts` (só cola) manda um pedido em JSON no stdin e lê a respost
   {"evento": "parar",  "sessao": <id>, "cwd": <pasta>, "parada_ativa": <bool>}
 
   → {"nega": "<motivo>"}    (antes: a trava recusou a ferramenta)
+  → {"pergunta": "<motivo>"} (antes: a trava pede a aprovação do dono, `permissionDecision: "ask"`)
   → {"bloqueia": "<motivo>"} (parar: a trava pede mais um turno)
   → {}                       (nada a dizer)
 
@@ -18,6 +19,8 @@ falhou) no depois e `Stop` no parar. O hook recebe o JSON que o Claude Code lhe 
 (`session_id`, `tool_name`, `tool_input`, `cwd`, `tool_use_id`, `stop_hook_active`); nenhuma trava
 lê o resto. Nome de ferramenta: shell vira Bash, edit vira Edit, write vira Write; um patch do
 OpenCode vira um Edit por arquivo. Ferramenta sem trava (read, grep…) não dispara nada.
+Se uma trava nega e outra pergunta, vale a recusa. O que o plugin faz com a pergunta está no
+cabeçalho do `server.ts`.
 
 Falha do adaptador ou de uma trava (timeout, saída que não é JSON, comando que sumiu) nunca vira
 recusa nem bloqueio: o hook que falha derruba a execução do OpenCode, e a trava de que ninguém
@@ -137,7 +140,7 @@ def handle(request, spec=None, travas_dir=TRAVAS_DIR):
     else:
         calls = claude_calls(request)
 
-    reasons = []
+    reasons, questions = [], []
     for tool_name, tool_input, cwd in calls:
         payload = {"session_id": session, "hook_event_name": event, "cwd": cwd}
         if tool_name:
@@ -152,8 +155,12 @@ def handle(request, spec=None, travas_dir=TRAVAS_DIR):
                 decision = out.get("hookSpecificOutput") or {}
                 if decision.get("permissionDecision") == "deny":
                     return {"nega": str(decision.get("permissionDecisionReason") or "recusado por uma trava")}
+                if decision.get("permissionDecision") == "ask":
+                    questions.append(str(decision.get("permissionDecisionReason") or "uma trava pede a aprovação do dono"))
             elif event == "Stop" and out.get("decision") == "block":
                 reasons.append(str(out.get("reason") or "uma trava pede mais um passo antes de encerrar"))
+    if questions:
+        return {"pergunta": "\n\n".join(dict.fromkeys(questions))}
     return {"bloqueia": "\n\n".join(reasons)} if reasons else {}
 
 

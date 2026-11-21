@@ -175,6 +175,54 @@ class Despacho(Ambiente):
                                 "entrada": {"command": "x"}}, spec)
         self.assertEqual(got, {"nega": "não"})
 
+    def test_hook_que_pergunta_vira_pergunta_com_o_motivo(self):
+        ask = json.dumps({"hookSpecificOutput": {"permissionDecision": "ask", "permissionDecisionReason": "pode?"}})
+        spec = self.spec("PreToolUse", "cat >/dev/null; echo '%s'\n" % ask)
+        got = adaptador.handle({"evento": "antes", "sessao": "s", "cwd": "/w", "ferramenta": "shell",
+                                "entrada": {"command": "x"}}, spec)
+        self.assertEqual(got, {"pergunta": "pode?"})
+        # o ask de uma ferramenta sem trava, ou de um evento que não é o antes, não pergunta nada
+        self.assertEqual(adaptador.handle({"evento": "antes", "sessao": "s", "cwd": "/w", "ferramenta": "read",
+                                           "entrada": {"path": "a"}}, spec), {})
+        self.assertEqual(adaptador.handle({"evento": "depois", "status": "completed", "sessao": "s", "cwd": "/w",
+                                           "ferramenta": "shell", "entrada": {"command": "x"}}, spec), {})
+
+    def test_nega_vence_pergunta_na_ordem_que_vier(self):
+        ask = json.dumps({"hookSpecificOutput": {"permissionDecision": "ask", "permissionDecisionReason": "pode?"}})
+        deny = json.dumps({"hookSpecificOutput": {"permissionDecision": "deny", "permissionDecisionReason": "não"}})
+        request = {"evento": "antes", "sessao": "s", "cwd": "/w", "ferramenta": "shell", "entrada": {"command": "x"}}
+        for first, second in ((ask, deny), (deny, ask)):
+            with self.subTest(first=first):
+                scripts = []
+                for n, out in enumerate((first, second)):
+                    path = self.tmp / ("hook%d.sh" % n)
+                    path.write_text("#!/bin/sh\ncat >/dev/null; echo '%s'\n" % out)
+                    path.chmod(0o755)
+                    scripts.append({"type": "command", "command": "'%s'" % path, "timeout": 5})
+                spec = {"PreToolUse": [{"matcher": "Bash", "hooks": scripts}]}
+                self.assertEqual(adaptador.handle(request, spec), {"nega": "não"})
+
+    def test_duas_travas_que_perguntam_juntam_os_motivos_sem_repetir(self):
+        def ask(reason):
+            return json.dumps({"hookSpecificOutput": {"permissionDecision": "ask", "permissionDecisionReason": reason}})
+        scripts = []
+        for n, reason in enumerate(("um", "dois", "um")):
+            path = self.tmp / ("hook%d.sh" % n)
+            path.write_text("#!/bin/sh\ncat >/dev/null; echo '%s'\n" % ask(reason))
+            path.chmod(0o755)
+            scripts.append({"type": "command", "command": "'%s'" % path, "timeout": 5})
+        spec = {"PreToolUse": [{"matcher": "Bash", "hooks": scripts}]}
+        got = adaptador.handle({"evento": "antes", "sessao": "s", "cwd": "/w", "ferramenta": "shell",
+                                "entrada": {"command": "x"}}, spec)
+        self.assertEqual(got, {"pergunta": "um\n\ndois"})
+
+    def test_ask_que_falha_ou_vem_torto_nunca_pergunta(self):
+        for script in ("exit 3\n", "echo '{\"hookSpecificOutput\": {\"permissionDecision\": \"ask\"}}'; exit 1\n"):
+            with self.subTest(script=script):
+                spec = self.spec("PreToolUse", "cat >/dev/null; " + script, "Bash")
+                self.assertEqual(adaptador.handle({"evento": "antes", "sessao": "s", "cwd": "/w", "ferramenta": "shell",
+                                                   "entrada": {"command": "x"}}, spec), {})
+
     def test_hook_que_bloqueia_o_stop_vira_bloqueia(self):
         spec = self.spec("Stop", "cat >/dev/null; echo '{\"decision\":\"block\",\"reason\":\"falta isto\"}'\n")
         self.assertEqual(adaptador.handle({"evento": "parar", "sessao": "s", "cwd": "/w"}, spec), {"bloqueia": "falta isto"})
@@ -218,6 +266,17 @@ class TravasDeVerdade(Ambiente):
                        entrada={"command": "mv %s/projects/p/tasks/x.md /tmp/y.md" % self.vault})
         self.assertIn("freitask archive", got["nega"])
         self.assertEqual(self.ask(evento="antes", ferramenta="shell", chamada="c2", entrada={"command": "ls"}), {})
+
+    def test_citar_a_chave_de_api_vira_pergunta_com_o_arquivo_e_nao_deixa_rastro(self):
+        command = "ssh pi01 'curl -H \"X: $(cat ~/.config/claude/jellyfin-api-key)\" http://localhost:8096'"
+        got = self.ask(evento="antes", ferramenta="shell", chamada="c1", entrada={"command": command})
+        self.assertEqual(list(got), ["pergunta"])
+        self.assertIn("chave de API", got["pergunta"])
+        self.assertIn("~/.config/claude/jellyfin-api-key", got["pergunta"])
+        self.assertEqual(self.ask(evento="antes", ferramenta="shell", chamada="c2", entrada={"command": "ssh pi01 uptime"}), {})
+        # mv de task continua negando, e nega vence mesmo se o mesmo comando também cita a chave
+        mv = "mv %s/projects/p/tasks/x.md /tmp/y.md; cat ~/.config/claude/a-api-key" % self.vault
+        self.assertIn("freitask archive", self.ask(evento="antes", ferramenta="shell", chamada="c3", entrada={"command": mv})["nega"])
 
     def test_escrever_no_vault_marca_a_sessao_e_o_stop_cobra_o_doctor(self):
         self.ask(evento="depois", status="completed", ferramenta="write",
@@ -282,6 +341,8 @@ class Ganchos(Ambiente):
         const sessions = %(sessions)s
         const hooks = {}
         const synthetic = []
+        const asserts = []
+        let assertBehavior = async () => {}
         const skills = %(skills)s
         const ctx = {
           session: {
@@ -293,6 +354,7 @@ class Ganchos(Ambiente):
             synthetic: async (x) => { synthetic.push(x) },
           },
           tool: { hook: async (name, fn) => { hooks["tool." + name] = fn } },
+          permission: { assert: async (input) => { asserts.push(input); return assertBehavior(input) } },
           skill: { transform: async (fn) => { hooks.skill = () => fn({
             list: () => skills,
             update: (id, up) => up(skills.find((s) => s.id === id)),
@@ -304,7 +366,7 @@ class Ganchos(Ambiente):
         }
         let out = null
         %(body)s
-        console.log(JSON.stringify({ out, synthetic, skills }))
+        console.log(JSON.stringify({ out, synthetic, skills, asserts }))
         """
     )
 
@@ -335,6 +397,57 @@ class Ganchos(Ambiente):
         self.assertIn("freitask archive", got["out"]["mv"])
         self.assertIsNone(got["out"]["ls"])
         self.assertIsNone(got["out"]["read"])
+
+    ASK = "ssh pi01 'cat ~/.config/claude/jellyfin-api-key'"
+    ASK_EVENT = """{ sessionID: "ses_main", agent: "build", messageID: "msg_1", tool: "shell", id: "c1",
+                     input: { command: %s } }""" % json.dumps(ASK)
+
+    def test_chave_de_api_abre_um_pedido_de_permissao_so_da_trava_e_sem_save(self):
+        got = self.run_plugin('out = await attempt("tool.execute.before", %s)' % self.ASK_EVENT)
+        self.assertIsNone(got["out"])
+        self.assertEqual(len(got["asserts"]), 1)
+        asked = got["asserts"][0]
+        # `save` ausente: a resposta "always" não grava regra, então cada uso pede de novo;
+        # a ação é só da trava: uma regra gravada de `shell` não a libera
+        self.assertNotIn("save", asked)
+        self.assertEqual(asked["action"], "chave-de-api")
+        self.assertEqual(asked["sessionID"], "ses_main")
+        self.assertEqual(asked["agent"], "build")
+        self.assertEqual(asked["source"], {"type": "tool", "messageID": "msg_1", "id": "c1"})
+        self.assertEqual(asked["metadata"], {"command": self.ASK})
+        self.assertIn("~/.config/claude/jellyfin-api-key", asked["resources"][0])
+
+    def test_recusa_do_dono_e_relancada_como_recusa_da_ferramenta(self):
+        for rejection, expected in (
+            ('{ _tag: "Permission.DeclinedError", message: "" }', "O dono recusou este uso."),
+            ('{ _tag: "Tool.Error", message: "Use outra chave" }', "Use outra chave"),
+        ):
+            with self.subTest(rejection=rejection):
+                got = self.run_plugin("assertBehavior = async () => { throw %s }\n"
+                                      'out = await attempt("tool.execute.before", %s)' % (rejection, self.ASK_EVENT))
+                self.assertIn(expected, got["out"])
+
+    def test_falha_do_assert_que_nao_e_recusa_nao_recusa_nada(self):
+        got = self.run_plugin("assertBehavior = async () => { throw new Error('banco fora') }\n"
+                              'out = await attempt("tool.execute.before", %s)' % self.ASK_EVENT)
+        self.assertEqual((got["out"], len(got["asserts"])), (None, 1))
+
+    def test_comando_que_nao_cita_nao_abre_pedido(self):
+        got = self.run_plugin('out = await attempt("tool.execute.before", '
+                              '{ sessionID: "ses_main", tool: "shell", id: "c1", input: { command: "ssh pi01 uptime" } })')
+        self.assertEqual((got["out"], got["asserts"]), (None, []))
+
+    def test_nega_vence_a_pergunta_e_nao_abre_pedido(self):
+        command = "mv %s/projects/p/tasks/x.md /tmp/y.md; cat ~/.config/claude/a-api-key" % self.vault
+        got = self.run_plugin('out = await attempt("tool.execute.before", '
+                              '{ sessionID: "ses_main", tool: "shell", id: "c1", input: { command: %s } })' % json.dumps(command))
+        self.assertIn("freitask archive", got["out"])
+        self.assertEqual(got["asserts"], [])
+
+    def test_sem_python_a_pergunta_nao_abre_pedido(self):
+        sem_python = {**self.env, "PATH": str(self.tmp / "vazio")}
+        got = self.run_plugin('out = await attempt("tool.execute.before", %s)' % self.ASK_EVENT, env=sem_python)
+        self.assertEqual((got["out"], got["asserts"]), (None, []))
 
     def test_stop_cobra_uma_vez_e_a_segunda_passada_deixa_encerrar(self):
         self.freitask(1)
