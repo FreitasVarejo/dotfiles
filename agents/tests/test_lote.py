@@ -43,7 +43,8 @@ def git(cwd, *args):
 
 def task(id_, callout="tip", status="Refinada", **kw):
     return {"id": id_, "project": "p", "callout": callout, "status": status, "path": "/v/%s.md" % id_,
-            "desc": "", "prioridade": None, "hidden": False, "archived": None, **kw}
+            "desc": "", "prioridade": None, "hidden": False, "archived": None,
+            "checklist": {"feitos": 0, "total": 0}, "bloqueada_por": [], "bloqueada": False, **kw}
 
 
 class Select(unittest.TestCase):
@@ -71,12 +72,18 @@ class Select(unittest.TestCase):
 
 
 class Checklist(unittest.TestCase):
-    def test_conta_marcados_e_abertos(self):
-        text = "- [x] um\n  - [ ] dois\n- [X] três\n- [ ] quatro\n"
-        self.assertEqual(L.checklist(text), "2 de 4 marcados")
+    def test_vem_do_campo_do_json(self):
+        self.assertEqual(L.checklist(task("t", checklist={"feitos": 2, "total": 4})), "2 de 4 marcados")
 
     def test_sem_item(self):
-        self.assertEqual(L.checklist("texto [ ] solto"), "sem checklist")
+        self.assertEqual(L.checklist(task("t")), "sem checklist")
+
+    def test_o_texto_do_arquivo_nao_conta(self):
+        # O arquivo tem um `- [ ]`, mas o JSON diz que não há checklist: vale o JSON.
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d, "t.md")
+            path.write_text("- [x] um\n- [ ] dois\n")
+            self.assertEqual(L.checklist(task("t", path=str(path))), "sem checklist")
 
 
 class Cited(unittest.TestCase):
@@ -181,7 +188,7 @@ class PontaAPonta(unittest.TestCase):
         self.bin.mkdir()
         (base / "a.md").write_text("> [!tip] A\n\n- [x] um\n- [ ] dois\n[[projects/p/tasks/b|b]]\n")
         (base / "b.md").write_text("> [!todo] B\n")
-        active = [task("a", path=str(base / "a.md")), task("b", "todo", "Não iniciada", path=str(base / "b.md"))]
+        active = [task("a", path=str(base / "a.md"), checklist={"feitos": 1, "total": 2}), task("b", "todo", "Não iniciada", path=str(base / "b.md"))]
         (base / "ativas.json").write_text(json.dumps(active))
         (base / "arquivadas.json").write_text("[]")
         self.fake("freitask", 'case "$*" in *--archived*) cat %s/arquivadas.json;; *) cat %s/ativas.json;; esac'

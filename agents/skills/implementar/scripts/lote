@@ -31,8 +31,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 LOTE = ("tip", "example")
-CHECKED = re.compile(r"^\s*- \[[xX]\]", re.M)
-OPEN_ITEM = re.compile(r"^\s*- \[ \]", re.M)
 WIKILINK = re.compile(r"\[\[([^\]|#]+)")
 TASK_LINK = re.compile(r"^projects/[^/]+/tasks/(?:archived/[^/]+/)?([^/]+?)(?:\.md)?$")
 HOME = os.path.expanduser("~")
@@ -82,9 +80,10 @@ def select(active, ids):
     return [by_id[i] for i in ids if i in by_id], [i for i in ids if i not in by_id]
 
 
-def checklist(text):
-    done, todo = len(CHECKED.findall(text)), len(OPEN_ITEM.findall(text))
-    return "sem checklist" if not done + todo else "%d de %d marcados" % (done, done + todo)
+def checklist(t):
+    """O `checklist` do `freitask list --json`: `{feitos, total}`."""
+    c = t["checklist"]
+    return "sem checklist" if not c["total"] else "%d de %d marcados" % (c["feitos"], c["total"])
 
 
 def cited(text, own_id, active, archived):
@@ -255,7 +254,7 @@ def main():
                                            "prioridade alta" if t.get("prioridade") == "alta" else "normal"))
         print("- arquivo: %s" % tilde(t["path"]))
         print("- estado: %s" % (t.get("desc") or "(sem descrição)"))
-        print("- checklist: %s" % checklist(text))
+        print("- checklist: %s" % checklist(t))
         cita = cited(text, t["id"], active, archived)
         if cita:
             print("- cita: %s" % "; ".join(cita))
