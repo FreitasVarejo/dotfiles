@@ -515,6 +515,16 @@ class DenyEmPolicies(Fixture):
         self.assertFalse(hit("read", "/home/x/outra-coisa"))
         self.assertFalse(hit("edit", "/home/x/Vault/nota.md"))
 
+    def test_o_deny_json_do_repo_fecha_a_pasta_das_chaves_de_api(self):
+        import re
+
+        write(self.pkg / "permissions" / "deny.json", (PKG / "permissions" / "deny.json").read_text(encoding="utf-8"))
+        read = [r.split(":", 1)[1] for r in self.policies() if r.startswith("read:")]
+        match = lambda pattern, text: re.fullmatch(re.escape(pattern).replace(r"\*", ".*"), text) is not None
+        for path in ("/home/x/.config/claude/jellyfin-api-key", ".config/claude/jellyfin-api-key"):
+            self.assertTrue(any(match(p, path) for p in read), path)
+        self.assertFalse(any(match(p, "/home/x/.config/claude-code/x") for p in read))
+
     def test_categoria_agent_e_pulada_sem_erro(self):
         self.apply()
         pols = self.config()["policies"]
