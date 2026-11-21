@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """Trava PreToolUse (Bash): uso de chave de API guardada em ~/.config/claude/ pede aprovação do dono.
 
-As chaves de API dos serviços do pi01 ficam em `~/.config/claude/<serviço>-api-key`. Quando o
-comando cita `.config/claude` por `~`, `$HOME`, `${HOME}` ou `/home/<usuário>`, a trava devolve
-`permissionDecision: "ask"`: o agente mostra o comando ao dono, que aprova ou nega cada uso.
+As chaves de API dos serviços do pi01 ficam em `~/.config/claude/<serviço>-api-key`. A trava
+devolve `permissionDecision: "ask"` (o agente mostra o comando ao dono, que aprova ou nega cada
+uso) em dois casos, cada um com o seu motivo; se os dois valem, os motivos saem juntos, num
+só JSON:
+
+- o comando cita `.config/claude` por `~`, `$HOME`, `${HOME}` ou `/home/<usuário>`;
+- o comando roda `chaves`, o script do pi01 que lê e grava essas chaves sem citar o caminho:
+  a palavra de comando de um comando simples (depois dos prefixos `sudo`, `env`…) é `chaves`, nome
+  nu ou com caminho (`~/.local/bin/chaves`), com ou sem argumento. `chaves` como argumento ou
+  parte de caminho (`ls chaves/`, `cd ~/docker/system/chaves && ./teste.sh`) não pergunta.
+
 Não é muro técnico (o agente lê um `.env` do pi01 do mesmo jeito): é consentimento por uso.
 
-A citação se procura no texto inteiro e em cada palavra já sem aspas, e desce no que roda em outro
-shell: o comando remoto do `ssh` (o que vem depois do host) e o argumento de `bash -c` / `sh -c`.
-Aspas sem fechar não escondem a citação: o texto inteiro vale mesmo quando o shell recusaria o
-comando. Quebra de comandos e prefixos (`sudo`, `env`…) vêm da `tasks-so-pelo-freitask`.
+Os dois se procuram no texto inteiro e descem no que roda em outro shell: o comando remoto do
+`ssh` (o que vem depois do host) e o argumento de `bash -c` / `sh -c`. A citação também se procura
+em cada palavra já sem aspas, e aspas sem fechar não escondem a citação: o texto inteiro vale mesmo
+quando o shell recusaria o comando. Quebra de comandos e prefixos vêm da `tasks-so-pelo-freitask`.
 
 Entrada: o JSON do hook no stdin. Saída: nada (deixa seguir) ou o JSON de `permissionDecision: ask`.
 """
@@ -82,26 +90,46 @@ def inner_script(words):
     return None
 
 
-def citations(text, found, depth=0):
-    """Acrescenta a `found` cada arquivo de ~/.config/claude citado em `text`, descendo nos shells de dentro."""
+def runs_chaves(words):
+    """A palavra de comando, depois dos prefixos, é `chaves` (nome nu ou com caminho)."""
+    words = shell.strip_prefixes(words)
+    return bool(words) and os.path.basename(words[0]) == "chaves"
+
+
+def scan(text, found, ran, depth=0):
+    """Acrescenta a `found` cada arquivo de ~/.config/claude citado em `text` e a `ran` um item
+    se `text` roda `chaves`, descendo nos shells de dentro."""
     found.extend(m.group(0) for m in CITATION.finditer(text))
     if depth >= MAX_DEPTH:
         return
-    for words in shell.simple_commands(text):
+    # A crase abre um comando como o `$(`: vira separador para a palavra de comando aparecer.
+    for words in shell.simple_commands(text.replace("`", " ; ")):
         for word in words:
             found.extend(m.group(0) for m in CITATION.finditer(word))
+        if runs_chaves(words):
+            ran.append("chaves")
         inner = inner_script(words)
         if inner:
-            citations(inner, found, depth + 1)
+            scan(inner, found, ran, depth + 1)
 
 
-def reason(files):
+def citation_reason(files):
     unique = list(dict.fromkeys(files))
     shown = ", ".join(unique[:MAX_FILES]) + (" e outros" if len(unique) > MAX_FILES else "")
     return (
         "Uso de chave de API: o comando cita %s, onde ficam as chaves de API do dono. "
         "Aprove só se for o uso que o dono pediu." % shown
     )
+
+
+CHAVES_REASON = (
+    "Uso de chave de API: o comando roda `chaves`, que lê e grava as chaves de API do dono. "
+    "Aprove só se for o uso que o dono pediu."
+)
+
+
+def reason(files, ran):
+    return " ".join(([citation_reason(files)] if files else []) + ([CHAVES_REASON] if ran else []))
 
 
 def main():
@@ -115,15 +143,15 @@ def main():
     command = tool_input.get("command") if isinstance(tool_input, dict) else None
     if not isinstance(command, str):
         return
-    found = []
-    citations(command, found)
-    if found:
+    found, ran = [], []
+    scan(command, found, ran)
+    if found or ran:
         json.dump(
             {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "ask",
-                    "permissionDecisionReason": reason(found),
+                    "permissionDecisionReason": reason(found, ran),
                 }
             },
             sys.stdout,

@@ -1,5 +1,5 @@
 """Testes da trava `agents/travas/chave-com-aprovacao`: o uso de chave de API em ~/.config/claude/
-pede aprovação (`ask`), e comando que não cita não gera saída.
+e o comando `chaves` pedem aprovação (`ask`), e comando que não cita nem roda não gera saída.
 
 O script não tem `.py`; roda de verdade, com o JSON do evento no stdin, como o Claude Code o chama."""
 
@@ -39,6 +39,15 @@ class Trava(unittest.TestCase):
         self.assertIn("chave de API", decision["permissionDecisionReason"])
         for name in files:
             self.assertIn(name, decision["permissionDecisionReason"], command)
+
+    def asks_chaves(self, command):
+        """Pergunta pelo motivo do `chaves`, que não cita o caminho das chaves."""
+        out = run(bash(command))
+        self.assertIsNotNone(out, command)
+        decision = out["hookSpecificOutput"]
+        self.assertEqual(decision["permissionDecision"], "ask", command)
+        self.assertIn("roda `chaves`", decision["permissionDecisionReason"], command)
+        self.assertNotIn("cita", decision["permissionDecisionReason"], command)
 
     def silent(self, command):
         self.assertIsNone(run(bash(command)), command)
@@ -95,6 +104,86 @@ class Pede(Trava):
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertEqual(reason.count("a-api-key"), 1)
         self.assertIn("b-api-key", reason)
+
+
+class PedeChaves(Trava):
+    def test_nome_nu_com_e_sem_argumento(self):
+        self.asks_chaves("chaves")
+        self.asks_chaves("chaves jellyfin")
+
+    def test_com_caminho(self):
+        self.asks_chaves("~/.local/bin/chaves")
+        self.asks_chaves("~/.local/bin/chaves jellyfin")
+        self.asks_chaves("/home/saul/.local/bin/chaves jellyfin")
+        self.asks_chaves("./chaves")
+
+    def test_depois_de_prefixo(self):
+        self.asks_chaves("sudo chaves jellyfin")
+        self.asks_chaves("env X=1 chaves")
+        self.asks_chaves("FOO=1 chaves")
+        self.asks_chaves("nohup ~/.local/bin/chaves")
+
+    def test_encadeado_com_outro_comando(self):
+        self.asks_chaves("echo ok && chaves jellyfin")
+        self.asks_chaves("cd /tmp; chaves | tee log")
+        self.asks_chaves("cd /tmp\nchaves")
+
+    def test_substituicao_de_comando(self):
+        self.asks_chaves("echo $(chaves jellyfin)")
+        self.asks_chaves("echo `chaves jellyfin`")
+
+    def test_pelo_ssh(self):
+        self.asks_chaves("ssh pi01 chaves")
+        self.asks_chaves("ssh pi01 'chaves jellyfin'")
+        self.asks_chaves("ssh -t -o BatchMode=yes pi01 ~/.local/bin/chaves jellyfin")
+        self.asks_chaves("ssh pi01 'cd ~/docker && chaves'")
+
+    def test_bash_c_e_sh_c(self):
+        self.asks_chaves("bash -c chaves")
+        self.asks_chaves("bash -c 'chaves jellyfin'")
+        self.asks_chaves("sh -c 'echo oi; chaves'")
+        self.asks_chaves("bash -lc 'chaves'")
+        self.asks_chaves("sudo env X=1 bash -c 'chaves'")
+
+    def test_shell_dentro_do_ssh(self):
+        self.asks_chaves("""ssh pi01 "bash -c 'chaves jellyfin'" """)
+
+    def test_citar_e_rodar_saem_num_so_json_com_os_dois_motivos(self):
+        out = run(bash("ssh pi01 'chaves jellyfin; cat ~/.config/claude/k-api-key'"))
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+        self.assertIn("cita ~/.config/claude/k-api-key", reason)
+        self.assertIn("roda `chaves`", reason)
+
+    def test_so_citar_nao_traz_o_motivo_do_chaves(self):
+        reason = run(bash("cat ~/.config/claude/k-api-key"))["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertNotIn("roda `chaves`", reason)
+
+    def test_rodar_varias_vezes_nao_repete_o_motivo(self):
+        reason = run(bash("chaves; chaves jellyfin"))["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertEqual(reason.count("roda `chaves`"), 1)
+
+
+class NaoPedeChaves(Trava):
+    def test_chaves_como_argumento_ou_parte_de_caminho(self):
+        self.silent("ls chaves/")
+        self.silent("grep chaves x")
+        self.silent("cd ~/docker/system/chaves && ./teste.sh")
+        self.silent("cat ~/docker/system/chaves/README.md")
+        self.silent("ssh pi01 'ls ~/docker/system/chaves'")
+        self.silent("ssh pi01 'cd ~/docker/system/chaves && ./teste.sh'")
+        self.silent("bash -c 'grep chaves x'")
+        self.silent("echo chaves")
+
+    def test_nome_parecido(self):
+        self.silent("chaves-de-api")
+        self.silent("minhas-chaves jellyfin")
+        self.silent("chavesx")
+        self.silent("ssh chaves uptime")
+
+    def test_chaves_so_como_argumento_depois_de_prefixo(self):
+        self.silent("sudo ls chaves")
+        self.silent("env X=chaves ls")
 
 
 class NaoPede(Trava):
