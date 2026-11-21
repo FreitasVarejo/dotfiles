@@ -40,7 +40,7 @@ numa linha que cita o fato (o trecho da task ou a linha do `lote`):
 | classe | quando |
 |---|---|
 | **já** | é código num repo vinculado, o desenho está fechado, e nada de que ela depende está por entregar |
-| **espera** | depende de outra task, PR ou merge ainda não pronto: diga qual, e a fase dela |
+| **espera** | tem a linha `- bloqueada por:` no `lote` (o `bloqueada-por` da task): cite a bloqueadora ativa e a fase dela como a linha traz, sem ler o texto atrás disso; ou depende de outra task, PR ou merge ainda não pronto: diga qual, e a fase dela |
 | **do dono** | o que falta é passo dele ou não é código: decisão, estudo, ação no terminal ou numa conta dele |
 | **em voo** | a branch do id tem worktree suja ou commit de menos de um dia que esta sessão não fez: outra sessão pode estar nela |
 | **fora** | a fase não é de implementar (abaixo), o projeto não tem repo, ou a nota da máquina diz que daqui não se commita naquele repo |
@@ -52,6 +52,10 @@ A fase decide antes de tudo:
 - **Bloqueada** é fora: mostre o motivo escrito na linha 4+ do bloco.
 - **Em homologação** entra só quando o dono disse que a homologação reprovou, e
   então trabalha no que falhou.
+
+A linha do `lote` que começa por `- bloqueada-por cita` (id que não existe) é
+aviso de erro de digitação, não bloqueio: não ponha a task em **espera** por
+ela, e mostre-a ao dono junto da tabela.
 
 A ordem das **já**: primeiro o que o texto das tasks impõe ("a primeira PR do
 lote", "depois de"), depois a de prioridade alta. Depender do *merge* de outra
