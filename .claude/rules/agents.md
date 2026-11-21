@@ -23,7 +23,8 @@ the repo declares; whatever the machine added stays.
   reaches which agent: the docstring of `~/dotfiles/agents/hooks/agent_config.py`.
 - `travas/`: one script per trava plus `travas.json` in Claude Code's `hooks` format
   (ADR 0028). A trava is for a rule whose breach is irreparable and cheap to detect;
-  the rule's text stays where it lives (the vault's `AGENTS.md` is the floor for
+  for a use the owner approves case by case it answers `ask` instead of `deny`.
+  The rule's text stays where it lives (the vault's `AGENTS.md` is the floor for
   channels without hooks). A trava with no tool to call does nothing (ADR 0027).
   OpenCode runs the same scripts through `plugins/travas/` (see below): never a second copy
   of a trava for it.
