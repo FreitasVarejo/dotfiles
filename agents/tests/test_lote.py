@@ -1,7 +1,8 @@
 """Testes do `agents/skills/implementar/scripts/lote`: quem entra no lote, o
-checklist, as tasks citadas com a fase de hoje, e o que o repo já tem do id.
+checklist (do JSON), as bloqueadoras do `bloqueada-por`, as tasks citadas com a fase
+de hoje, e o que o repo já tem do id.
 
-`select`, `checklist`, `cited` e `of_task` são puras. O repo precisa de git de
+`select`, `checklist`, `bloqueio`, `cited` e `of_task` são puras. O repo precisa de git de
 verdade: cada teste monta um clone num diretório temporário. O `freitask` e o
 `vault-vinculos` da ponta a ponta são falsos no PATH."""
 
@@ -84,6 +85,42 @@ class Checklist(unittest.TestCase):
             path = Path(d, "t.md")
             path.write_text("- [x] um\n- [ ] dois\n")
             self.assertEqual(L.checklist(task("t", path=str(path))), "sem checklist")
+
+
+class Bloqueio(unittest.TestCase):
+    ACTIVE = [task("x"), task("fazendo", "example", "Em implementação")]
+    ARCHIVED = [task("velha", "done", "Arquivada", archived="done")]
+
+    def linhas(self, **kw):
+        return L.bloqueio(task("y", **kw), self.ACTIVE, self.ARCHIVED)
+
+    def test_sem_bloqueada_por_nenhuma_linha(self):
+        self.assertEqual(self.linhas(), [])
+
+    def test_ativa_sai_com_a_fase(self):
+        self.assertEqual(self.linhas(bloqueada_por=["x"], bloqueada=True), ["bloqueada por: `x` (Refinada)"])
+
+    def test_varias_ativas_na_ordem_escrita_e_a_arquivada_fica_de_fora(self):
+        self.assertEqual(self.linhas(bloqueada_por=["fazendo", "velha", "x"], bloqueada=True),
+                         ["bloqueada por: `fazendo` (Em implementação); `x` (Refinada)"])
+
+    def test_so_arquivada_nenhuma_linha(self):
+        self.assertEqual(self.linhas(bloqueada_por=["velha"], bloqueada=False), [])
+
+    def test_id_que_nao_existe_so_o_aviso(self):
+        self.assertEqual(self.linhas(bloqueada_por=["zzz"], bloqueada=False),
+                         ["bloqueada-por cita `zzz`, que não existe"])
+
+    def test_ativa_e_id_que_nao_existe_as_duas_linhas(self):
+        self.assertEqual(self.linhas(bloqueada_por=["x", "zzz"], bloqueada=True),
+                         ["bloqueada por: `x` (Refinada)", "bloqueada-por cita `zzz`, que não existe"])
+
+    def test_a_linha_da_ativa_segue_o_campo_bloqueada(self):
+        # O freitask decide se pesa; o lote só nomeia.
+        self.assertEqual(self.linhas(bloqueada_por=["x"], bloqueada=False), [])
+
+    def test_sem_a_lista_de_arquivadas_nao_afirma_que_o_id_nao_existe(self):
+        self.assertEqual(L.bloqueio(task("y", bloqueada_por=["velha"]), self.ACTIVE, None), [])
 
 
 class Cited(unittest.TestCase):
@@ -221,6 +258,40 @@ class PontaAPonta(unittest.TestCase):
         r = self.lote("b", "c")
         self.assertIn("## b\n- projeto p · Não iniciada · normal", r.stdout)
         self.assertIn("## não achei\n- `c`: não está entre as tasks ativas", r.stdout)
+
+    def escreve(self, active, archived=()):
+        base = Path(self.tmp.name)
+        (base / "ativas.json").write_text(json.dumps(active))
+        (base / "arquivadas.json").write_text(json.dumps(list(archived)))
+
+    def bloqueios(self, **kw):
+        """O `lote y` com `x` ativa em Refinada, `velha` arquivada e `y` com os campos de `kw`."""
+        base = Path(self.tmp.name)
+        # Nenhuma menção a `x` no corpo de `y`: o que vale é o campo.
+        (base / "y.md").write_text("> [!tip] Y\n\nsem wikilink algum\n")
+        velha = task("velha", "done", "Arquivada", archived="done", path=str(base / "velha.md"))
+        x = task("x", path=str(base / "x.md"))
+        self.escreve([x, task("y", path=str(base / "y.md"), **kw)], [x, velha])
+        return self.lote("y").stdout
+
+    def test_bloqueada_por_ativa_diz_a_bloqueadora_e_a_fase(self):
+        out = self.bloqueios(bloqueada_por=["x"], bloqueada=True)
+        self.assertIn("- bloqueada por: `x` (Refinada)\n", out)
+        self.assertNotIn("- cita:", out)
+
+    def test_bloqueada_por_arquivada_nao_ganha_linha(self):
+        out = self.bloqueios(bloqueada_por=["velha"], bloqueada=False)
+        self.assertNotIn("bloqueada", out.replace("bloqueada-por", ""))
+        self.assertNotIn("velha", out)
+
+    def test_bloqueada_por_id_que_nao_existe_so_o_aviso(self):
+        out = self.bloqueios(bloqueada_por=["zzz"], bloqueada=False)
+        self.assertIn("- bloqueada-por cita `zzz`, que não existe\n", out)
+        self.assertNotIn("- bloqueada por:", out)
+
+    def test_sem_bloqueada_por_nenhuma_linha_nova(self):
+        out = self.bloqueios()
+        self.assertNotIn("bloqueada", out)
 
     def test_sem_freitask_sai_1_e_diz_por_que(self):
         self.fake("freitask", "exit 1")
