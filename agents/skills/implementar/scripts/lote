@@ -8,10 +8,23 @@ Sem id, o lote são as tasks ativas em Refinada (`tip`) e Em implementação
 Com ids, são essas, em qualquer fase: recusar a fase é da skill. Id que não está
 entre as ativas sai em `## não achei`.
 
-Por task: projeto, fase, prioridade, arquivo, estado, checklist, as tasks que o
-corpo cita por wikilink com a fase de cada uma hoje, e, em cada repo vinculado
-ao projeto, o que já existe do id: branch local e remota, worktree da branch
-`<id>` ou `<id>-<área>` (sujos e idade do último commit) e PR da branch `<id>`.
+Por task: projeto, fase, prioridade, arquivo, estado, checklist (do campo
+`checklist` do `freitask list --json`), as tasks que o corpo cita por wikilink
+com a fase de cada uma hoje (`- cita:`), e, em cada repo vinculado ao projeto, o
+que já existe do id: branch local e remota, worktree da branch `<id>` ou
+`<id>-<área>` (sujos e idade do último commit) e PR da branch `<id>`.
+
+O `bloqueada-por` da task (o campo do frontmatter, não o texto) sai em duas
+linhas, e só quando há o que dizer:
+
+  - bloqueada por: `x` (Refinada); `y` (Em implementação)
+      só quando `bloqueada` é verdadeiro: as bloqueadoras ativas, com a fase de
+      cada uma hoje. A arquivada está resolvida e não aparece. Quem lê isto põe
+      a task em espera.
+  - bloqueada-por cita `zzz`, que não existe
+      id da lista que não é de task ativa nem arquivada: erro de digitação, que
+      o freitask não conta como bloqueio. Não é espera; é aviso, e o `doctor`
+      também o acusa. Sai mesmo com `bloqueada` falso.
 
 Nada aqui é lista fixa (ADR 0017): tasks e fases do `freitask list --json`,
 projetos, repos e a nota desta máquina do `vault-vinculos` (as regras estão no
@@ -84,6 +97,27 @@ def checklist(t):
     """O `checklist` do `freitask list --json`: `{feitos, total}`."""
     c = t["checklist"]
     return "sem checklist" if not c["total"] else "%d de %d marcados" % (c["feitos"], c["total"])
+
+
+def bloqueio(t, active, archived):
+    """Linhas do `bloqueada-por` da task.
+
+    `- bloqueada por:` só quando `bloqueada` é verdadeiro, com as bloqueadoras ativas e a fase de
+    cada uma (a arquivada está resolvida e fica de fora). O id que não é de task ativa nem
+    arquivada vira um aviso próprio, bloqueada ou não: o freitask não o conta como bloqueio, e o
+    typo calado deixaria passar como pronta uma task que devia esperar. `archived` None: não sei
+    quais são as arquivadas, e então não afirmo que um id não existe.
+    """
+    status = {a["id"]: a["status"] for a in active}
+    ids = list(dict.fromkeys(t.get("bloqueada_por") or []))
+    lines = []
+    ativas = ["`%s` (%s)" % (i, status[i]) for i in ids if i in status]
+    if t.get("bloqueada") and ativas:
+        lines.append("bloqueada por: %s" % "; ".join(ativas))
+    if archived is not None:
+        known = set(status) | {a["id"] for a in archived}
+        lines += ["bloqueada-por cita `%s`, que não existe" % i for i in ids if i not in known]
+    return lines
 
 
 def cited(text, own_id, active, archived):
@@ -225,7 +259,7 @@ def main():
     if active is None:
         print("o `freitask list --json` falhou: sem tasks, não há lote")
         return 1
-    archived = freitask_list("--archived") or []
+    archived = freitask_list("--archived")
     tasks, missing = select(active, a.ids)
 
     repos = {}
@@ -255,7 +289,9 @@ def main():
         print("- arquivo: %s" % tilde(t["path"]))
         print("- estado: %s" % (t.get("desc") or "(sem descrição)"))
         print("- checklist: %s" % checklist(t))
-        cita = cited(text, t["id"], active, archived)
+        for line in bloqueio(t, active, archived):
+            print("- " + line)
+        cita = cited(text, t["id"], active, archived or [])
         if cita:
             print("- cita: %s" % "; ".join(cita))
         if repos[t["project"]] is None:
