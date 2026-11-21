@@ -3,7 +3,8 @@
     {
       "matcher": "Bash",
       "hooks": [
-        { "type": "command", "command": "'${TRAVAS_DIR}/tasks-so-pelo-freitask'", "timeout": 10 }
+        { "type": "command", "command": "'${TRAVAS_DIR}/tasks-so-pelo-freitask'", "timeout": 10 },
+        { "type": "command", "command": "'${TRAVAS_DIR}/chave-com-aprovacao'", "timeout": 10 }
       ]
     },
     {

@@ -198,10 +198,10 @@ class Despacho(Ambiente):
                                   capture_output=True, text=True, env=self.env)
             self.assertEqual((done.returncode, json.loads(done.stdout)), (0, {}), stdin)
 
-    def test_o_travas_json_do_repo_carrega_com_as_tres_travas(self):
+    def test_o_travas_json_do_repo_carrega_com_as_travas(self):
         spec = adaptador.load_spec()
         commands = {c for event in spec.values() for group in event for h in group["hooks"] for c in [h["command"]]}
-        for trava in ("tasks-so-pelo-freitask", "verificacao-no-stop", "doctor-no-stop"):
+        for trava in ("tasks-so-pelo-freitask", "chave-com-aprovacao", "verificacao-no-stop", "doctor-no-stop"):
             self.assertTrue(any(trava in c for c in commands), trava)
         self.assertFalse(any("${TRAVAS_DIR}" in c for c in commands))
         self.assertEqual(adaptador.TRAVAS_DIR, str(TRAVAS.resolve()))
