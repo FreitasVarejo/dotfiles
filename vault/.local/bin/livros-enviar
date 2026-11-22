@@ -1,0 +1,123 @@
+#!/bin/bash
+# livros-enviar: manda uma pasta de livros (o documents/ do Kindle montado no
+# USB, ou qualquer outra) para a Book Dock do BookOrbit no pi01, por rsync/SSH,
+# mantendo a árvore de pastas.
+#
+# Sem --apply só mostra o que iria (rsync --dry-run). O rsync nunca apaga nada
+# no destino. O que é do Kindle e não é livro (progresso .sdr, Downloads da
+# Amazon, cache, dicionários, arquivos soltos da raiz) fica de fora.
+
+set -euo pipefail
+
+LIVROS_SSH="${LIVROS_SSH:-pi01}"
+# Relativo ao home do usuário remoto: não depende de o rsync expandir "~".
+LIVROS_DEST="${LIVROS_DEST:-docker/personal/bookorbit/books/dock/}"
+
+# Fora do envio. As barras iniciais prendem o nome à raiz da pasta de origem
+# (os arquivos soltos de documents/ do Kindle); as demais valem em qualquer nível.
+EXCLUDES=(
+  '*.sdr'
+  'Downloads/'
+  '.cache/'
+  'dictionaries/'
+  '*.crdownload'
+  '*.sync-conflict-*'
+  '.stfolder'
+  '.stignore'
+  '/KOReader.sh'
+  '/JAILBROKEN.txt'
+  '/My Clippings.txt'
+)
+
+APPLY=false
+SRC=""
+
+usage() {
+  cat <<EOF
+uso: livros-enviar [--apply] <pasta>
+
+  <pasta>    origem: o documents/ do Kindle montado no USB, ou qualquer pasta
+             com livros. O conteúdo vai para a Book Dock, mantendo as subpastas.
+  --apply    envia de verdade. Sem ele só mostra o plano (dry-run).
+  -h, --help
+
+Vai para ${LIVROS_SSH}:${LIVROS_DEST} (env: LIVROS_SSH, LIVROS_DEST).
+
+Fica de fora: ${EXCLUDES[*]}
+
+Depois do envio, a Book Dock importa os livros sozinha. O que ela já tem na
+biblioteca, ela marca como duplicata: compara por ISBN, edição, obra e título
+com autor. A duplicata não entra na biblioteca; na interface do BookOrbit
+(Book Dock) ela se descarta em lote.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --apply) APPLY=true ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      SRC="${1:-}"
+      break
+      ;;
+    -*)
+      echo "ERRO: opção desconhecida: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      [[ -z "$SRC" ]] || {
+        echo "ERRO: só uma pasta de origem" >&2
+        exit 1
+      }
+      SRC="$1"
+      ;;
+  esac
+  shift
+done
+
+if [[ -z "$SRC" ]]; then
+  usage >&2
+  exit 1
+fi
+[[ -d "$SRC" ]] || {
+  echo "ERRO: '$SRC' não é uma pasta" >&2
+  exit 1
+}
+for cmd in rsync ssh; do
+  command -v "$cmd" &>/dev/null || {
+    echo "ERRO: '$cmd' não encontrado" >&2
+    exit 1
+  }
+done
+
+# Barra final: manda o conteúdo da pasta, não a pasta em si.
+SRC="${SRC%/}/"
+
+RSYNC_ARGS=(
+  --recursive --times
+  --prune-empty-dirs
+  '--chmod=D775,F664'
+  --itemize-changes --human-readable --stats
+  -e ssh
+)
+for pattern in "${EXCLUDES[@]}"; do
+  RSYNC_ARGS+=(--exclude="$pattern")
+done
+
+if [[ "$APPLY" == true ]]; then
+  echo "== enviando ${SRC} -> ${LIVROS_SSH}:${LIVROS_DEST} =="
+else
+  RSYNC_ARGS+=(--dry-run)
+  echo "== plano (dry-run) ${SRC} -> ${LIVROS_SSH}:${LIVROS_DEST} =="
+fi
+
+rsync "${RSYNC_ARGS[@]}" "$SRC" "${LIVROS_SSH}:${LIVROS_DEST}"
+
+if [[ "$APPLY" != true ]]; then
+  echo "(dry-run: nada foi enviado; rode com --apply)"
+fi

@@ -1,9 +1,14 @@
 #!/bin/bash
 # bookorbit-organize: reconcilia gênero, série e autor dos livros do BookOrbit
-# a partir do caminho do arquivo na biblioteca.
+# a partir da biblioteca do livro e do caminho do arquivo dentro dela.
 #
-#   <Gênero>/[<Série>/]arquivo.ext        gênero = 1ª pasta; série = 2ª pasta
-#   <qualquer>/<Série> - Volume NN.ext    série e índice pelo nome do arquivo
+#   gênero  = nome da biblioteca (Computação, Filosofia, Religião, Literatura,
+#             Artigos, Mangá, Política). Biblioteca fora dessa lista (ex.:
+#             "Livros") não gera gênero.
+#   série   = <Autor>/<Série>/arquivo.ext        2ª pasta, quando há 3 níveis
+#             <qualquer>/<Série> - Volume NN.ext  nome do arquivo
+#             e as séries de SERIES_OVERRIDES, reconhecidas pelo nome do arquivo
+#             (Bleach e Bleach (REMIX Edition): autor Tite Kubo, gênero Mangá)
 #
 # Idempotente e aditivo: gênero entra em modo "add" (nunca remove), série e
 # autor só são escritos onde o livro ainda não os tem. Sem --apply só mostra o
@@ -17,12 +22,19 @@ BOOKORBIT_URL="${BOOKORBIT_URL:-https://bookorbit.tuts-awards.com}"
 BOOKORBIT_SSH="${BOOKORBIT_SSH:-pi01}"
 BOOKORBIT_DB_CONTAINER="${BOOKORBIT_DB_CONTAINER:-bookorbit-db}"
 
-# 1ª pasta da biblioteca → gênero. Pasta fora do mapa (ex.: "Unknown Author")
-# não gera gênero.
-GENRE_MAP='{"Filosofia":"Filosofia","Religião":"Religião","Literatura":"Literatura","Computação":"Computação","Artigos":"Artigos"}'
+# Nome da biblioteca → gênero. Biblioteca fora do mapa (ex.: a "Livros" de
+# antes da migração) não gera gênero.
+GENRE_MAP='{"Computação":"Computação","Filosofia":"Filosofia","Religião":"Religião","Literatura":"Literatura","Artigos":"Artigos","Mangá":"Mangá","Política":"Política"}'
 
-# Por série: autor e gênero que valem quando o BookOrbit não tem coisa melhor.
-SERIES_OVERRIDES='{"Bleach":{"author":"Tite Kubo","genre":"Mangá"},"Bleach (REMIX Edition)":{"author":"Tite Kubo","genre":"Mangá"}}'
+# Por série: autor e gênero que valem quando o BookOrbit não tem coisa melhor, e
+# "file", a regex (sem diferenciar maiúsculas) que reconhece a série pelo nome do
+# arquivo, esteja ele em que pasta e biblioteca estiver:
+#   Bleach                    NN. Bleach - Volume NN.cbr|cbz   (volumes 1-21)
+#   Bleach (REMIX Edition)    KUBO, Tite - BLEACH (REMIX Edition) - Volume NN.pdf (1-26)
+SERIES_OVERRIDES='{
+  "Bleach": {"author": "Tite Kubo", "genre": "Mangá", "file": "^([0-9]+\\. )?Bleach - Volume"},
+  "Bleach (REMIX Edition)": {"author": "Tite Kubo", "genre": "Mangá", "file": "Bleach \\(REMIX Edition\\) - Volume"}
+}'
 
 APPLY=false
 
@@ -56,10 +68,11 @@ done
 SQL="select coalesce(json_agg(json_build_object(
   'id', b.book_id,
   'path', b.rel_path,
+  'library', (select l.name from libraries l where l.id = b.library_id),
   'authors', (select coalesce(json_agg(a.name), '[]'::json) from book_authors ba join authors a on a.id = ba.author_id where ba.book_id = b.book_id),
   'has_series', exists(select 1 from book_series_memberships m where m.book_id = b.book_id)
 )), '[]'::json)
-from (select distinct on (book_id) book_id, rel_path from book_files order by book_id, sort_order, id) b;"
+from (select distinct on (f.book_id) f.book_id, f.rel_path, k.library_id from book_files f join books k on k.id = f.book_id order by f.book_id, f.sort_order, f.id) b;"
 
 # shellcheck disable=SC2029 # o nome do container deve expandir aqui, no cliente
 BOOKS=$(ssh "$BOOKORBIT_SSH" "docker exec -i $BOOKORBIT_DB_CONTAINER psql -U bookorbit -d bookorbit -At" <<<"$SQL")
@@ -67,16 +80,18 @@ BOOKS=$(ssh "$BOOKORBIT_SSH" "docker exec -i $BOOKORBIT_DB_CONTAINER psql -U boo
 # --- 2. plano ------------------------------------------------------------------
 PLAN=$(jq -c --argjson gm "$GENRE_MAP" --argjson so "$SERIES_OVERRIDES" '
   map(
-    (.path | split("/")) as $seg
+    (.path // "" | split("/")) as $seg
     | ($seg | last | sub("\\.[^.]+$"; "")) as $stem
     | ($stem | capture("^(?<name>.+?) - (?:Volume|Vol\\.?|Tomo|Livro) ?0*(?<idx>[0-9]+(?:\\.[0-9]+)?)")? // null) as $fn
-    | (if ($seg | length) >= 3 then {name: $seg[1], idx: ($fn.idx // null)}
+    | ([$so | to_entries[] | select(.value.file as $re | $re != null and ($stem | test($re; "i"))) | .key] | first // null) as $ov
+    | (if $ov != null then {name: $ov, idx: ($fn.idx // null)}
+       elif ($seg | length) >= 3 then {name: $seg[1], idx: ($fn.idx // null)}
        elif $fn then {name: $fn.name, idx: $fn.idx}
        else null end) as $series
     | ($series.name // "") as $sname
     | {
-        id, path, has_series, authors,
-        genres: ([$gm[$seg[0]], ($so[$sname].genre // null)] | map(select(. != null)) | unique),
+        id, path, library, has_series, authors,
+        genres: ([$gm[.library // ""], ($so[$sname].genre // null)] | map(select(. != null)) | unique),
         series: (if $series != null and (.has_series | not) then $series else null end),
         author: (if ((.authors | length) == 0 or ((.authors | length) == 1 and .authors[0] == "Unknown Author")) and $so[$sname].author != null
                  then $so[$sname].author else null end)
@@ -85,7 +100,7 @@ PLAN=$(jq -c --argjson gm "$GENRE_MAP" --argjson so "$SERIES_OVERRIDES" '
 
 echo "== plano =="
 jq -r '.[] | select((.genres | length) > 0 or .series != null or .author != null)
-  | "#\(.id) \(.path)\n    gênero: \(.genres | join(", "))"
+  | "#\(.id) [\(.library // "?")] \(.path)\n    gênero: \(.genres | join(", "))"
     + (if .series != null then "\n    série:  \(.series.name)" + (if .series.idx then " #\(.series.idx)" else "" end) else "" end)
     + (if .author != null then "\n    autor:  \(.author)" else "" end)' <<<"$PLAN"
 echo

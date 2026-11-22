@@ -224,6 +224,17 @@ else
   log_optional "bookorbit-organize não encontrado no PATH (rode ~/dotfiles/setup.sh)."
 fi
 
+# 5b'. livros-enviar -----------------------------------------------------------
+# Manual também (manda uma pasta de livros para a Book Dock): sem rsync ou ssh,
+# só o envio fica de fora, então é aviso.
+if command -v livros-enviar &>/dev/null; then
+  log_success "livros-enviar encontrado: $(command -v livros-enviar)"
+  check_cmd rsync "$PM_INSTALL rsync" optional
+  check_cmd ssh "$PM_INSTALL openssh-clients" optional
+else
+  log_optional "livros-enviar não encontrado no PATH (rode ~/dotfiles/setup.sh)."
+fi
+
 # 5c. livro-para-md ------------------------------------------------------------
 # Também manual (converte um livro de study/ uma vez): sem pandoc, só a
 # conversão fica de fora, então é aviso.
