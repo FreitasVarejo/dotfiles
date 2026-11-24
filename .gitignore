@@ -15,3 +15,7 @@ agents/mods/*/tsconfig.json
 
 # Cache de bytecode: os scripts Python (travas, skills) rodam direto do repo.
 __pycache__/
+
+# Chave de API do BookOrbit: com ~/.config/bookorbit dobrado pelo stow ela cairia
+# dentro do pacote vault.
+vault/.config/bookorbit/api-key

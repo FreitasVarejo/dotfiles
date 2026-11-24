@@ -1,0 +1,10 @@
+[Unit]
+Description=Padroniza os metadados dos livros novos do BookOrbit
+Documentation=file://%h/dotfiles/vault/.local/bin/bookorbit-regularizar
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/bookorbit-regularizar --apply
+# Lê o banco por docker exec e chama o claude (Haiku): precisa do PATH do
+# usuário. Falha de um livro não derruba a unidade; o próximo disparo tenta de novo.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin

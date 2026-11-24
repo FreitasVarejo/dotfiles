@@ -1,0 +1,11 @@
+[Unit]
+Description=Padroniza os metadados do BookOrbit a cada 15 minutos
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+# NÃO é habilitado pelo vault/hooks/setup.sh: o dono liga à mão depois de
+# revisar o dry-run (systemctl --user enable --now bookorbit-regularizar.timer).
+
+[Install]
+WantedBy=timers.target

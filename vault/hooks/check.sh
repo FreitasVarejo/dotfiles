@@ -245,6 +245,34 @@ else
   log_optional "livro-para-md não encontrado no PATH (rode ~/dotfiles/setup.sh)."
 fi
 
+# 5d. bookorbit-regularizar ----------------------------------------------------
+# Roda no pi01, sozinha, por timer que o dono liga à mão: tudo aqui é aviso, só
+# a padronização dos metadados fica de fora. Sem pdftotext o PDF segue só pelo
+# nome do arquivo.
+if command -v bookorbit-regularizar &>/dev/null; then
+  log_success "bookorbit-regularizar encontrado: $(command -v bookorbit-regularizar)"
+  check_cmd claude "instale o Claude Code (npm i -g @anthropic-ai/claude-code)" optional
+  check_cmd python3 "$PM_INSTALL python3" optional
+  check_cmd jq "$PM_INSTALL jq" optional
+  check_cmd pdftotext "$PM_INSTALL poppler-utils" optional
+  BOOKORBIT_KEY="${BOOKORBIT_API_KEY_FILE:-$HOME/.config/bookorbit/api-key}"
+  if [[ -f "$BOOKORBIT_KEY" ]]; then
+    key_mode=$(stat -c '%a' "$BOOKORBIT_KEY" 2>/dev/null || echo "")
+    if [[ "$key_mode" == "600" || "$key_mode" == "400" ]]; then
+      log_success "Chave de API do BookOrbit com permissão $key_mode"
+    else
+      log_optional "Chave de API do BookOrbit com permissão ${key_mode:-?} (use: chmod 600 $BOOKORBIT_KEY)"
+    fi
+  else
+    log_optional "Chave de API do BookOrbit ausente ($BOOKORBIT_KEY): sem ela o --apply recusa; o dry-run roda."
+  fi
+  if [[ -L "$HOME/.config/bookorbit" ]]; then
+    log_optional "$HOME/.config/bookorbit é link para o repo (stow dobrou o diretório): a chave de API cairia dentro dele (o .gitignore cobre; ou aponte BOOKORBIT_API_KEY_FILE para fora)."
+  fi
+else
+  log_optional "bookorbit-regularizar não encontrado no PATH (rode ~/dotfiles/setup.sh)."
+fi
+
 # 7. Vaults extras -----------------------------------------------------------
 for env_file in "$HOME"/.config/vault-checkpoint/*.env; do
   [[ -f "$env_file" ]] || continue
